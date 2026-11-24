@@ -53,6 +53,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bigmont-cpu"
+version = "0.1.0"
+dependencies = [
+ "bigmont-oracle",
+ "num-bigint",
+ "num-traits",
+]
+
+[[package]]
 name = "bigmont-oracle"
 version = "0.1.0"
 dependencies = [

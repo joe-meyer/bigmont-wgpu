@@ -1,0 +1,13 @@
+[package]
+name = "bigmont-cpu"
+description = "Pure-Rust 64-bit-limb Montgomery base-2 Fermat test (CPU fallback)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+num-bigint = "0.4"
+num-traits = "0.2"
+
+[dev-dependencies]
+bigmont-oracle = { path = "../bigmont-oracle" }
