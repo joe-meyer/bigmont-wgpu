@@ -52,7 +52,7 @@ Each run is the `bigmont-core` suite: 133 instances of random 2029-bit moduli pl
 - llvmpipe ran the cooperative kernel at TPI 8, which is an independent implementation (a different shader compiler and execution model) of the same WGSL, and it matched the oracle.
 - The suite's "5 passed" line counts allowed skips as passes. Read the table above, not the count.
 
-## 3. Throughput (measured squarings/s; best row per adapter; sweep run with `--max-count 131072`)
+## 3. Throughput, first sweep (2 squarings per dispatch; best row per adapter; `--max-count 131072`). Superseded for speed by section 3a
 
 | Adapter | One-thread (TPI 1), best | Best cooperative row | squarings/s | projected tests/s* |
 |---|---|---|---|---|
@@ -66,18 +66,42 @@ Each run is the `bigmont-core` suite: 133 instances of random 2029-bit moduli pl
 
 Full tables are in `other-adapters/raw-sweep-laptop-vulkan.txt`.
 
-## 4. Why these numbers must not be read as a ranking of the cards
+## 3a. Re-timed with long dispatches (commits `4f4f3f8` and `92d8b5d`); supersedes section 3 and the main doc's tables for speed
 
-1. **The timings look floored by a fixed per-dispatch cost.** On the RTX 4070, TPI 8 at wg 64 ran 131,072 instances in 85.80 ms, while TPI 8 at wg 128 ran 65,536 instances (half the work) in 72.09 ms. Doubling the work added about 14 ms, which does not fit a throughput-limited kernel. The same pattern appears across the 4070's cooperative rows (61 to 86 ms for batches that differ by 2x). So the 4070's printed squarings/s are probably well below its real rate, and the within-TPI differences (for example TPI 8: 3.06 M versus 1.82 M) are mostly batch-size artifacts. Each dispatch does only 2 squarings, which the earlier review already flagged (finding M6). Re-measuring with many more squarings per dispatch is needed before any comparison.
-2. **The Radeon 780M printed faster than the RX 6700 XT** (6.84 M versus 4.51 M squarings/s) although the 780M has roughly a third of the shader count. Not explained. Candidates, none tested: the Linux Mesa (RADV/ACO) shader compiler producing better code for this kernel than AMD's Windows Vulkan driver, RDNA3 versus RDNA2 integer throughput, and the fixed-cost issue in item 1 affecting the cards differently. The only direct way to separate compiler from hardware is to run the 6700 XT under Linux, which has not been done.
+Each configuration is now also timed at progressively longer dispatches (2 up to 256 squarings, stopping once one dispatch takes 0.2 s, and never planned beyond 0.4 s). "sq/s @long" is total squarings divided by the long dispatch's time; "sq/s slope" is the marginal rate between the 2-squaring and the long dispatch, which removes any fixed per-dispatch cost. Raw files: `other-adapters/amortised/` (`raw-laptop-vulkan.txt`, `raw-host2-ct104.txt`, `raw-desktop-vulkan.txt`, `raw-desktop-dx12-dxc.txt`, and the same-batch comparison `raw-laptop-fixed-count.txt`). Every row validated against the oracle first.
+
+| Adapter | One-thread (TPI 1), squarings/s (projected tests/s*) | Best cooperative row | squarings/s @long | projected tests/s* | fixed cost per dispatch (slope) |
+|---|---|---|---|---|---|
+| RX 6700 XT, Vulkan (Windows) | 404,197 (199) | TPI 16, wg 64 | 4,881,358 | 2,406 | 3 to 13 ms |
+| RX 6700 XT, Dx12 + dxcompiler (Windows) | 413,226 (204) | TPI 16, wg 128 | 5,021,299 | 2,475 | 2 to 8 ms |
+| Radeon 780M, Vulkan (Linux, Mesa RADV) | 89,252 (44; only 2,048 instances) | TPI 8, wg 128 (wg 64 and 256 within 0.1%) | 7,996,262 | 3,941 | about 3 ms at 65,536 instances |
+| RTX 4070 Laptop, Vulkan (Linux, NVIDIA) | 471,641 (232) | TPI 32, wg 128 (all wg within 0.1%) | 3,413,011 | 1,682 | 0.1 to 2.3 ms |
+| Quadro P4000, Vulkan (shared, Linux) | 125,585 (62) | TPI 32, wg 256 | 948,491 | 467 | 0 to 6 ms |
+| llvmpipe on Ryzen 7 7840HS (CPU) | 57,282 (28) | TPI 8, wg 64 | 250,333 | 123 | about 8 ms |
+| llvmpipe in CT 104 on host2 (4 shared Xeon vCPUs) | 5,939 (3) | TPI 8, wg 64 | 22,201 | 11 | about 2 ms |
+
+\* projected tests/s = squarings/s / 2029, a projection (see the main doc), not a measured full test.
+
+What this changes and what it does not:
+1. **The fixed-cost explanation in the first version of this addendum was wrong.** I had read the 4070's rows as floored by a fixed ~60 ms per-dispatch cost. The slope method puts the fixed cost at 0.1 to 2.3 ms on the 4070 and 0 to 6 ms on the P4000. The earlier 2-squaring figures were low by about 7 to 8% on the 6700 XT (4.51 M to 4.88 M Vulkan, 4.69 M to 5.02 M Dx12) and about 17% on the 780M (6.84 M to 8.0 M), and essentially right for the 4070 and P4000.
+2. **On the 4070, the TPI 8 gap between rows was a workgroup-size effect, not batch size.** TPI 8 at wg 64 gave 3.08 M squarings/s but at wg 128 or 256 only 1.83 M (`raw-laptop-vulkan.txt`). The same-batch comparison (`raw-laptop-fixed-count.txt`, wg 64, 16,384 to 200,000 instances) is flat in batch size: TPI 8 3.0 to 3.1 M, TPI 16 2.14 to 2.16 M, TPI 32 3.39 to 3.42 M. TPI 16 is the slowest width on the 4070 at every batch size, which is unexplained. The 780M's rates are also flat from 16,384 instances up (TPI 8 about 8.0 M, TPI 16 about 7.6 M, TPI 32 about 6.2 M), once the dispatch is long enough to hide its ~6 ms fixed cost.
+3. **The 780M is still about 1.6 times the RX 6700 XT** (8.0 M against 4.9 M) with the fixed-cost explanation ruled out. Remaining candidates, none tested: Mesa RADV on Linux generating better code than AMD's Windows Vulkan driver, and RDNA3 against RDNA2 integer throughput. Only a Linux run of the 6700 XT separates them.
+4. **Best width differs by vendor and is stable within each:** AMD prefers TPI 8 or 16 (780M: 8 > 16 > 32; 6700 XT: 8, 16 and 32 within about 10% of each other), NVIDIA prefers TPI 32 (4070: 32 > 8 > 16; P4000: 32 > 8 > 16). Subgroup size alone does not explain it (the 4070 and 6700 XT both report subgroup 32).
+5. **Against the native CPU baseline** (GMP: about 1,085 tests/s on 4 vCPUs of a 2013 Xeon, about 265 per core; section 5a): the best GPU rows are about 3.6x that 4-vCPU slice on the 780M, 2.3x on the 6700 XT, 1.5x on the 4070, and 0.4x on the shared P4000. All are projections. **No row reaches the proposed 6,000 projected tests/s gate; the highest is the 780M at 3,941 (66% of it).** That is a measured-and-projected figure, not a verdict.
+6. Not re-timed with long dispatches: the desktop OpenGL adapter and WARP.
+
+## 4. Caveats on comparing the cards (read with 3a)
+
+1. **Fixed per-dispatch cost is not the issue** (see 3a item 1; this item originally claimed it was and was corrected after the re-timing). The remaining reason to read rows with care is that each row picks its own batch size and workgroup size, so compare rows at the same instance count and workgroup size, as `raw-laptop-fixed-count.txt` does.
+2. **The Radeon 780M is about 1.6 times faster than the RX 6700 XT** although it has roughly a third of the shader count. Not explained (3a item 3). The only direct way to separate compiler from hardware is to run the 6700 XT under Linux, which has not been done.
 3. **Different operating systems and drivers** (Windows with AMD and Dx12 drivers, Linux with NVIDIA proprietary and Mesa RADV), so the 6700 XT row is not like-for-like with the laptop rows.
 4. **Batch sizes differ between rows** (the sweep stops growing a batch once a probe dispatch passes 50 ms), for example the 780M's one-thread rows ran only 2,048 to 4,096 instances, so one-thread-versus-cooperative ratios are not meaningful on the 780M.
-5. **The best TPI differs by vendor in this data**: TPI 32 on the 4070 (subgroup 32), TPI 8 on the 780M (subgroup 32..64), TPI 8 on llvmpipe (subgroup 8, the only cooperative width it can run). Given the noise in item 1, this is a hint to retest, not an established rule. (Subgroup size is not proof of a mapping to the best TPI.)
+5. **The best TPI differs by vendor** (3a item 4). It held across the batch sizes tried on the 4070 and 780M and across the long-dispatch re-timing, but only on these cards; it is not an established rule for other hardware.
 
 ## 5. Not tested
 
 - **Intel GPUs: none exist on any machine used here.** The laptop's CPU is an AMD Ryzen 7 7840HS and its only graphics devices are the RTX 4070 and the AMD Radeon 780M; the Windows desktop shows only the RX 6700 XT and WARP; host2 has the P4000 and a Matrox console chip. Intel (subgroup sizes 8 to 32) therefore remains untested. The closest stand-in here is llvmpipe (subgroup 8), which exercises the small-subgroup path (TPI 8 = one instance per subgroup) but says nothing about Intel's compiler or hardware.
-- The P4000 sweep was `--quick` (wg 64 only, TPI 32 skipped by the workgroup-count rule at cap 131072), run while the GPU was shared: at the start the host showed 1% utilisation, SM clock 1,202 MHz, 4.6 GB in use by the other containers' processes; at the end 14% and 1,708 MHz. The clock rise suggests the card was still ramping up, so the P4000 throughput rows are low-confidence, and the same fixed-cost caveat from section 4 applies (54 to 97 ms rows). The correctness result is unaffected.
+- The P4000 sweep was `--quick` (wg 64 only, TPI 32 skipped by the workgroup-count rule at cap 131072), run while the GPU was shared: at the start the host showed 1% utilisation, SM clock 1,202 MHz, 4.6 GB in use by the other containers' processes; at the end 14% and 1,708 MHz. The clock rise suggests the card was still ramping up, so those first P4000 rows were low-confidence. The full re-timed sweep (all widths and workgroup sizes, start state 0% utilisation, SM clock 1,202 MHz) is in section 3a: best TPI 32 at 0.95 M squarings/s, projected 467. The GPU was still shared with the other containers during that run. The correctness result is unaffected.
 - RX 6700 XT under Linux (to separate compiler from hardware, item 2 above).
 - Wave64 mode (no run has observed subgroup size 64).
 - Intel and Apple GPUs; browsers (the cooperative kernels are still not browser-valid because naga 30 rejects `enable subgroups;` and the emitted WGSL omits it).
@@ -102,7 +126,7 @@ How to read it:
 
 ## 6. What would settle the open questions (candidates for Phase 1 or a follow-up, not done)
 
-1. Time with many squarings per dispatch (for example 32 to 256) so fixed costs vanish, then redo the laptop and desktop sweeps.
+1. (Done, section 3a: long-dispatch re-timing on all four GPUs and the CPU adapters. Still open: the 4070's slow TPI 16 and its wg 128/256 TPI 8 penalty.)
 2. Run the 6700 XT under Linux (a USB-booted Linux or a spare machine; not available here today).
 3. Re-run the P4000 sweep when the other containers are idle and with the full set of workgroup sizes (CT 104 exists for this).
 4. Find an Intel GPU (a laptop or mini-PC with an Intel iGPU or Arc card) for the small-subgroup, different-compiler case.

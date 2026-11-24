@@ -9,7 +9,9 @@ Code under test: `crates/bigmont-core` (kernels, runner) and `crates/bigmont-cor
 - That projects to about **2,200 to 2,300 "tests/s"** (squarings/s divided by 2,029). This is a projection, not a measured test.
 - Cooperative (subgroup) kernels beat one-thread-per-number by about 11x on Vulkan and on Dx12 + DXC (same compiler path for both kernels). The Dx12 default path (no `dxcompiler.dll`, presumably FXC) cannot run cooperative kernels, and its one-thread kernel is about 4x faster than the one-thread kernel on Vulkan or Dx12 + DXC. Comparing the best cooperative Dx12 + DXC result with that Dx12 default-path one-thread result, which are two different compiler setups, gives only about 2.8x (section 5).
 - Against Beacon's published 516 to 523k tests/s per card, the projection is about 220 to 235x lower (516k / 2,312 is 223x; 523k / 2,223 is 235x). Order of magnitude only; the card is different (much smaller) and I have not confirmed what Beacon's figure counts (see section 6).
-- Only one of the two cards named in spec section 4 has been measured: the RX 6700 XT. The RTX 4070 laptop has not been run, so Phase 0 is incomplete against the spec until the user decides on the laptop run (section 9).
+- (Superseded, see the update above.) When this document was first written only the RX 6700 XT had been measured; the RTX 4070 laptop has since been run (addendum).
+
+**Update, later the same day:** this document covers the RX 6700 XT only. The RTX 4070 laptop, the Radeon 780M, the Quadro P4000, software adapters and a native CPU baseline are in `2026-11-24-phase0-other-adapters.md`. That addendum also re-times every GPU with long dispatches (its section 3a), which raises the 6700 XT figures above by about 7 to 8% (best Vulkan row 4.88 M squarings/s, projected 2,406; best Dx12 + dxcompiler row 5.02 M, projected 2,475). The conclusions here stand; where this document and the addendum's section 3a differ on speed, use 3a.
 - Whether this clears the gate is the user's decision. A proposed threshold is in section 8.
 
 ## 1. Machine and adapters

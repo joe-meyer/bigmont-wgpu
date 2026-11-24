@@ -1,0 +1,61 @@
+commit 92d8b5d; laptop fixed-count sweep; 2026-11-24T16:10:17Z; load: 0.74 0.38 0.19
+
+######## 4070 vulkan --quick --tpi 8,16,32 --fixed-count 16384
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+   8   64     16384    64    354.45      2486107      2958332      2976570      2.2     151.5        1458  ok
+  16   64     16384    32    244.04      2084705      2148406      2152792      0.5     110.0        1059  ok
+  32   64     16384    64    309.23      3282110      3390950      3394581      0.3     173.6        1671  ok
+
+######## 4070 vulkan --quick --tpi 8,16,32 --fixed-count 32768
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+   8   64     32768    32    343.55      2956969      3052209      3058777      0.7     156.3        1504  ok
+  16   64     32768    16    244.74      2127540      2142236      2144352      0.2     109.7        1056  ok
+  32   64     32768    32    308.09      3335492      3403453      3408083      0.4     174.3        1677  ok
+
+######## 4070 vulkan --quick --tpi 8,16,32 --fixed-count 65536
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+   8   64     65536    16    341.34      3027034      3071924      3078446      0.7     157.3        1514  ok
+  16   64     65536     8    243.95      2132447      2149136      2154757      0.6     110.0        1059  ok
+  32   64     65536    16    307.53      3380014      3409722      3414009      0.4     174.6        1680  ok
+
+######## 4070 vulkan --quick --tpi 8,16,32 --fixed-count 131070
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+   8   64    131064     8    340.16      3057191      3082398      3090893      0.9     157.8        1519  ok
+  16   64    131068     4    243.95      2143848      2149131      2154441      0.6     110.0        1059  ok
+  32   64    131070     8    306.99      3399661      3415638      3420997      0.5     174.9        1683  ok
+
+######## 4070 vulkan --quick --tpi 8,16,32 --fixed-count 200000
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+   8   64    200000     4    259.57      3069725      3082002      3094377      1.0     157.8        1519  ok
+  16   64    200000     4    371.29      2150283      2154670      2159076      0.8     110.3        1062  ok
+  32   64  skipped: 100000 workgroups at --max-count 200000 exceeds 65535 per dispatch
+
+######## 780M vulkan --quick --tpi 8,16,32 --fixed-count 16384
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+   8   64     16384   128    268.77      3083815      7802639      7996873      6.5     399.5        3846  ok
+  16   64     16384   128    279.56      4286118      7501562      7591966      3.3     384.1        3697  ok
+  32   64     16384   128    341.10      3780537      6148137      6209867      3.4     314.8        3030  ok
+
+######## 780M vulkan --quick --tpi 8,16,32 --fixed-count 32768
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+   8   64     32768    64    263.67      4543553      7953714      8151062      6.4     407.2        3920  ok
+  16   64     32768    64    277.10      4545950      7568179      7734041      5.9     387.5        3730  ok
+  32   64     32768    64    339.10      4103511      6184378      6287224      5.5     316.6        3048  ok
+
+######## 780M vulkan --quick --tpi 8,16,32 --fixed-count 65536
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+   8   64     65536    32    262.20      6748223      7998174      8098174      3.2     409.5        3942  ok
+  16   64     65536    32    275.63      6570107      7608515      7689537      2.9     389.6        3750  ok
+  32   64     65536    32    338.30      5856504      6199151      6223425      1.3     317.4        3055  ok
+
+######## 780M vulkan --quick --tpi 8,16,32 --fixed-count 131070
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+   8   64    131064    16    261.25      7881598      8026844      8048031      0.7     411.0        3956  ok
+  16   64    131068    16    275.19      7507016      7620521      7637017      0.6     390.2        3756  ok
+  32   64    131070    16    337.60      6142816      6211887      6221881      0.5     318.0        3062  ok
+
+######## 780M vulkan --quick --tpi 8,16,32 --fixed-count 200000
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+   8   64    200000    16    397.75      7890042      8045250      8067923      1.1     411.9        3965  ok
+  16   64    200000     8    210.17      7549515      7612871      7634227      0.6     389.8        3752  ok
+  32   64  skipped: 100000 workgroups at --max-count 200000 exceeds 65535 per dispatch

@@ -3,7 +3,9 @@
 Collected from the per-task reviews, the whole-branch review and the remote runs. Nothing here blocks reading the Phase 0 results; items are grouped by when they matter.
 
 ## Fix before relying on the numbers (measurement)
-- Time with many squarings per dispatch (32 to 256, not 2) so fixed per-dispatch cost vanishes, then redo every sweep (desktop and laptop). See `results/2026-11-24-phase0-other-adapters.md` section 4.
+- (Done) Long-dispatch re-timing on all GPUs: `results/2026-11-24-phase0-other-adapters.md` section 3a. It showed fixed per-dispatch cost is small (0 to 13 ms), so my first guess (a 60 ms floor on the 4070) was wrong.
+- Explain the RTX 4070's slow TPI 16 (2.15 M against 3.1 M for TPI 8 and 3.4 M for TPI 32 at every batch size) and its TPI 8 penalty at wg 128/256 (1.83 M against 3.08 M at wg 64).
+- The proposed gate (6,000 projected tests/s) is not met by any measured row (best 3,941, Radeon 780M); re-derive it against the CPU baseline.
 - Spot-check the timed outputs of the benchmark against the oracle (about 16 instances of the large batches); today only the 50-instance validation batch is checked.
 - Run the RX 6700 XT under Linux to separate "AMD Windows driver" from "RDNA2 hardware" (the 780M under Mesa printed faster).
 - Investigate the one-thread kernel being about 4x faster on Dx12 without dxcompiler (presumably FXC) than under Vulkan or Dx12/DXC.

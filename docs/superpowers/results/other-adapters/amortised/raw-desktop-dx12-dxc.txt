@@ -1,0 +1,22 @@
+commit 4f4f3f8; desktop Dx12 with dxcompiler.dll on PATH; 2026-11-24T16:08:50Z
+adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
+subgroups feature: true
+max batch (instances): 131070
+
+ tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+   1   64     16384     8    317.19       387944       413226       422402      6.9      21.2         204  ok
+   1  128     16384     8    325.25       396425       402983       405217      1.8      20.6         199  ok
+   1  256     16384     8    326.10       381379       401934       409287      5.9      20.6         198  ok
+   8   64    131064     8    216.67      4504784      4839225      4962021      5.4     247.8        2385  ok
+   8  128    131056     8    218.81      4477264      4791700      4906562      5.1     245.3        2362  ok
+   8  256    131040     8    224.34      4322370      4672807      4802598      6.1     239.2        2303  ok
+  16   64    131068     8    213.64      4673414      4908011      4991533      3.6     251.3        2419  ok
+  16  128    131064     8    208.81      4680038      5021299      5146388      5.1     257.1        2475  ok
+  16  256    131056     8    215.98      4633770      4854452      4932759      3.4     248.5        2393  ok
+  32   64    131070     8    218.53      4547891      4798142      4887793      4.0     245.7        2365  ok
+  32  128    131068     8    217.19      4481210      4827826      4955596      5.6     247.2        2379  ok
+  32  256    131064     8    216.50      4512858      4842924      4963944      5.3     248.0        2387  ok
+
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.

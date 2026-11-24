@@ -1,0 +1,44 @@
+commit 4f4f3f8; host2 CT104; 2026-11-24T16:08:00Z
+######## other GPU users at start:
+0 %, 4607 MiB, 1202 MHz, 29.24 W
+host load: 3.99 3.57 3.56
+
+######## P4000 (vulkan) --max-count 131070
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+subgroups feature: true
+max batch (instances): 131070
+
+ tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+   1   64      2048    16    391.07        75988        83790        85038      5.7       4.3          41  ok
+   1  128      4096     8    261.65       124782       125234       125385      0.3       6.4          62  ok
+   1  256      4096     8    260.92       124849       125585       125832      0.5       6.4          62  ok
+   8   64     32768     8    394.90       669867       663831       661843      0.0      34.0         327  ok
+   8  128     16384     8    206.03       660655       636190       628433      0.0      32.6         314  ok
+   8  256     16384     8    207.06       641899       633001       630089      0.0      32.4         312  ok
+  16   64     16384     8    243.67       539180       537917       537497      0.0      27.5         265  ok
+  16  128     16384     8    238.47       547233       549627       550430      0.3      28.1         271  ok
+  16  256     16384     8    234.17       555369       559740       561212      0.6      28.7         276  ok
+  32   64     32768     8    280.33       942123       935137       932832      0.0      47.9         461  ok
+  32  128     32768     8    278.35       942847       941765       941405      0.0      48.2         464  ok
+  32  256     32768     8    276.38       951072       948491       947633      0.0      48.6         467  ok
+
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.
+
+######## llvmpipe (vulkan) --quick
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
+subgroups feature: true
+max batch (instances): 65536
+
+ tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+   1   64      1024     2    344.84         5939         5939          n/a      n/a       0.3           3  ok
+   8   64      1024     8    368.99        21816        22201        22332      2.2       1.1          11  ok
+  16   64  skipped: subgroup size 8..8 is not a multiple of tpi 16
+  32   64  skipped: subgroup size 8..8 is not a multiple of tpi 32
+
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.
+######## other GPU users at end:
+1 %, 4607 MiB, 1202 MHz, 30.89 W
