@@ -1,0 +1,21 @@
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running `target\release\examples\spike.exe`
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+subgroups feature: true
+max batch (instances): 65536
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64     16384     2     86.45       379052       19.4          187  ok
+   1  128     16384     2     86.94       376883       19.3          186  ok
+   1  256     16384     2     87.52       374409       19.2          185  ok
+   8   64     65536     2     31.62      4144608      212.2         2043  ok
+   8  128     65536     2     34.69      3778304      193.4         1862  ok
+   8  256     65536     2     35.52      3690599      189.0         1819  ok
+  16   64     65536     2     31.69      4135703      211.7         2038  ok
+  16  128     65536     2     31.86      4113663      210.6         2027  ok
+  16  256     65536     2     32.57      4023810      206.0         1983  ok
+  32   64     65536     2     34.21      3831854      196.2         1889  ok
+  32  128     65536     2     31.64      4143220      212.1         2042  ok
+  32  256     65536     2     33.82      3875164      198.4         1910  ok
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.

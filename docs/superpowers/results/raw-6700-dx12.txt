@@ -1,0 +1,19 @@
+adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
+subgroups feature: true
+max batch (instances): 65536
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64     16384     2     83.91       390530       20.0          192  ok
+   1  128     16384     2     80.56       406759       20.8          200  ok
+   1  256     16384     2     86.21       380076       19.5          187  ok
+   8   64     65536     2     31.97      4100203      209.9         2021  ok
+   8  128     65536     2     32.67      4011864      205.4         1977  ok
+   8  256     65536     2     33.47      3915730      200.5         1930  ok
+  16   64     65536     2     30.81      4254880      217.8         2097  ok
+  16  128     65536     2     31.06      4219364      216.0         2080  ok
+  16  256     65536     2     31.23      4196439      214.9         2068  ok
+  32   64     65536     2     31.91      4107179      210.3         2024  ok
+  32  128     65536     2     31.87      4113134      210.6         2027  ok
+  32  256     65536     2     31.90      4108905      210.4         2025  ok
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.

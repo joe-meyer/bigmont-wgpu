@@ -1,0 +1,19 @@
+adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
+subgroups feature: false
+max batch (instances): 65536
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64     65536     2     79.17      1655612       84.8          816  ok
+   1  128     65536     2     78.64      1666732       85.3          821  ok
+   1  256     65536     2     79.09      1657316       84.9          817  ok
+   8   64  skipped: adapter lacks wgpu::Features::SUBGROUP
+   8  128  skipped: adapter lacks wgpu::Features::SUBGROUP
+   8  256  skipped: adapter lacks wgpu::Features::SUBGROUP
+  16   64  skipped: adapter lacks wgpu::Features::SUBGROUP
+  16  128  skipped: adapter lacks wgpu::Features::SUBGROUP
+  16  256  skipped: adapter lacks wgpu::Features::SUBGROUP
+  32   64  skipped: adapter lacks wgpu::Features::SUBGROUP
+  32  128  skipped: adapter lacks wgpu::Features::SUBGROUP
+  32  256  skipped: adapter lacks wgpu::Features::SUBGROUP
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.
