@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bigmont WebGPU conformance and speed test</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; max-width: 980px; }
+  pre { background: #f4f4f4; padding: 10px; overflow: auto; white-space: pre-wrap; }
+  @media (prefers-color-scheme: dark) { body { background: #111; color: #ddd; } pre { background: #1c1c1c; } }
+</style>
+</head>
+<body>
+<h3>bigmont WebGPU test</h3>
+<p>Compiles a generated WGSL kernel in this browser's own WebGPU implementation, checks results against a BigInt oracle, and times it. Query: <code>?k=unrolled_tpi8_wg64</code> (also <code>unrolled_tpi16_wg64</code>, <code>unrolled_tpi32_wg64</code>, <code>rolled_tpi8_wg64</code>); add <code>&amp;noenable=1</code> to omit the <code>enable subgroups;</code> line.</p>
+<pre id="out">starting...</pre>
+<script>
+"use strict";
+const out = document.getElementById("out");
+const lines = [];
+const log = (s) => { lines.push(s); out.textContent = lines.join("\n"); };
+const result = { kernel: null, adapter: null, compile: null, tests: [], timing: null, error: null };
+window.__result = result;
+
+// ---- BigInt oracle, mirroring crates/bigmont-oracle ----
+const LIMBS = 160, M13 = (1n << 13n) - 1n, RB = 13n * 160n;
+function rnd(bits) {
+  const nb = Math.ceil(bits / 8), a = new Uint8Array(nb);
+  crypto.getRandomValues(a);
+  let v = 0n; for (const b of a) v = (v << 8n) | BigInt(b);
+  return v & ((1n << BigInt(bits)) - 1n);
+}
+const oddMod = (bits) => rnd(bits) | (1n << BigInt(bits - 1)) | 1n;
+function pack(x) { const o = new Uint32Array(LIMBS); for (let k = 0; k < LIMBS; k++) o[k] = Number((x >> (13n * BigInt(k))) & M13); return o; }
+function unpack(a, off) { let v = 0n; for (let k = LIMBS - 1; k >= 0; k--) v = (v << 13n) + BigInt(a[off + k]); return v; }
+function negInvLimb(n) {
+  const n0 = Number(n & 0xffffffffn) | 0; let inv = n0;
+  for (let i = 0; i < 4; i++) inv = Math.imul(inv, (2 - Math.imul(n0, inv)) | 0);
+  const r = ((0 - inv) >>> 0) & 0x1fff;
+  if ((((Number(n & 0x1fffn) * r) + 1) & 0x1fff) !== 0) throw new Error("negInvLimb property failed");
+  return r;
+}
+function invModPow2(n, bits) {
+  let inv = 1n, p = 1n; const B = BigInt(bits);
+  while (p < B) { p = p * 2n > B ? B : p * 2n; const mod = 1n << p; const t = (n * inv) % mod; inv = (inv * ((2n + mod - t) % mod)) % mod; }
+  return inv;
+}
+function chain(n, x0, s) {
+  const R = 1n << RB, mask = R - 1n, ninv = invModPow2(n, Number(RB));
+  let x = x0 % n;
+  for (let i = 0; i < s; i++) { const x2 = x * x; const m = (R - ((x2 * ninv) & mask)) & mask; x = ((x2 + m * n) >> RB) % n; }
+  return x;
+}
+const sampleIdx = (count, k) => { const s = new Set([0, 1, 2, 3, count - 1, count - 2, count - 3, count - 4].filter((i) => i >= 0 && i < count)); for (let j = 0; s.size < k && j < 1e5; j++) s.add(Math.floor(Math.random() * count)); return [...s]; };
+
+// ---- WebGPU plumbing ----
+async function main(kname) {
+  const params = new URLSearchParams(location.search);
+  Object.assign(result, { kernel: null, adapter: null, compile: null, tests: [], timing: null, error: null, done: false });
+  lines.push("", "==== " + kname + " ====");
+  const m = /_tpi(\d+)_wg(\d+)/.exec(kname);
+  const TPI = Number(m[1]), WG = Number(m[2]), IPW = WG / TPI;
+  result.kernel = kname;
+  log("kernel: " + kname + " (TPI " + TPI + ", workgroup " + WG + ", instances per workgroup " + IPW + ")");
+  if (!navigator.gpu) throw new Error("navigator.gpu is not available in this browser");
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error("no WebGPU adapter");
+  const info = adapter.info || {};
+  const hasSub = adapter.features.has("subgroups");
+  result.adapter = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description, subgroupMin: info.subgroupMinSize, subgroupMax: info.subgroupMaxSize, hasSubgroups: hasSub, isFallback: adapter.isFallbackAdapter, ua: navigator.userAgent };
+  log("adapter: " + JSON.stringify(result.adapter));
+  if (!hasSub && TPI > 1) throw new Error("adapter does not report the 'subgroups' feature");
+  const device = await adapter.requestDevice({ requiredFeatures: hasSub ? ["subgroups"] : [] });
+  device.addEventListener?.("uncapturederror", (e) => log("uncaptured GPU error: " + e.error.message));
+
+  const wgsl = await (await fetch("kernels/" + kname + ".wgsl")).text();
+  // Browsers need `enable subgroups;`; Tint also cannot prove that loop exits driven by a subgroupAny
+  // vote are subgroup-uniform (they are, by construction: every lane of the subgroup is active and the
+  // vote is the same for all of them), so the uniformity diagnostic is switched off. ?nodiag=1 omits it.
+  const code = (params.get("noenable") ? "" : "enable subgroups;\n") + (params.get("nodiag") ? "" : "diagnostic(off, subgroup_uniformity);\n") + wgsl;
+  const module = device.createShaderModule({ code });
+  const ci = await module.getCompilationInfo();
+  result.compile = ci.messages.map((x) => x.type + ": " + x.message + " (line " + x.lineNum + ")");
+  log("compilation messages: " + (result.compile.length ? "\n  " + result.compile.slice(0, 12).join("\n  ") : "none"));
+  if (ci.messages.some((x) => x.type === "error")) throw new Error("shader compilation failed in this browser");
+  const pipeline = await device.createComputePipelineAsync({ layout: "auto", compute: { module, entryPoint: "main" } });
+  log("pipeline created");
+
+  async function run(values, squarings, reps) {
+    const count = values.length;
+    const n = new Uint32Array(count * LIMBS), x = new Uint32Array(count * LIMBS), ninv = new Uint32Array(count);
+    values.forEach(([nn, xx], i) => { n.set(pack(nn), i * LIMBS); x.set(pack(xx), i * LIMBS); ninv[i] = negInvLimb(nn); });
+    const mk = (size, usage) => device.createBuffer({ size, usage });
+    const S = GPUBufferUsage;
+    const pbuf = mk(16, S.UNIFORM | S.COPY_DST), nbuf = mk(n.byteLength, S.STORAGE | S.COPY_DST), ibuf = mk(ninv.byteLength, S.STORAGE | S.COPY_DST), xbuf = mk(x.byteLength, S.STORAGE | S.COPY_DST | S.COPY_SRC), sbuf = mk(x.byteLength, S.MAP_READ | S.COPY_DST);
+    device.queue.writeBuffer(pbuf, 0, new Uint32Array([count, squarings, 0, 0]));
+    device.queue.writeBuffer(nbuf, 0, n); device.queue.writeBuffer(ibuf, 0, ninv); device.queue.writeBuffer(xbuf, 0, x);
+    const bg = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [pbuf, nbuf, ibuf, xbuf].map((b, i) => ({ binding: i, resource: { buffer: b } })) });
+    let best = Infinity;
+    for (let r = 0; r < reps; r++) {
+      const enc = device.createCommandEncoder(); const pass = enc.beginComputePass();
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.dispatchWorkgroups(Math.ceil(count / IPW)); pass.end();
+      const t0 = performance.now(); device.queue.submit([enc.finish()]); await device.queue.onSubmittedWorkDone(); best = Math.min(best, performance.now() - t0);
+    }
+    const enc = device.createCommandEncoder(); enc.copyBufferToBuffer(xbuf, 0, sbuf, 0, x.byteLength); device.queue.submit([enc.finish()]);
+    await sbuf.mapAsync(GPUMapMode.READ); const res = new Uint32Array(sbuf.getMappedRange().slice(0)); sbuf.unmap();
+    [pbuf, nbuf, ibuf, xbuf, sbuf].forEach((b) => b.destroy());
+    return { res, bestMs: best };
+  }
+  function verify(values, res, total, idxs) {
+    const bad = [];
+    for (const i of idxs) {
+      const [nn, xx] = values[i]; let ok = true;
+      for (let k = 0; k < LIMBS; k++) if (res[i * LIMBS + k] > 0x1fff) ok = false;
+      const got = unpack(res, i * LIMBS);
+      if (got >= 2n * nn) ok = false;
+      if (got % nn !== chain(nn, xx, total)) ok = false;
+      if (!ok) bad.push(i);
+    }
+    return bad;
+  }
+  const rv = (count, bits) => Array.from({ length: count }, () => { const nn = oddMod(bits); return [nn, rnd(bits + 40) % nn]; });
+  const record = (name, bad, checked, extra) => { const t = { name, checked, failed: bad.length, pass: bad.length === 0, ...extra }; result.tests.push(t); log((t.pass ? "PASS " : "FAIL ") + name + ": " + checked + " instances checked, " + bad.length + " wrong" + (bad.length ? " (first: " + bad.slice(0, 5) + ")" : "")); };
+
+  // Test 1: random + carry-stress moduli, 3 squarings, count not a multiple of the workgroup
+  const allOnes = (1n << 2029n) - 1n, sparse = (1n << 2028n) + 1n;
+  const v1 = [...rv(131, 2029), [allOnes, allOnes - 1n], [sparse, sparse - 1n]];
+  let r = await run(v1, 3, 1);
+  record("random and carry-stress moduli, 3 squarings", verify(v1, r.res, 3, v1.map((_, i) => i)), v1.length);
+  // Test 2: long chain
+  const v2 = [...rv(70, 2029), [allOnes, allOnes - 1n], [sparse, sparse - 1n]];
+  r = await run(v2, 128, 1);
+  record("128 chained squarings", verify(v2, r.res, 128, v2.map((_, i) => i)), v2.length);
+  // Test 3: timing, calibrated; verify the timed output itself
+  const COUNT = Number(params.get("count") || 32768); const v3 = rv(COUNT, 2029);
+  await run(v3, 2, 1);                       // warm-up: first use includes one-time driver work
+  const reps = 3, steps = [16, 64, 256], pts = [];
+  let t;
+  for (const sq of steps) {
+    t = await run(v3, sq, reps); pts.push({ sq, ms: t.bestMs });
+    log("  " + COUNT + " instances x " + sq + " squarings: " + t.bestMs.toFixed(1) + " ms best of " + reps + " = " + (COUNT * sq / (t.bestMs / 1000) / 1e6).toFixed(2) + " M squarings/s");
+  }
+  const total = steps[steps.length - 1] * reps; const idxs = sampleIdx(COUNT, 24);   // t is the last (longest) run
+  record("timed run output (" + total + " chained squarings, " + COUNT + " instances)", verify(v3, t.res, total, idxs), idxs.length, { squaringsPerDispatch: steps[steps.length - 1] });
+  const a = pts[1], b = pts[2];
+  const slope = COUNT * (b.sq - a.sq) / ((b.ms - a.ms) / 1000), longRate = COUNT * b.sq / (b.ms / 1000);
+  result.timing = { instances: COUNT, points: pts, longRate, slopeRate: slope, projectedTestsPerSecLong: longRate / 2029 };
+  log("TIMING (long dispatch): " + (longRate / 1e6).toFixed(2) + " M squarings/s, projected " + Math.round(longRate / 2029) + " tests/s; slope between " + a.sq + " and " + b.sq + " squarings: " + (slope / 1e6).toFixed(2) + " M squarings/s (projections: squarings/s / 2029)");
+}
+window.__runs = [];
+(async () => {
+  const ks = (new URLSearchParams(location.search).get("k") || "unrolled_tpi8_wg64").split(",");
+  for (const k of ks) {
+    try { await main(k); result.done = true; log("DONE " + k); }
+    catch (e) { result.error = String(e && e.stack || e); log("ERROR: " + result.error); }
+    window.__runs.push(JSON.parse(JSON.stringify(result, (_, v) => typeof v === "bigint" ? v.toString() : v)));
+  }
+  window.__all = true; document.title = "ALLDONE";
+})();
+</script>
+</body>
+</html>
