@@ -10,8 +10,9 @@ Code under test: commit `63ae502` (same kernels, runner and sweep as the main re
 | same | AMD Radeon 780M iGPU (RADV, Mesa) | Vulkan | 32..64 | same files |
 | same | llvmpipe (Mesa software Vulkan, LLVM 21.1.8: a CPU adapter) | Vulkan | 8..8 | same files |
 | Windows desktop | Microsoft Basic Render Driver (WARP, CPU) | Dx12 | no SUBGROUP feature | `raw-tests-warp-dx12.txt` (tests only) |
+| `host2` (Proxmox), new container CT 104 `bigmont-test` (Ubuntu 26.04, unprivileged LXC) | Quadro P4000 (Pascal, 8 GB, shared with three other containers; driver 580.178.04) | Vulkan | 32..32 | `raw-tests-host2-ct104-p4000-vulkan.txt`, `raw-sweep-host2-ct104-p4000-vulkan.txt` (commit `04b2049`) |
 
-Rust 1.100.0 was installed user-level on the laptop with rustup (no sudo) to build there. The Quadro P4000 on the proxmox host `host2` was **not** tested: the host has no Vulkan loader, so wgpu finds no adapter there (see section 5).
+Rust 1.100.0 was installed user-level on the laptop with rustup (no sudo) to build there, and as root inside the new container on host2. CT 104 was created for this test at the owner's request with the same `/dev/nvidia*` device entries as the existing plex, frigate and llm containers. Getting the NVIDIA Vulkan driver to initialise there needed `libnvidia-gl-580` (same version as the host driver), `libvulkan1` and `libegl1` (without libegl1 the driver fails at init). `vulkaninfo` itself exits with a segfault at teardown in that container; the wgpu test and sweep binaries exited with status 0.
 
 ## 2. Correctness (the strict test suite, no skips allowed except where stated)
 
@@ -21,6 +22,7 @@ Each run is the `bigmont-core` suite: 133 instances of random 2029-bit moduli pl
 |---|---|---|---|---|
 | RTX 4070 Laptop (Vulkan) | pass | pass | pass | pass / pass / pass |
 | Radeon 780M (Vulkan) | pass | pass | pass | pass / pass / pass |
+| Quadro P4000 (Vulkan, in CT 104 on host2) | pass | pass | pass | pass / pass / pass |
 | llvmpipe (Vulkan, `BIGMONT_ALLOW_SKIP=1`) | pass | pass | skipped: subgroup size 8 is not a multiple of 16 | skipped (all three), same reason |
 | WARP (Dx12, `BIGMONT_ALLOW_SKIP=1`) | pass | skipped: no SUBGROUP | skipped | skipped |
 
@@ -34,6 +36,7 @@ Each run is the `bigmont-core` suite: 133 instances of random 2029-bit moduli pl
 |---|---|---|---|---|
 | RTX 4070 Laptop | 467,666 (wg 128, 32,768 instances) | TPI 32, wg 256, 131,072 instances | 3,407,323 | 1,679 |
 | Radeon 780M | 86,949 (wg 64, only 2,048 instances) | TPI 8, wg 256, 65,536 instances | 6,837,139 | 3,370 |
+| Quadro P4000 (shared GPU; `--quick`, wg 64 only) | 75,521 (2,048 instances) | TPI 8, wg 64, 32,768 instances | 676,923 | 334 |
 | llvmpipe (CPU) | 57,391 | TPI 8, wg 64, 8,192 instances | 246,666 | 122 |
 | *RX 6700 XT, Windows, for reference (main doc)* | about 399,000 | TPI 16, wg 64 (Vulkan) | 4,511,000 (Vulkan), 4,690,000 (Dx12 with dxcompiler) | 2,223 / 2,312 |
 
@@ -51,7 +54,8 @@ Full tables are in `other-adapters/raw-sweep-laptop-vulkan.txt`.
 
 ## 5. Not tested
 
-- Quadro P4000 on `host2`: no Vulkan loader on the Proxmox host. A test needs a container or VM with GPU passthrough and Vulkan packages (or system package installs on the hypervisor, which were not made).
+- **Intel GPUs: none exist on any machine used here.** The laptop's CPU is an AMD Ryzen 7 7840HS and its only graphics devices are the RTX 4070 and the AMD Radeon 780M; the Windows desktop shows only the RX 6700 XT and WARP; host2 has the P4000 and a Matrox console chip. Intel (subgroup sizes 8 to 32) therefore remains untested. The closest stand-in here is llvmpipe (subgroup 8), which exercises the small-subgroup path (TPI 8 = one instance per subgroup) but says nothing about Intel's compiler or hardware.
+- The P4000 sweep was `--quick` (wg 64 only, TPI 32 skipped by the workgroup-count rule at cap 131072), run while the GPU was shared: at the start the host showed 1% utilisation, SM clock 1,202 MHz, 4.6 GB in use by the other containers' processes; at the end 14% and 1,708 MHz. The clock rise suggests the card was still ramping up, so the P4000 throughput rows are low-confidence, and the same fixed-cost caveat from section 4 applies (54 to 97 ms rows). The correctness result is unaffected.
 - RX 6700 XT under Linux (to separate compiler from hardware, item 2 above).
 - Wave64 mode (no run has observed subgroup size 64).
 - Intel and Apple GPUs; browsers (the cooperative kernels are still not browser-valid because naga 30 rejects `enable subgroups;` and the emitted WGSL omits it).
@@ -62,4 +66,5 @@ Full tables are in `other-adapters/raw-sweep-laptop-vulkan.txt`.
 
 1. Time with many squarings per dispatch (for example 32 to 256) so fixed costs vanish, then redo the laptop and desktop sweeps.
 2. Run the 6700 XT under Linux (a USB-booted Linux or a spare machine; not available here today).
-3. A test container on `host2` with GPU passthrough and Vulkan, to cover the P4000.
+3. Re-run the P4000 sweep when the other containers are idle and with the full set of workgroup sizes (CT 104 exists for this).
+4. Find an Intel GPU (a laptop or mini-PC with an Intel iGPU or Arc card) for the small-subgroup, different-compiler case.

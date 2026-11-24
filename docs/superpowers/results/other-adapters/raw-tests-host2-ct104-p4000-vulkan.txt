@@ -1,0 +1,22 @@
+commit 04b2049; CT104 on host2; 2026-11-24T15:35:38Z
+######## adapters seen by wgpu:
+Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32 subgroups=true
+llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8 subgroups=true
+Quadro P4000/PCIe/SSE2 [Gl, Other] subgroup 4..128 subgroups=false
+list rc=0
+
+######## strict tests, adapter=P4000 backend=vulkan
+running 5 tests
+test tpi16_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 16, wg: 64 }
+ok
+test tpi1_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 64 }
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 128 }
+adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 256 }
+ok
+test tpi8_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 8, wg: 64 }
+ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.77s
+cargo test rc=0

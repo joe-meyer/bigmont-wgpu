@@ -24,7 +24,8 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - Dx12 shuffles use non-uniform lane indices; verified only on AMD with DXC.
 - Wave64 never observed; TPI 32 with two instances per subgroup untested. Intel (subgroup 8 to 32) and Apple GPUs untested. `llvmpipe` has subgroup size 8, so only TPI 1 and 8 run there.
 - Workgroup-memory cooperative backend (spec backend 2) was not built; needed where subgroups are unavailable (for example Dx12 without dxcompiler).
-- Quadro P4000 on `host2` untested (no Vulkan loader on the hypervisor; needs a container or VM with GPU passthrough).
+- Quadro P4000: correctness passes (all 5 configs) in container CT 104 on `host2`; its throughput is low-confidence (shared GPU, ramping clocks, `--quick` sweep only). Re-run with the other containers idle.
+- No Intel GPU exists on any available machine; Intel (subgroup 8 to 32) untested. Find one.
 
 ## Runner design (Phase 1, per spec section 3)
 - `run()` rebuilds shader, pipeline and buffers on every call; reuse them.

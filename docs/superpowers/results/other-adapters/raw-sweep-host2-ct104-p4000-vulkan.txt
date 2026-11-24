@@ -1,0 +1,22 @@
+commit 04b2049; CT104 on host2; 2026-11-24T15:35:49Z
+######## other GPU users at start (host nvidia-smi):
+1 %, 4607 MiB, 8192 MiB, 1202 MHz, 29.34 W
+12762, 172 MiB
+13060, 105 MiB
+12920, 290 MiB
+1209414, 4036 MiB
+######## sweep: P4000 vulkan, --quick --max-count 131072
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+subgroups feature: true
+max batch (instances): 131072
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64      2048     2     54.24        75521        3.9           37  ok
+   8   64     32768     2     96.81       676923       34.7          334  ok
+  16   64     16384     2     60.49       541716       27.7          267  ok
+  32   64  skipped: 65536 workgroups at --max-count 131072 exceeds 65535 per dispatch
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.
+spike rc=0
+######## other GPU users at end:
+14 %, 4607 MiB, 8192 MiB, 1708 MHz, 37.90 W
