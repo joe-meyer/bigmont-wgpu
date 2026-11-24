@@ -1,0 +1,30 @@
+    Finished `release` profile [optimized] target(s) in 0.16s
+     Running unittests src\lib.rs (target\release\build\bigmont-core/df82a30dfb23e8ad\out\bigmont_core-df82a30dfb23e8ad.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\chain.rs (target\release\build\bigmont-core/ac256989efaa9a28\out\chain-ac256989efaa9a28.exe)
+
+running 5 tests
+test tpi16_matches_oracle ... adapter: AMD Radeon RX 6700 XT (Dx12), config KernelConfig { tpi: 16, wg: 64 }
+ok
+test tpi1_matches_oracle ... adapter: AMD Radeon RX 6700 XT (Dx12), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... adapter: AMD Radeon RX 6700 XT (Dx12), config KernelConfig { tpi: 32, wg: 64 }
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... adapter: AMD Radeon RX 6700 XT (Dx12), config KernelConfig { tpi: 32, wg: 128 }
+adapter: AMD Radeon RX 6700 XT (Dx12), config KernelConfig { tpi: 32, wg: 256 }
+ok
+test tpi8_matches_oracle ... adapter: AMD Radeon RX 6700 XT (Dx12), config KernelConfig { tpi: 8, wg: 64 }
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.54s
+
+   Doc-tests bigmont_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
