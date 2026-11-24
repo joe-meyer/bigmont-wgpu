@@ -85,6 +85,10 @@ fn fermat_set(bits: u32) -> Arc<FermatSet> {
 /// Checks `cfg` on this adapter against the CPU references: chained Montgomery squarings against
 /// the oracle, then Fermat verdicts for `bits`-bit numbers against `bigmont_cpu::fermat_base2`.
 pub fn self_test(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String> {
+    self_test_inner(gpu, cfg, bits).map_err(|e| format!("{cfg:?}: {e}"))
+}
+
+fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String> {
     cfg.validate()?;
     if 13 * cfg.limbs < bits + 4 {
         return Err(format!("{} limbs are too few for {bits}-bit numbers (need R > 16n)", cfg.limbs));
@@ -187,7 +191,9 @@ fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
     format!("{} {} {}|{}", if cfg.variant == Variant::Unrolled { "unrolled" } else { "rolled" }, cfg.tpi, cfg.wg, rate)
 }
 
-fn parse_value(v: &str, bits: u32) -> Option<(KernelConfig, f64)> {
+/// Parses `unrolled <tpi> <wg>|<rate>`. The caller looks the pair up among the candidates, so
+/// corrupt cache text never reaches `KernelConfig` arithmetic.
+fn parse_value(v: &str) -> Option<(u32, u32, f64)> {
     let (c, rate) = v.split_once('|')?;
     let mut f = c.split_whitespace();
     if f.next()? != "unrolled" {
@@ -195,7 +201,7 @@ fn parse_value(v: &str, bits: u32) -> Option<(KernelConfig, f64)> {
     }
     let (tpi, wg) = (f.next()?.parse().ok()?, f.next()?.parse().ok()?);
     let rate: f64 = rate.trim().parse().ok()?;
-    (rate.is_finite() && rate > 0.0).then(|| (KernelConfig::for_bits(bits, tpi, wg, Variant::Unrolled), rate))
+    (rate.is_finite() && rate > 0.0).then_some((tpi, wg, rate))
 }
 
 fn read_cache(path: &Path) -> Vec<String> {
@@ -228,8 +234,11 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
     let key = cache_key(gpu, bits);
     if let (Some(path), false) = (cache, retune) {
         let prefix = format!("{key}|");
-        let hit = read_cache(path).iter().find_map(|l| l.strip_prefix(&prefix).and_then(|v| parse_value(v, bits)));
-        if let Some((cfg, rate)) = hit.filter(|(cfg, _)| cands.contains(cfg)) {
+        let hit = read_cache(path).iter().find_map(|l| {
+            let (tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
+            cands.iter().find(|c| c.tpi == tpi && c.wg == wg).map(|&cfg| (cfg, rate))
+        });
+        if let Some((cfg, rate)) = hit {
             match self_test(gpu, cfg, bits) {
                 Ok(()) => return Ok(Tuned { cfg, squarings_per_sec: rate, from_cache: true }),
                 Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
@@ -239,7 +248,7 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
     let mut best: Option<Tuned> = None;
     let mut reasons = Vec::new();
     for cfg in cands {
-        match self_test(gpu, cfg, bits).and_then(|()| measure(gpu, cfg)) {
+        match self_test(gpu, cfg, bits).and_then(|()| measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}"))) {
             Ok(rate) => {
                 eprintln!("tune {cfg:?}: {rate:.0} squarings/s");
                 if best.is_none_or(|b| rate > b.squarings_per_sec) {
@@ -247,8 +256,8 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
                 }
             }
             Err(e) => {
-                eprintln!("skip {cfg:?}: {e}");
-                reasons.push(format!("{cfg:?}: {e}"));
+                eprintln!("skip {e}");
+                reasons.push(e);
             }
         }
     }
