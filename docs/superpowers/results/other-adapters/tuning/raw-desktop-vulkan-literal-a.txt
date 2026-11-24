@@ -1,0 +1,24 @@
+INTERMEDIATE, kept for the record: literal Step 1 change m = ((p & MASK) * ninv) & MASK with ninv NOT masked at load (the compiler kept v_mul_lo_u32 and added a v_and_b32); desktop Vulkan; variant unrolled; verified timed output; 2026-11-24T18:54Z; cmd: spike --variant unrolled --tpi 4,8,16,32 --max-count 131070
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+variant: unrolled
+subgroups feature: true
+max batch (instances): 131070
+
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    4   64    131056   256    365.35     34751803     91830747     93033943      4.7    4701.7       45259  ok, verified 27 inst x 768 sq (long), 27 inst x 10 sq (short)
+unrolled    4  128    131040   256    360.43     34219013     93071823     94349543      4.9    4765.3       45871  ok, verified 27 inst x 768 sq (long), 27 inst x 10 sq (short)
+unrolled    4  256    131008   256    363.61     33527748     92236065     93525567      5.0    4722.5       45459  ok, verified 27 inst x 768 sq (long), 27 inst x 10 sq (short)
+unrolled    8   64    131064   128    207.69     32901720     80777022     82686826      4.8    4135.8       39811  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled    8  128    131056   128    208.16     33580854     80589211     82420591      4.6    4126.2       39719  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled    8  256    131040   128    208.67     32658758     80381735     82290431      4.8    4115.5       39616  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled   16   64    131068   128    269.24     30165595     62311660     63383805      4.6    3190.4       30711  ok, verified 26 inst x 384 sq (long), 26 inst x 10 sq (short)
+unrolled   16  128    131064   128    269.18     28749040     62322420     63499487      5.0    3190.9       30716  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled   16  256    131056   128    268.63     59885307     62446067     62488481      0.2    3197.2       30777  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled   32   64    131070   128    360.15     26021958     46583360     47175037      4.5    2385.1       22959  ok, verified 25 inst x 384 sq (long), 25 inst x 10 sq (short)
+unrolled   32  128    131068   128    356.47     24677430     47063782     47751371      5.1    2409.7       23196  ok, verified 26 inst x 384 sq (long), 26 inst x 10 sq (short)
+unrolled   32  256    131064   128    360.81     25372955     46495402     47118017      4.8    2380.6       22915  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+
+Each row's timed outputs were compared with the oracle (first 4, last 4 and spread instances; limbs < 2^13, value < 2n, value mod n == mont_square_chain): 'verified K inst x S sq' = K instances checked after S squarings per instance, for the final long run and for the 2 squarings x 5 run. A row that fails prints no speed. Times are wall-clock around submit plus a blocking poll (no GPU timestamps); best of 3 (best of 5 for the short run).
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.

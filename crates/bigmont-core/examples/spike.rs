@@ -251,7 +251,7 @@ fn main() {
     // instances would exceed the per-dispatch time budget).
     let tpis: Vec<u32> = match args.iter().position(|a| a == "--tpi") {
         Some(i) => args.get(i + 1).map(|v| v.split(',').map(|t| t.parse().expect("--tpi needs a comma list like 8,32")).collect()).expect("--tpi needs a list"),
-        None => vec![1, 8, 16, 32],
+        None => vec![1, 4, 8, 16, 32],
     };
     let wgs: &[u32] = if quick { &[64] } else { &[64, 128, 256] };
     let mut failures = 0u32;

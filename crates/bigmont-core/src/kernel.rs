@@ -25,7 +25,7 @@ fn any_nonzero(v: u32) -> bool { return subgroupAny(v != 0u); }
 pub enum Variant {
     /// The `mont.wgsl` template: limb arrays and loops (the Phase 0 baseline).
     Rolled,
-    /// Fully unrolled straight-line code with named scalar limbs (TPI 8, 16, 32 only).
+    /// Fully unrolled straight-line code with named scalar limbs (TPI 4, 8, 16, 32 only).
     Unrolled,
 }
 
@@ -41,8 +41,8 @@ pub struct KernelConfig {
 
 impl KernelConfig {
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.tpi, 1 | 8 | 16 | 32) {
-            return Err(format!("tpi {} not supported (1, 8, 16, 32)", self.tpi));
+        if !matches!(self.tpi, 1 | 4 | 8 | 16 | 32) {
+            return Err(format!("tpi {} not supported (1, 4, 8, 16, 32)", self.tpi));
         }
         if LIMBS as u32 % self.tpi != 0 {
             return Err(format!("{LIMBS} limbs not divisible by tpi {}", self.tpi));
@@ -51,7 +51,7 @@ impl KernelConfig {
             return Err(format!("workgroup size {} must be a multiple of tpi {} and at most 256", self.wg, self.tpi));
         }
         if self.variant == Variant::Unrolled && self.tpi == 1 {
-            return Err("the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)".to_string());
+            return Err("the unrolled variant supports tpi 4, 8, 16, 32 only (tpi 1 is rolled-only)".to_string());
         }
         Ok(())
     }

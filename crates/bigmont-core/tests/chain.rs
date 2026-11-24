@@ -88,6 +88,19 @@ fn tpi32_other_workgroup_sizes_match_oracle() {
     check(KernelConfig { tpi: 32, wg: 256, variant: Variant::Rolled });
 }
 
+/// The rolled kernel works at 4 lanes per number (40 limbs per lane) without changes.
+#[test]
+fn tpi4_matches_oracle() {
+    check(KernelConfig { tpi: 4, wg: 64, variant: Variant::Rolled });
+}
+
+#[test]
+fn tpi4_unrolled_matches_oracle() {
+    check(KernelConfig { tpi: 4, wg: 64, variant: Variant::Unrolled });
+    check(KernelConfig { tpi: 4, wg: 128, variant: Variant::Unrolled });
+    check(KernelConfig { tpi: 4, wg: 256, variant: Variant::Unrolled });
+}
+
 #[test]
 fn tpi8_unrolled_matches_oracle() {
     check(KernelConfig { tpi: 8, wg: 64, variant: Variant::Unrolled });
@@ -114,7 +127,7 @@ fn tpi32_unrolled_other_workgroup_sizes_match_oracle() {
 fn unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths() {
     assert!(KernelConfig { tpi: 1, wg: 64, variant: Variant::Unrolled }.validate().is_err(), "unrolled with tpi 1 must be rejected");
     assert!(KernelConfig { tpi: 1, wg: 64, variant: Variant::Rolled }.validate().is_ok());
-    for tpi in [8, 16, 32] {
+    for tpi in [4, 8, 16, 32] {
         for variant in [Variant::Rolled, Variant::Unrolled] {
             let cfg = KernelConfig { tpi, wg: 64, variant };
             assert!(cfg.validate().is_ok(), "{cfg:?} should validate: {:?}", cfg.validate());
@@ -126,7 +139,7 @@ fn unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths() {
 /// (many more carry-ripple opportunities than the 3-squaring tests).
 #[test]
 fn unrolled_long_chain_matches_oracle() {
-    for tpi in [8, 16, 32] {
+    for tpi in [4, 8, 16, 32] {
         check_chain(KernelConfig { tpi, wg: 64, variant: Variant::Unrolled }, 70, 128);
     }
 }
