@@ -7,6 +7,7 @@
 //!   cargo run --release -p bigmont-core --example spike -- --quick     (fewer configurations)
 //!   cargo run --release -p bigmont-core --example spike -- --max-count 131072   (raise the batch cap)
 //!   cargo run --release -p bigmont-core --example spike -- --max-squarings 64    (cap the amortisation, default 256)
+//!   cargo run --release -p bigmont-core --example spike -- --fixed-count 65536   (same batch size for every row; needs --max-count >= it to avoid clamping)
 //!
 //! Each configuration is timed at 2 squarings per dispatch and at progressively longer dispatches
 //! (up to a predicted 0.4 s, stopping once one takes 0.2 s), so the fixed per-dispatch cost can be
@@ -92,14 +93,19 @@ impl Row {
 /// dispatch is predicted to stay within LONG_DISPATCH_BUDGET (assuming linear scaling, the worst
 /// case) and the current one is shorter than LONG_DISPATCH_TARGET. Each longer dispatch is the best
 /// of 3.
-fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32) -> Result<Row, String> {
+fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed_count: Option<u32>) -> Result<Row, String> {
     let per_wg = cfg.instances_per_workgroup();
     let cap = (max_count / per_wg).max(1) * per_wg;
-    let mut count = ((1024 / per_wg).max(1) * per_wg).min(cap);
+    // With --fixed-count the batch is exactly that size (rounded down to whole workgroups) and the
+    // growth loop is skipped, so rows can be compared at the same instance count.
+    let mut count = match fixed_count {
+        Some(n) => (n.min(max_count) / per_wg).max(1) * per_wg,
+        None => ((1024 / per_wg).max(1) * per_wg).min(cap),
+    };
     loop {
         let batch = Batch::from_values(&Batch::random_values(count, BITS, 99));
         let probe = run(gpu, cfg, &batch, 2, 1)?;
-        if probe.best_secs >= 0.05 || count >= cap {
+        if fixed_count.is_some() || probe.best_secs >= 0.05 || count >= cap {
             let short_secs = run(gpu, cfg, &batch, 2, 5)?.best_secs;
             let (mut long_squarings, mut long_secs) = (2u32, short_secs);
             while long_secs < LONG_DISPATCH_TARGET {
@@ -133,6 +139,9 @@ fn main() {
         Some(i) => args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (2..=1024).contains(&n)).expect("--max-squarings needs a number from 2 to 1024"),
         None => 256,
     };
+    let fixed_count: Option<u32> = args.iter().position(|a| a == "--fixed-count").map(|i| {
+        args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (64..=262_144).contains(&n)).expect("--fixed-count needs a number from 64 to 262144")
+    });
     let gpu = Gpu::new().expect("no usable adapter");
     // Each instance needs LIMBS * 4 bytes in each storage buffer; keep the largest buffer bindable.
     let bytes_per_instance = (LIMBS * 4) as u64;
@@ -147,14 +156,19 @@ fn main() {
     }
     println!();
 
-    let tpis = [1u32, 8, 16, 32];
+    // --tpi 8,32 restricts the widths (useful with --fixed-count: a large batch of one-thread
+    // instances would exceed the per-dispatch time budget).
+    let tpis: Vec<u32> = match args.iter().position(|a| a == "--tpi") {
+        Some(i) => args.get(i + 1).map(|v| v.split(',').map(|t| t.parse().expect("--tpi needs a comma list like 8,32")).collect()).expect("--tpi needs a list"),
+        None => vec![1, 8, 16, 32],
+    };
     let wgs: &[u32] = if quick { &[64] } else { &[64, 128, 256] };
     let mut failures = 0u32;
     println!(
         "{:>4} {:>4} {:>9} {:>5} {:>9} {:>12} {:>12} {:>12} {:>8} {:>9} {:>11}  status",
         "tpi", "wg", "instances", "sq/d", "long ms", "sq/s @2", "sq/s @long", "sq/s slope", "fixed ms", "Gmad/s@L", "tests/s*@L"
     );
-    for &tpi in &tpis {
+    for &tpi in tpis.iter() {
         for &wg in wgs {
             let cfg = KernelConfig { tpi, wg };
             if let Err(e) = cfg.validate() {
@@ -187,7 +201,7 @@ fn main() {
                     continue;
                 }
             }
-            match bench(&gpu, cfg, max_count, max_squarings) {
+            match bench(&gpu, cfg, max_count, max_squarings, fixed_count) {
                 Ok(r) => {
                     let long = r.rate_long();
                     let slope = r.rate_slope().map_or("n/a".to_string(), |s| format!("{s:.0}"));
