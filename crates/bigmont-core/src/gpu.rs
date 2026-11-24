@@ -3,7 +3,12 @@
 use crate::kernel::KernelConfig;
 use bigmont_oracle::{LIMBS, XorShift64, neg_inv_limb, pack_limbs, random_below, random_odd_modulus};
 use num_bigint::BigUint;
+use std::sync::Mutex;
 use std::time::Instant;
+
+/// Serialises instance/adapter/device creation: creating several wgpu instances at once from
+/// parallel test threads intermittently made `enumerate_adapters` miss the requested adapter.
+static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct Gpu {
     pub info: wgpu::AdapterInfo,
@@ -21,6 +26,7 @@ impl Gpu {
     /// `BIGMONT_BACKEND` (substring of the backend name, e.g. "Vulkan", "Dx12"); otherwise the
     /// high-performance default. Requests `Features::SUBGROUP` when the adapter has it.
     pub fn new() -> Result<Gpu, String> {
+        let _init = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         pollster::block_on(async {
             let instance = wgpu::Instance::default();
             let name = std::env::var("BIGMONT_ADAPTER").ok().map(|s| s.to_lowercase());
@@ -163,7 +169,13 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
     queue.write_buffer(&ninv_buf, 0, bytemuck::cast_slice(&batch.ninv));
     queue.write_buffer(&x_buf, 0, bytemuck::cast_slice(&batch.x));
 
+    // WGSL compile and pipeline errors come back as Err(String) instead of a panic.
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mont"), source: wgpu::ShaderSource::Wgsl(cfg.wgsl().into()) });
+    if let Some(e) = pollster::block_on(scope.pop()) {
+        return Err(format!("shader module for {cfg:?} rejected: {e}"));
+    }
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("mont"),
         layout: None,
@@ -172,6 +184,9 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
         compilation_options: Default::default(),
         cache: None,
     });
+    if let Some(e) = pollster::block_on(scope.pop()) {
+        return Err(format!("compute pipeline for {cfg:?} rejected: {e}"));
+    }
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &pipeline.get_bind_group_layout(0),

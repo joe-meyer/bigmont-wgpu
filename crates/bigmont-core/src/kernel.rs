@@ -57,7 +57,9 @@ impl KernelConfig {
     /// The complete WGSL source for this configuration.
     pub fn wgsl(&self) -> String {
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
-            ("enable subgroups;", ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
+            // naga 30 rejects `enable subgroups;` as unimplemented; the subgroup built-ins need no
+            // directive there and are gated by wgpu::Features::SUBGROUP at device creation.
+            ("", ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
         } else {
             ("", "", "let sg = 0u;", SCALAR_HELPERS)
         };
