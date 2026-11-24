@@ -1,0 +1,55 @@
+commit 63ae502; 2026-11-24T15:25:19Z
+######## RTX 4070 (vulkan) --max-count 131072
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+subgroups feature: true
+max batch (instances): 131072
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64     32768     2    140.66       465915       23.9          230  ok
+   1  128     32768     2    140.13       467666       23.9          230  ok
+   1  256     32768     2    142.87       458710       23.5          226  ok
+   8   64    131072     2     85.80      3055285      156.4         1506  ok
+   8  128     65536     2     72.09      1818163       93.1          896  ok
+   8  256     65536     2     71.98      1821075       93.2          898  ok
+  16   64     65536     2     61.03      2147655      110.0         1058  ok
+  16  128     65536     2     61.02      2147867      110.0         1059  ok
+  16  256     65536     2     61.09      2145447      109.8         1057  ok
+  32   64  skipped: 65536 workgroups at --max-count 131072 exceeds 65535 per dispatch
+  32  128    131072     2     77.13      3398862      174.0         1675  ok
+  32  256    131072     2     76.94      3407323      174.5         1679  ok
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.
+
+######## Radeon 780M (vulkan) --max-count 131072
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+subgroups feature: true
+max batch (instances): 131072
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64      2048     2     47.11        86949        4.5           43  ok
+   1  128      4096     2    108.20        75714        3.9           37  ok
+   1  256      4096     2    108.06        75808        3.9           37  ok
+   8   64     65536     2     19.51      6717548      343.9         3311  ok
+   8  128     65536     2     19.58      6693240      342.7         3299  ok
+   8  256     65536     2     19.17      6837139      350.1         3370  ok
+  16   64     65536     2     19.73      6641707      340.1         3273  ok
+  16  128     65536     2     20.18      6495712      332.6         3201  ok
+  16  256     65536     2     19.92      6580071      336.9         3243  ok
+  32   64  skipped: 65536 workgroups at --max-count 131072 exceeds 65535 per dispatch
+  32  128     65536     2     22.06      5942083      304.2         2929  ok
+  32  256     65536     2     22.03      5949702      304.6         2932  ok
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.
+
+######## llvmpipe (vulkan) --quick
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
+subgroups feature: true
+max batch (instances): 65536
+
+ tpi   wg instances  sq/d   best ms  squarings/s     Gmad/s     tests/s*  status
+   1   64      2048     2     71.37        57391        2.9           28  ok
+   8   64      8192     2     66.42       246666       12.6          122  ok
+  16   64  skipped: subgroup size 8..8 is not a multiple of tpi 16
+  32   64  skipped: subgroup size 8..8 is not a multiple of tpi 32
+
+* tests/s = squarings/s / 2029: one squaring per exponent bit of a base-2 Fermat test (doubling folded into the reduction). A projection, not a measurement of a full test.

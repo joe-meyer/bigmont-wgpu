@@ -1,0 +1,32 @@
+   Compiling bigmont-oracle v0.1.0 (N:\Programming\bigmont-wgpu\crates\bigmont-oracle)
+   Compiling bigmont-core v0.1.0 (N:\Programming\bigmont-wgpu\crates\bigmont-core)
+    Finished `release` profile [optimized] target(s) in 1.82s
+     Running unittests src\lib.rs (target\release\build\bigmont-core/df82a30dfb23e8ad\out\bigmont_core-df82a30dfb23e8ad.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\chain.rs (target\release\build\bigmont-core/ac256989efaa9a28\out\chain-ac256989efaa9a28.exe)
+
+running 5 tests
+test tpi16_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test tpi1_matches_oracle ... adapter: Microsoft Basic Render Driver (Dx12), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... SKIP KernelConfig { tpi: 32, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... SKIP KernelConfig { tpi: 32, wg: 128 }: adapter lacks wgpu::Features::SUBGROUP
+SKIP KernelConfig { tpi: 32, wg: 256 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test tpi8_matches_oracle ... SKIP KernelConfig { tpi: 8, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+
+   Doc-tests bigmont_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

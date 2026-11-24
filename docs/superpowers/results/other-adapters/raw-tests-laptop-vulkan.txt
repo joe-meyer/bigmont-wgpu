@@ -1,0 +1,42 @@
+######## adapter=4070 backend=vulkan allow_skip=0 commit=63ae502
+running 5 tests
+test tpi16_matches_oracle ... adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 16, wg: 64 }
+ok
+test tpi1_matches_oracle ... adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 32, wg: 64 }
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 32, wg: 128 }
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 32, wg: 256 }
+ok
+test tpi8_matches_oracle ... adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64 }
+ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.15s
+######## adapter=780M backend=vulkan allow_skip=0 commit=63ae502
+running 5 tests
+test tpi16_matches_oracle ... adapter: AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan), config KernelConfig { tpi: 16, wg: 64 }
+ok
+test tpi1_matches_oracle ... adapter: AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... adapter: AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan), config KernelConfig { tpi: 32, wg: 64 }
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... adapter: AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan), config KernelConfig { tpi: 32, wg: 128 }
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan), config KernelConfig { tpi: 32, wg: 256 }
+ok
+test tpi8_matches_oracle ... adapter: AMD Radeon 780M Graphics (RADV PHOENIX) (Vulkan), config KernelConfig { tpi: 8, wg: 64 }
+ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+######## adapter=llvmpipe backend=vulkan allow_skip=1 commit=63ae502
+running 5 tests
+test tpi16_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64 }: subgroup size 8..8 is not a multiple of tpi 16
+ok
+test tpi1_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... SKIP KernelConfig { tpi: 32, wg: 64 }: subgroup size 8..8 is not a multiple of tpi 32
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... SKIP KernelConfig { tpi: 32, wg: 128 }: subgroup size 8..8 is not a multiple of tpi 32
+SKIP KernelConfig { tpi: 32, wg: 256 }: subgroup size 8..8 is not a multiple of tpi 32
+ok
+test tpi8_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 8, wg: 64 }
+ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
