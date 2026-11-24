@@ -1,0 +1,64 @@
+commit 64367eb; host2 CT104; 2026-11-24T16:50:00Z
+other GPU users at start: 1 %, 4607 MiB, 1202 MHz
+
+######## STRICT TESTS adapter=P4000 backend=vulkan
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test tpi16_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 16, wg: 64, variant: Rolled }
+test tpi16_unrolled_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 16, wg: 64, variant: Unrolled }
+test tpi1_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 1, wg: 64, variant: Rolled }
+test tpi32_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 64, variant: Rolled }
+test tpi32_other_workgroup_sizes_match_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 128, variant: Rolled }
+test tpi32_unrolled_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 64, variant: Unrolled }
+test tpi32_unrolled_other_workgroup_sizes_match_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 32, wg: 128, variant: Unrolled }
+test tpi8_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Rolled }
+test tpi8_unrolled_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled }
+test unrolled_long_chain_matches_oracle ... adapter: Quadro P4000 (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled }
+test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.03s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+######## STRICT TESTS adapter=llvmpipe backend=vulkan allow_skip=1
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test tpi16_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64, variant: Rolled }: subgroup size 8..8 is not a multiple of tpi 16
+test tpi16_unrolled_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64, variant: Unrolled }: subgroup size 8..8 is not a multiple of tpi 16
+test tpi1_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 1, wg: 64, variant: Rolled }
+test tpi32_matches_oracle ... SKIP KernelConfig { tpi: 32, wg: 64, variant: Rolled }: subgroup size 8..8 is not a multiple of tpi 32
+test tpi32_other_workgroup_sizes_match_oracle ... SKIP KernelConfig { tpi: 32, wg: 128, variant: Rolled }: subgroup size 8..8 is not a multiple of tpi 32
+SKIP KernelConfig { tpi: 32, wg: 256, variant: Rolled }: subgroup size 8..8 is not a multiple of tpi 32
+test tpi32_unrolled_matches_oracle ... SKIP KernelConfig { tpi: 32, wg: 64, variant: Unrolled }: subgroup size 8..8 is not a multiple of tpi 32
+test tpi32_unrolled_other_workgroup_sizes_match_oracle ... SKIP KernelConfig { tpi: 32, wg: 128, variant: Unrolled }: subgroup size 8..8 is not a multiple of tpi 32
+SKIP KernelConfig { tpi: 32, wg: 256, variant: Unrolled }: subgroup size 8..8 is not a multiple of tpi 32
+test tpi8_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Rolled }
+test tpi8_unrolled_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled }
+test unrolled_long_chain_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled }
+SKIP KernelConfig { tpi: 16, wg: 64, variant: Unrolled }: subgroup size 8..8 is not a multiple of tpi 16
+SKIP KernelConfig { tpi: 32, wg: 64, variant: Unrolled }: subgroup size 8..8 is not a multiple of tpi 32
+test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.48s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+######## SWEEP unrolled P4000 vulkan --max-count 131070
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  128  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  256  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64    131064    32    337.55      8880308     12424828     12764486      9.0     636.2        6124  ok
+unrolled    8  128    131056    32    348.95     12072009     12018360     12014801      0.0     615.3        5923  ok
+unrolled    8  256    131040    32    326.26     13765597     12852483     12795896      0.0     658.0        6334  ok
+unrolled   16   64    131068    32    343.04     12578970     12226607     12203817      0.0     626.0        6026  ok
+unrolled   16  128    131064    32    348.36     12459525     12039236     12012222      0.0     616.4        5934  ok
+unrolled   16  256    131056    32    335.34     12228706     12505978     12524910      0.5     640.3        6164  ok
+unrolled   32   64    131070    16    205.72     10631577     10194237     10134680      0.0     521.9        5024  ok
+unrolled   32  128    131068    16    206.58     10648880     10151322     10084013      0.0     519.7        5003  ok
+unrolled   32  256    131064    16    204.49      8484342     10255070     10570222      6.1     525.1        5054  ok
+
+######## SWEEP unrolled llvmpipe --quick
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64      1024    16    268.48        35673        61025        67921     27.3       3.1          30  ok
+unrolled   16   64  skipped: subgroup size 8..8 is not a multiple of tpi 16
+unrolled   32   64  skipped: subgroup size 8..8 is not a multiple of tpi 32

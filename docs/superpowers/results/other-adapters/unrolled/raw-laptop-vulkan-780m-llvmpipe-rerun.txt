@@ -1,0 +1,27 @@
+commit 64367eb; laptop (rerun of the 780M and llvmpipe sweeps, which an earlier pipe through head had truncated); 2026-11-24T16:51:43Z
+
+######## SWEEP unrolled adapter=780M vulkan --max-count 131070
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  128  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  256  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64    131064    64    362.50     15618564     23139524     23504634      5.6    1184.7       11404  ok
+unrolled    8  128    131056    64    362.95     15905351     23109494     23452151      5.3    1183.2       11390  ok
+unrolled    8  256    131040    64    363.41     16050543     23077096     23407654      5.1    1181.5       11374  ok
+unrolled   16   64    131068    32    228.26     14475321     18374386     18710374      4.1     940.8        9056  ok
+unrolled   16  128    131064    32    228.33     14461119     18368706     18705674      4.1     940.5        9053  ok
+unrolled   16  256    131056    32    228.30     16237333     18369261     18531470      2.0     940.5        9053  ok
+unrolled   32   64    131070    32    306.42     12337186     13687853     13788490      2.2     700.8        6746  ok
+unrolled   32  128    131068    32    306.29     12483586     13693668     13782735      2.0     701.1        6749  ok
+unrolled   32  256    131064    32    306.59     12453842     13679810     13770180      2.0     700.4        6742  ok
+
+######## SWEEP unrolled llvmpipe --quick
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64     65536    32    401.00      3524758      5229841      5404122     12.9     267.8        2578  ok
+unrolled   16   64  skipped: subgroup size 8..8 is not a multiple of tpi 16
+unrolled   32   64  skipped: subgroup size 8..8 is not a multiple of tpi 32
