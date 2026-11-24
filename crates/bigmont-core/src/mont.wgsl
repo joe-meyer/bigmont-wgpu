@@ -1,6 +1,6 @@
 __ENABLE__
 const TPI: u32 = __TPI__;     // lanes per number
-const LPL: u32 = __LPL__;     // limbs per lane; TPI * LPL = 160
+const LPL: u32 = __LPL__;     // limbs per lane; TPI * LPL = number of limbs
 const L: u32 = TPI * LPL;
 const WG: u32 = __WG__;
 const B: u32 = 13u;

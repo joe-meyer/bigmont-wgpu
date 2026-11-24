@@ -12,7 +12,7 @@ fn main() {
         Some("unrolled") => Variant::Unrolled,
         _ => panic!("{usage}"),
     };
-    let cfg = KernelConfig { tpi, wg, variant };
+    let cfg = KernelConfig::new(tpi, wg, variant);
     cfg.validate().expect("invalid configuration");
     print!("{}", cfg.wgsl());
 }

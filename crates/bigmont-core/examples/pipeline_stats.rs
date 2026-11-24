@@ -42,7 +42,7 @@ fn main() {
         Some("plain") => (false, false, "plain"),
         Some(other) => panic!("fifth argument must be wgpu, flags or plain, got {other}"),
     };
-    let cfg = KernelConfig { tpi, wg, variant };
+    let cfg = KernelConfig::new(tpi, wg, variant);
     if let Err(e) = cfg.validate() {
         // The unrolled variant has no tpi 1 kernel: say so and stop (not an error).
         println!("skipped: {e}");

@@ -1,4 +1,4 @@
-//! Fully unrolled straight-line WGSL generator for the cooperative kernels (TPI 4, 8, 16, 32).
+//! Fully unrolled straight-line WGSL generator for the cooperative kernels (TPI 4, 8, 16, 32, any limb count).
 //!
 //! The rolled kernel (`mont.wgsl`) keeps limbs in private arrays and loops over them; the AMD driver
 //! does not unroll those loops. This generator instead emits one `main` whose limb values are named
@@ -7,9 +7,9 @@
 //! lane (`owner`), the squaring loop and the normalisation rounds stay as (uniform) loops.
 //!
 //! Same bindings, entry point and arithmetic contract as the rolled kernel: per instance
-//! `x <- x^2 * R^-1 mod n` (R = 2^2080, result in [0, 2n), limbs fully normalised), `params.y` times.
+//! `x <- x^2 * R^-1 mod n` (R = 2^(13 * limbs), result in [0, 2n), limbs fully normalised), `params.y` times.
 
-use crate::kernel::{KernelConfig, SUBGROUP_HELPERS};
+use crate::kernel::{KernelConfig, SUBGROUP_HELPERS, Target};
 
 /// Iterations (single-limb multiply-accumulate steps) between light carry passes, for every width.
 /// (The bound argument in `wgsl` tolerates up to 24; 20 is used so all widths behave the same.)
@@ -20,19 +20,21 @@ const M24: &str = "0xffffffu";
 
 /// Emits the complete unrolled WGSL source for `cfg` (`cfg.tpi` must be 4, 8, 16 or 32).
 ///
-/// Where the light carry passes go. Exactly `PERIOD` = 20 single-limb steps run between passes at
-/// every width, so the same bound holds everywhere:
-/// - `LPL` 40 (TPI 4): one owner iteration has 40 steps, so a pass is emitted INSIDE the unrolled
-///   body after step 19 and after step 39 (the second one is also the end of the owner iteration).
-/// - `LPL` 20 (TPI 8): one owner iteration is 20 steps; a pass follows every owner iteration.
-/// - `LPL` 10 and 5 (TPI 16, 32): a runtime `(owner % K) == K - 1` pass with `K = PERIOD / LPL`
-///   = 2 and 4, so a pass follows every 2 or 4 owner iterations (20 steps).
+/// Where the light carry passes go. At most `PERIOD` = 20 single-limb steps ever run between two
+/// passes (or between the start of a squaring and the first pass), at every width and limb count:
+/// - `LPL` > `PERIOD`: a pass is emitted INSIDE the unrolled owner body after every `PERIOD`-th step,
+///   and after the last step too when `LPL` is not a multiple of `PERIOD` (the remainder is shorter
+///   than `PERIOD`), so every owner iteration ends with a pass.
+/// - `LPL` <= `PERIOD`: a runtime `(owner % K) == K - 1` pass with `K = PERIOD / LPL` (floor, at
+///   least 1), so a pass follows every `K` owner iterations, `K * LPL <= PERIOD` steps. `K` need not
+///   divide `PERIOD` or `TPI`: the full normalisation at the end of each squaring resets the limbs,
+///   and at most `K - 1` owner iterations (fewer than `PERIOD` steps) run after the last pass.
 ///
 /// Why 32-bit accumulators never overflow: limbs entering a step (`x`, `n`) are below 2^13, so every
 /// product is below 2^26. Each accumulator word gains at most two products (below 2^27) per step,
 /// plus `carry0` (below 2^19) on lane 0's limb 0. After a light pass every limb equals
 /// `(v & MASK) + c_in`, where `v & MASK` is below 2^13 and `c_in = v_below >> 13` is below 2^19 (the
-/// limb below it was under 2^32), so it is below 2^13 + 2^19. With 20 steps between passes a limb
+/// limb below it was under 2^32), so it is below 2^13 + 2^19. With at most 20 steps between passes a limb
 /// stays below about 2^19 + 2^13 + 20 * (2^27 + 2^19) ~= 2.70e9 < 2^32 (24 steps would give about
 /// 3.23e9, still below 2^32). `p` and `p + N0 * m` are limb-0 values after one and two products and
 /// obey the same bound. The value stays below 2n because R > 4n (as in the rolled kernel), so the
@@ -43,22 +45,16 @@ const M24: &str = "0xffffffu";
 /// use the 24-bit multiply instead of a full 32-bit low multiply. `ninv` is masked once when it is
 /// loaded (it is already below 2^13): without that mask the compiler cannot see that the second
 /// factor is small and still emits a full 32-bit low multiply (measured in the ISA).
-pub(crate) fn wgsl(cfg: &KernelConfig) -> String {
+pub(crate) fn wgsl(cfg: &KernelConfig, target: Target) -> String {
     assert!(matches!(cfg.tpi, 4 | 8 | 16 | 32), "unrolled generator supports tpi 4, 8, 16, 32 only");
     let lpl = cfg.limbs_per_lane();
-    // Owners between passes when a whole owner iteration is at most one period; for LPL > PERIOD the
-    // passes are emitted inside the body instead and every owner iteration ends with one.
+    // LPL > PERIOD: passes are emitted inside the body and every owner iteration ends with one.
+    // Otherwise one pass every K owner iterations, K = floor(PERIOD / LPL) >= 1.
     let in_body = lpl > PERIOD;
     let k = if in_body { 1 } else { PERIOD / lpl };
-    if in_body {
-        assert_eq!(lpl % PERIOD, 0, "LPL above the period must be a multiple of it");
-    } else {
-        assert_eq!(PERIOD % lpl, 0, "LPL up to the period must divide it");
-    }
-    assert_eq!(cfg.tpi % k, 0, "owners per light pass must divide tpi");
 
     let mut g = Gen { lines: Vec::new(), depth: 0 };
-    header(&mut g, cfg, lpl, k, in_body);
+    header(&mut g, cfg, target, lpl, k, in_body);
     g.raw(SUBGROUP_HELPERS);
     g.line("@compute @workgroup_size(WG)");
     g.line("fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) li: u32, @builtin(subgroup_invocation_id) sg_in: u32) {");
@@ -73,8 +69,9 @@ pub(crate) fn wgsl(cfg: &KernelConfig) -> String {
     g.depth += 1;
     for w in 0..lpl {
         iteration(&mut g, lpl, w);
-        // LPL > PERIOD: a pass every PERIOD steps inside the body (after the last step too).
-        if in_body && (w + 1) % PERIOD == 0 {
+        // LPL > PERIOD: a pass every PERIOD steps inside the body, and after the last step when the
+        // body length is not a multiple of PERIOD (otherwise the rule above already covers it).
+        if in_body && ((w + 1) % PERIOD == 0 || (w + 1 == lpl && lpl % PERIOD != 0)) {
             light_pass(&mut g, lpl);
         }
     }
@@ -114,12 +111,15 @@ impl Gen {
     }
 }
 
-fn header(g: &mut Gen, cfg: &KernelConfig, lpl: u32, k: u32, in_body: bool) {
-    // naga 30 rejects `enable subgroups;`, so none is emitted (same as the rolled kernel).
-    // TODO(browser): a web build must emit `enable subgroups;` here.
+fn header(g: &mut Gen, cfg: &KernelConfig, target: Target, lpl: u32, k: u32, in_body: bool) {
+    // Native source has no prelude (naga 30 rejects `enable subgroups;`); browsers require it.
+    let prelude = target.prelude();
+    if !prelude.is_empty() {
+        g.raw(prelude.trim_end());
+    }
     g.line("// Generated by bigmont-core unrolled.rs: straight-line limb arithmetic, named scalar limbs.");
     g.line(format!("const TPI: u32 = {}u;     // lanes per number", cfg.tpi));
-    g.line(format!("const LPL: u32 = {lpl}u;     // limbs per lane; TPI * LPL = 160"));
+    g.line(format!("const LPL: u32 = {lpl}u;     // limbs per lane; TPI * LPL = number of limbs"));
     g.line("const L: u32 = TPI * LPL;");
     g.line(format!("const WG: u32 = {}u;", cfg.wg));
     g.line("const B: u32 = 13u;");
@@ -191,7 +191,9 @@ fn iteration(g: &mut Gen, lpl: u32, w: u32) {
         g.line(format!("t{c} = t{u} + (x{u} & {M24}) * bl + (n{u} & {M24}) * m{carry};"));
     }
     let top = lpl - 1;
-    g.line(format!("t{top} = TN + (XN0 & {M24}) * bl + (NN0 & {M24}) * m;"));
+    // With a single limb per lane the top limb is also limb 0, which receives the carry.
+    let top_carry = if lpl == 1 { " + (carry0 & is0)" } else { "" };
+    g.line(format!("t{top} = TN + (XN0 & {M24}) * bl + (NN0 & {M24}) * m{top_carry};"));
     g.depth -= 1;
     g.line("}");
 }

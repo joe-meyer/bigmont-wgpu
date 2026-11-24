@@ -1,6 +1,6 @@
 //! Kernel configuration and WGSL generation.
 
-use bigmont_oracle::LIMBS;
+use bigmont_oracle::{LIMBS, limbs_for_bits};
 
 const TEMPLATE: &str = include_str!("mont.wgsl");
 
@@ -29,6 +29,28 @@ pub enum Variant {
     Unrolled,
 }
 
+/// Where the generated WGSL will run. Browsers require `enable subgroups;`, and Chrome's uniformity
+/// analysis cannot prove the loop exits uniform, so the browser prelude also switches that
+/// diagnostic off. naga 30 (native wgpu) rejects `enable subgroups;` as unimplemented (the subgroup
+/// built-ins need no directive there and are gated by `wgpu::Features::SUBGROUP` at device
+/// creation), so native source has no prelude.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Target {
+    Native,
+    Browser,
+}
+
+impl Target {
+    pub(crate) fn prelude(self) -> &'static str {
+        match self {
+            Target::Native => "",
+            Target::Browser => "enable subgroups;
+diagnostic(off, subgroup_uniformity);
+",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KernelConfig {
     /// Lanes per number: 1 (one thread per number) or a cooperative width.
@@ -37,15 +59,34 @@ pub struct KernelConfig {
     pub wg: u32,
     /// Code generator: rolled template or unrolled straight-line generator.
     pub variant: Variant,
+    /// Limbs per number (13-bit limbs); a multiple of `tpi`.
+    pub limbs: u32,
 }
 
 impl KernelConfig {
+    /// The Phase 0 size class: 160 limbs (2,029-bit numbers).
+    pub const fn new(tpi: u32, wg: u32, variant: Variant) -> Self {
+        Self { tpi, wg, variant, limbs: LIMBS as u32 }
+    }
+
+    pub const fn with_limbs(mut self, limbs: u32) -> Self {
+        self.limbs = limbs;
+        self
+    }
+
+    /// Config for numbers of `bits` bits that is safe for the Fermat ladder (R > 16n): the smallest
+    /// multiple of `tpi` that is at least `limbs_for_bits(bits)`.
+    pub fn for_bits(bits: u32, tpi: u32, wg: u32, variant: Variant) -> Self {
+        let need = limbs_for_bits(bits) as u32;
+        Self::new(tpi, wg, variant).with_limbs(need.div_ceil(tpi) * tpi)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(self.tpi, 1 | 4 | 8 | 16 | 32) {
             return Err(format!("tpi {} not supported (1, 4, 8, 16, 32)", self.tpi));
         }
-        if LIMBS as u32 % self.tpi != 0 {
-            return Err(format!("{LIMBS} limbs not divisible by tpi {}", self.tpi));
+        if self.limbs < self.tpi || self.limbs % self.tpi != 0 || self.limbs > 1024 {
+            return Err(format!("{} limbs must be a multiple of tpi {} and at most 1024", self.limbs, self.tpi));
         }
         if self.wg == 0 || self.wg % self.tpi != 0 || self.wg > 256 {
             return Err(format!("workgroup size {} must be a multiple of tpi {} and at most 256", self.wg, self.tpi));
@@ -65,20 +106,21 @@ impl KernelConfig {
     }
 
     pub fn limbs_per_lane(&self) -> u32 {
-        LIMBS as u32 / self.tpi
+        self.limbs / self.tpi
     }
 
-    /// The complete WGSL source for this configuration.
+    /// The complete squaring-mode WGSL source for native wgpu.
     pub fn wgsl(&self) -> String {
+        self.wgsl_for(Target::Native)
+    }
+
+    /// The complete squaring-mode WGSL source for this configuration.
+    pub fn wgsl_for(&self, target: Target) -> String {
         if self.variant == Variant::Unrolled {
-            return crate::unrolled::wgsl(self);
+            return crate::unrolled::wgsl(self, target);
         }
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
-            // naga 30 rejects `enable subgroups;` as unimplemented; the subgroup built-ins need no
-            // directive there and are gated by wgpu::Features::SUBGROUP at device creation.
-            // Browsers REQUIRE `enable subgroups;` in WGSL, so the cooperative source emitted here
-            // is not browser-valid as it stands; a web build must emit the directive (TODO(browser)).
-            ("", ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
+            (target.prelude(), ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
         } else {
             ("", "", "let sg = 0u;", SCALAR_HELPERS)
         };

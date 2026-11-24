@@ -261,7 +261,7 @@ fn main() {
     );
     for &tpi in tpis.iter() {
         for &wg in wgs {
-            let cfg = KernelConfig { tpi, wg, variant };
+            let cfg = KernelConfig::new(tpi, wg, variant);
             if let Err(e) = cfg.validate() {
                 println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {e}");
                 continue;

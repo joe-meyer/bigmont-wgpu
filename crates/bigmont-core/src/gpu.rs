@@ -1,7 +1,7 @@
 //! wgpu device setup, input batches, and the kernel runner.
 
 use crate::kernel::KernelConfig;
-use bigmont_oracle::{LIMBS, XorShift64, neg_inv_limb, pack_limbs, random_below, random_odd_modulus};
+use bigmont_oracle::{LIMBS, XorShift64, neg_inv_limb, pack_limbs_n, random_below, random_odd_modulus};
 use num_bigint::BigUint;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -99,19 +99,27 @@ impl Gpu {
 /// Input arrays, one entry per instance: moduli, -n^-1 mod 2^13, and starting values, as limbs.
 pub struct Batch {
     pub count: u32,
+    /// Limbs per number.
+    pub limbs: usize,
     pub n: Vec<u32>,
     pub ninv: Vec<u32>,
     pub x: Vec<u32>,
 }
 
 impl Batch {
+    /// Batch at the Phase 0 size class (160 limbs).
     pub fn from_values(values: &[(BigUint, BigUint)]) -> Batch {
-        let mut b = Batch { count: values.len() as u32, n: Vec::new(), ninv: Vec::new(), x: Vec::new() };
+        Self::from_values_n(values, LIMBS)
+    }
+
+    /// Batch of `limbs`-limb numbers (every value must fit in `limbs` limbs).
+    pub fn from_values_n(values: &[(BigUint, BigUint)], limbs: usize) -> Batch {
+        let mut b = Batch { count: values.len() as u32, limbs, n: Vec::new(), ninv: Vec::new(), x: Vec::new() };
         for (n, x) in values {
             assert!(x < &(n * 2u32), "x must be below 2n");
-            b.n.extend(pack_limbs(n));
+            b.n.extend(pack_limbs_n(n, limbs));
             b.ninv.push(neg_inv_limb(n));
-            b.x.extend(pack_limbs(x));
+            b.x.extend(pack_limbs_n(x, limbs));
         }
         b
     }
@@ -156,17 +164,21 @@ fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Resul
 pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
     cfg.validate()?;
     let count = batch.count as usize;
+    let limbs = cfg.limbs as usize;
     if count == 0 {
         return Err("batch is empty".into());
     }
-    if batch.x.len() != count * LIMBS || batch.n.len() != count * LIMBS || batch.ninv.len() != count {
+    if batch.limbs != limbs {
+        return Err(format!("batch has {} limbs per number but the configuration expects {limbs}", batch.limbs));
+    }
+    if batch.x.len() != count * limbs || batch.n.len() != count * limbs || batch.ninv.len() != count {
         return Err(format!(
             "batch lengths do not match count {count}: x {}, n {}, ninv {} (expected {}, {}, {count})",
             batch.x.len(),
             batch.n.len(),
             batch.ninv.len(),
-            count * LIMBS,
-            count * LIMBS
+            count * limbs,
+            count * limbs
         ));
     }
     let groups = batch.count.div_ceil(cfg.instances_per_workgroup());
@@ -177,7 +189,7 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
         gpu.check_subgroups(cfg.tpi)?;
     }
     let (device, queue) = (&gpu.device, &gpu.queue);
-    let words = (count * LIMBS) as u64;
+    let words = (count * limbs) as u64;
     let (params, n_buf, ninv_buf, x_buf, staging) = guarded(device, "buffer creation", || {
         let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
             device.create_buffer(&wgpu::BufferDescriptor {
