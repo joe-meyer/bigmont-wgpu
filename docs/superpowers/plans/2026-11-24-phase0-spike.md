@@ -90,6 +90,7 @@ opt-level = 3
 
 ```
 target/
+.superpowers/
 ```
 
 `N:\Programming\bigmont-wgpu\crates\bigmont-oracle\Cargo.toml`:
