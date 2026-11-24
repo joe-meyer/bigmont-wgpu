@@ -6,8 +6,10 @@ use num_bigint::BigUint;
 use std::sync::Mutex;
 use std::time::Instant;
 
-/// Serialises instance/adapter/device creation: creating several wgpu instances at once from
-/// parallel test threads intermittently made `enumerate_adapters` miss the requested adapter.
+/// Serialises instance/adapter/device creation. Mitigation; root cause not investigated: creating
+/// several wgpu instances at once from parallel test threads intermittently made
+/// `enumerate_adapters` miss the requested adapter. Benchmarks should run in a single process
+/// (the spike example does).
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 pub struct Gpu {

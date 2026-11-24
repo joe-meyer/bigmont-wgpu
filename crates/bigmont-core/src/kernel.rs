@@ -59,6 +59,8 @@ impl KernelConfig {
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
             // naga 30 rejects `enable subgroups;` as unimplemented; the subgroup built-ins need no
             // directive there and are gated by wgpu::Features::SUBGROUP at device creation.
+            // Browsers REQUIRE `enable subgroups;` in WGSL, so the cooperative source emitted here
+            // is not browser-valid as it stands; a web build must emit the directive (TODO(browser)).
             ("", ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
         } else {
             ("", "", "let sg = 0u;", SCALAR_HELPERS)
