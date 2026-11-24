@@ -25,6 +25,12 @@ fn skip(msg: String) {
 /// Fails when there is no adapter or the adapter cannot run this configuration, unless
 /// `BIGMONT_ALLOW_SKIP=1` (then it skips loudly).
 fn check(cfg: KernelConfig) {
+    check_chain(cfg, 131, 3);
+}
+
+/// Like `check` with `random` random instances (plus the 2 special ones) and `squarings` chained
+/// squarings per dispatch.
+fn check_chain(cfg: KernelConfig, random: u32, squarings: u32) {
     let gpu = match Gpu::new() {
         Ok(g) => g,
         Err(e) => return skip(format!("{cfg:?}: no adapter: {e}")),
@@ -38,7 +44,7 @@ fn check(cfg: KernelConfig) {
 
     // 131 random + 2 special = 133 instances: spans many workgroups (wid.x > 0) and leaves a
     // partial last workgroup for every configuration used here.
-    let mut values = Batch::random_values(131, 2029, 7);
+    let mut values = Batch::random_values(random, 2029, 7);
     // Carry-ripple stress: n = 2^2029 - 1 (every limb all ones) and n = 2^2028 + 1 (long zero runs).
     let all_ones = (BigUint::one() << 2029u32) - 1u32;
     values.push((all_ones.clone(), &all_ones - 1u32));
@@ -46,7 +52,6 @@ fn check(cfg: KernelConfig) {
     values.push((sparse.clone(), &sparse - 1u32));
 
     let batch = Batch::from_values(&values);
-    let squarings = 3;
     let result = run(&gpu, cfg, &batch, squarings, 1).expect("run failed");
     for (i, (n, x0)) in values.iter().enumerate() {
         let limbs = &result.x[i * LIMBS..(i + 1) * LIMBS];
@@ -102,4 +107,26 @@ fn tpi32_unrolled_matches_oracle() {
 fn tpi32_unrolled_other_workgroup_sizes_match_oracle() {
     check(KernelConfig { tpi: 32, wg: 128, variant: Variant::Unrolled });
     check(KernelConfig { tpi: 32, wg: 256, variant: Variant::Unrolled });
+}
+
+/// Configuration validation needs no GPU.
+#[test]
+fn unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths() {
+    assert!(KernelConfig { tpi: 1, wg: 64, variant: Variant::Unrolled }.validate().is_err(), "unrolled with tpi 1 must be rejected");
+    assert!(KernelConfig { tpi: 1, wg: 64, variant: Variant::Rolled }.validate().is_ok());
+    for tpi in [8, 16, 32] {
+        for variant in [Variant::Rolled, Variant::Unrolled] {
+            let cfg = KernelConfig { tpi, wg: 64, variant };
+            assert!(cfg.validate().is_ok(), "{cfg:?} should validate: {:?}", cfg.validate());
+        }
+    }
+}
+
+/// The speed sweep uses long dispatches (up to 256 squarings); check a long chain against the oracle too
+/// (many more carry-ripple opportunities than the 3-squaring tests).
+#[test]
+fn unrolled_long_chain_matches_oracle() {
+    for tpi in [8, 16, 32] {
+        check_chain(KernelConfig { tpi, wg: 64, variant: Variant::Unrolled }, 70, 128);
+    }
 }

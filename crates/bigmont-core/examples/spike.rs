@@ -8,6 +8,7 @@
 //!   cargo run --release -p bigmont-core --example spike -- --max-count 131072   (raise the batch cap)
 //!   cargo run --release -p bigmont-core --example spike -- --max-squarings 64    (cap the amortisation, default 256)
 //!   cargo run --release -p bigmont-core --example spike -- --fixed-count 65536   (same batch size for every row; needs --max-count >= it to avoid clamping)
+//!   cargo run --release -p bigmont-core --example spike -- --variant unrolled    (rolled (default) or unrolled kernel; unrolled skips tpi 1)
 //!
 //! Each configuration is timed at 2 squarings per dispatch and at progressively longer dispatches
 //! (up to a predicted 0.4 s, stopping once one takes 0.2 s), so the fixed per-dispatch cost can be
@@ -142,6 +143,16 @@ fn main() {
     let fixed_count: Option<u32> = args.iter().position(|a| a == "--fixed-count").map(|i| {
         args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (64..=262_144).contains(&n)).expect("--fixed-count needs a number from 64 to 262144")
     });
+    let variant = match args.iter().position(|a| a == "--variant").map(|i| args.get(i + 1).map(String::as_str)) {
+        None => Variant::Rolled,
+        Some(Some("rolled")) => Variant::Rolled,
+        Some(Some("unrolled")) => Variant::Unrolled,
+        Some(_) => panic!("--variant needs rolled or unrolled"),
+    };
+    let variant_name = match variant {
+        Variant::Rolled => "rolled",
+        Variant::Unrolled => "unrolled",
+    };
     let gpu = Gpu::new().expect("no usable adapter");
     // Each instance needs LIMBS * 4 bytes in each storage buffer; keep the largest buffer bindable.
     let bytes_per_instance = (LIMBS * 4) as u64;
@@ -149,6 +160,7 @@ fn main() {
     let requested = max_count;
     let max_count = max_count.min(bind_limit);
     println!("adapter: {}", gpu.describe());
+    println!("variant: {variant_name}");
     println!("subgroups feature: {}", gpu.has_subgroups);
     println!("max batch (instances): {max_count}");
     if max_count < requested {
@@ -165,38 +177,38 @@ fn main() {
     let wgs: &[u32] = if quick { &[64] } else { &[64, 128, 256] };
     let mut failures = 0u32;
     println!(
-        "{:>4} {:>4} {:>9} {:>5} {:>9} {:>12} {:>12} {:>12} {:>8} {:>9} {:>11}  status",
-        "tpi", "wg", "instances", "sq/d", "long ms", "sq/s @2", "sq/s @long", "sq/s slope", "fixed ms", "Gmad/s@L", "tests/s*@L"
+        "{:>8} {:>4} {:>4} {:>9} {:>5} {:>9} {:>12} {:>12} {:>12} {:>8} {:>9} {:>11}  status",
+        "variant", "tpi", "wg", "instances", "sq/d", "long ms", "sq/s @2", "sq/s @long", "sq/s slope", "fixed ms", "Gmad/s@L", "tests/s*@L"
     );
     for &tpi in tpis.iter() {
         for &wg in wgs {
-            let cfg = KernelConfig { tpi, wg, variant: Variant::Rolled };
+            let cfg = KernelConfig { tpi, wg, variant };
             if let Err(e) = cfg.validate() {
-                println!("{tpi:>4} {wg:>4}  skipped: {e}");
+                println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {e}");
                 continue;
             }
             // The batch can grow to max_count, rounded down to whole workgroups; a dispatch is limited to
             // 65535 workgroups in x.
             let per_wg = cfg.instances_per_workgroup();
             if max_count / per_wg > 65535 {
-                println!("{tpi:>4} {wg:>4}  skipped: {} workgroups at --max-count {max_count} exceeds 65535 per dispatch", max_count / per_wg);
+                println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {} workgroups at --max-count {max_count} exceeds 65535 per dispatch", max_count / per_wg);
                 continue;
             }
             if cfg.needs_subgroups() {
                 if let Err(e) = gpu.check_subgroups(tpi) {
-                    println!("{tpi:>4} {wg:>4}  skipped: {e}");
+                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {e}");
                     continue;
                 }
             }
             match validate(&gpu, cfg) {
                 Ok(()) => {}
                 Err(Failure::Rejected(e)) => {
-                    println!("{tpi:>4} {wg:>4}  REJECTED: {e} (no speed reported)");
+                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  REJECTED: {e} (no speed reported)");
                     failures += 1;
                     continue;
                 }
                 Err(Failure::Wrong(e)) => {
-                    println!("{tpi:>4} {wg:>4}  VALIDATION FAILED: {e} (no speed reported)");
+                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  VALIDATION FAILED: {e} (no speed reported)");
                     failures += 1;
                     continue;
                 }
@@ -207,7 +219,8 @@ fn main() {
                     let slope = r.rate_slope().map_or("n/a".to_string(), |s| format!("{s:.0}"));
                     let fixed = r.fixed_ms().map_or("n/a".to_string(), |f| format!("{f:.1}"));
                     println!(
-                        "{:>4} {:>4} {:>9} {:>5} {:>9.2} {:>12.0} {:>12.0} {:>12} {:>8} {:>9.1} {:>11.0}  ok",
+                        "{:>8} {:>4} {:>4} {:>9} {:>5} {:>9.2} {:>12.0} {:>12.0} {:>12} {:>8} {:>9.1} {:>11.0}  ok",
+                        variant_name,
                         r.cfg.tpi,
                         r.cfg.wg,
                         r.count,
@@ -222,7 +235,7 @@ fn main() {
                     );
                 }
                 Err(e) => {
-                    println!("{tpi:>4} {wg:>4}  bench failed: {e}");
+                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  bench failed: {e}");
                     failures += 1;
                 }
             }

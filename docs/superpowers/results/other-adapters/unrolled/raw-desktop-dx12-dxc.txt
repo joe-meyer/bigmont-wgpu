@@ -1,0 +1,23 @@
+commit 7654c98 + Task 2 example changes (uncommitted at run time); desktop Dx12 with dxcompiler.dll on PATH; variant unrolled; 2026-11-24T16:44:48Z; cmd: spike --variant unrolled --max-count 131070
+adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
+variant: unrolled
+subgroups feature: true
+max batch (instances): 131070
+
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  128  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  256  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64    131064   128    226.30     31440771     74132565     75765551      4.9    3795.6       36537  ok
+unrolled    8  128    131056   128    226.29     32064199     74130071     75706602      4.7    3795.5       36535  ok
+unrolled    8  256    131040   128    227.17     30513447     73835264     75537571      5.1    3780.4       36390  ok
+unrolled   16   64    131068   128    308.88     26800258     54314985     55214775      5.0    2780.9       26769  ok
+unrolled   16  128    131064   128    309.15     27178732     54266278     55138557      4.9    2778.4       26745  ok
+unrolled   16  256    131056   128    313.89     26587682     53442228     54312992      5.0    2736.2       26339  ok
+unrolled   32   64    131070    64    213.29     22103612     39329653     40343887      5.4    2013.7       19384  ok
+unrolled   32  128    131068    64    218.37     22325407     38412637     39326768      5.1    1966.7       18932  ok
+unrolled   32  256    131064    64    217.50     22484432     38565852     39476648      5.0    1974.6       19007  ok
+
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.

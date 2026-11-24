@@ -1,0 +1,14 @@
+commit 7654c98 + Task 2 example changes (uncommitted at run time); desktop Vulkan; variant rolled; 2026-11-24T16:46:24Z; cmd: spike --variant rolled --quick --tpi 8,16,32 --fixed-count 65536 --max-count 65536
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+variant: rolled
+subgroups feature: true
+max batch (instances): 65536
+
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+  rolled    8   64     65536    16    236.01      3782916      4442944      4556515      5.9     227.5        2190  ok
+  rolled   16   64     65536    16    211.13      4123525      4966469      5115869      6.2     254.3        2448  ok
+  rolled   32   64     65536    16    236.81      3818224      4427873      4531229      5.4     226.7        2182  ok
+
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.

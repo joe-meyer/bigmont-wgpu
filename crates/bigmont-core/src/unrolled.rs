@@ -21,14 +21,15 @@ const M24: &str = "0xffffffu";
 ///
 /// Why 32-bit accumulators never overflow: limbs entering an iteration (`x`, `n`) are below 2^13, so
 /// every product is below 2^26. Each accumulator word gains at most two products (below 2^27) per
-/// iteration, plus `carry0` (below 2^19) on lane 0's limb 0. A light pass leaves every limb below
-/// 2^13 + 2^19 (its own low 13 bits plus an incoming carry of a value below 2^19). So after at most
-/// `PERIOD` = 24 iterations without a pass a limb is below about
-/// 2^19 + 2^13 + 24 * (2^27 + 2^19) ~= 3.23e9 < 2^32. `p` and `p + N0 * m` are limb-0 values after
-/// one and two products and obey the same bound. The value stays below 2n because R > 4n (as in the
-/// rolled kernel), so the discarded carry out of the top lane's top limb is zero.
-/// `K = max(1, PERIOD / LPL)` owners run between passes, i.e. `K * LPL <= 24` iterations
-/// (LPL 20, 10, 5 give K 1, 2, 4).
+/// iteration, plus `carry0` (below 2^19) on lane 0's limb 0. After a light pass every limb equals
+/// `(v & MASK) + c_in`, where `v & MASK` is below 2^13 and `c_in = v_below >> 13` is below 2^19 (the
+/// limb below it was under 2^32), so it is below 2^13 + 2^19.
+/// `K = max(1, PERIOD / LPL)` owners run between passes, which is `K * LPL = 20` iterations for every
+/// supported width (LPL 20, 10, 5 give K 1, 2, 4); `PERIOD` = 24 is only the cap on that count. So
+/// between passes a limb stays below about 2^19 + 2^13 + 20 * (2^27 + 2^19) ~= 2.70e9 < 2^32 (the cap
+/// of 24 iterations would give about 3.23e9, still below 2^32). `p` and `p + N0 * m` are limb-0 values
+/// after one and two products and obey the same bound. The value stays below 2n because R > 4n (as in
+/// the rolled kernel), so the discarded carry out of the top lane's top limb is zero.
 pub(crate) fn wgsl(cfg: &KernelConfig) -> String {
     assert!(matches!(cfg.tpi, 8 | 16 | 32), "unrolled generator supports tpi 8, 16, 32 only");
     let lpl = cfg.limbs_per_lane();
@@ -96,7 +97,7 @@ fn header(g: &mut Gen, cfg: &KernelConfig, lpl: u32, k: u32) {
     g.line(format!("const WG: u32 = {}u;", cfg.wg));
     g.line("const B: u32 = 13u;");
     g.line("const MASK: u32 = 0x1fffu;");
-    g.line(format!("const K: u32 = {k}u;       // owners between light carry passes (K * LPL <= {PERIOD} iterations)"));
+    g.line(format!("const K: u32 = {k}u;       // owners between light carry passes (K * LPL = 20 iterations, PERIOD caps it at {PERIOD})"));
     g.line("");
     g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");

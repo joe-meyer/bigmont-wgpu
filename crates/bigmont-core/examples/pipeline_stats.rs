@@ -2,7 +2,7 @@
 //! reports about it (VK_KHR_pipeline_executable_properties): registers, LDS, scratch (spills),
 //! instruction counts, and save any text internal representation (for example AMD ISA).
 //!
-//!   cargo run --release -p bigmont-core --example pipeline_stats -- TPI WG [DEVICE_NAME_SUBSTRING]
+//!   cargo run --release -p bigmont-core --example pipeline_stats -- TPI WG [DEVICE_NAME_SUBSTRING [rolled|unrolled]]
 //!
 //! Adapted from the equivalent diagnostic in the gapsieve project (same author, MIT OR Apache-2.0).
 //! It talks to Vulkan directly with `ash`, so it shows what the driver does with the SPIR-V that
@@ -20,8 +20,17 @@ fn main() {
     let tpi: u32 = args.first().and_then(|v| v.parse().ok()).expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
     let wg: u32 = args.get(1).and_then(|v| v.parse().ok()).expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
     let want = args.get(2).map(|s| s.to_lowercase());
-    let cfg = KernelConfig { tpi, wg, variant: Variant::Rolled };
-    cfg.validate().expect("invalid configuration");
+    let variant = match args.get(3).map(String::as_str) {
+        None | Some("rolled") => Variant::Rolled,
+        Some("unrolled") => Variant::Unrolled,
+        Some(other) => panic!("fourth argument must be rolled or unrolled, got {other}"),
+    };
+    let cfg = KernelConfig { tpi, wg, variant };
+    if let Err(e) = cfg.validate() {
+        // The unrolled variant has no tpi 1 kernel: say so and stop (not an error).
+        println!("skipped: {e}");
+        return;
+    }
     let out_dir = std::env::temp_dir().join("bigmont-isa");
     std::fs::create_dir_all(&out_dir).unwrap();
 
@@ -49,7 +58,7 @@ fn main() {
             .expect("no matching Vulkan device");
         let props = instance.get_physical_device_properties(pdev);
         println!("device: {}", CStr::from_ptr(props.device_name.as_ptr()).to_string_lossy());
-        println!("config: tpi {tpi}, wg {wg}, limbs per lane {}", cfg.limbs_per_lane());
+        println!("config: tpi {tpi}, wg {wg}, limbs per lane {}, variant {variant:?}", cfg.limbs_per_lane());
         let family = instance
             .get_physical_device_queue_family_properties(pdev)
             .iter()
@@ -132,7 +141,7 @@ fn main() {
             let _ = get(device.handle(), &exec, &mut count, reps.as_mut_ptr());
             for (r, b) in reps.iter().zip(&bufs) {
                 let rep = CStr::from_ptr(r.name.as_ptr()).to_string_lossy().replace([' ', '/'], "_");
-                let path = out_dir.join(format!("tpi{tpi}_wg{wg}_{rep}.{}", if r.is_text != 0 { "txt" } else { "bin" }));
+                let path = out_dir.join(format!("{}_tpi{tpi}_wg{wg}_{rep}.{}", format!("{variant:?}").to_lowercase(), if r.is_text != 0 { "txt" } else { "bin" }));
                 std::fs::write(&path, b.split(|&c| c == 0).next().unwrap_or(&[])).unwrap();
                 println!("   saved {} ({} bytes)", path.display(), r.data_size);
             }
