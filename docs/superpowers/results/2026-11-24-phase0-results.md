@@ -220,7 +220,7 @@ Ratios, measured projection against that figure: 2,300 / 516,000 is about 1/225,
 
 ## 8. Proposed go/no-go threshold (PROPOSED, for the user to accept or change)
 
-This is a proposal, not a decision.
+This is a proposal, not a decision. **A revised proposal is in `2026-11-24-proposed-gate-v2.md`; it recommends dropping the 6,000 number below because its inputs are unverified.**
 
 Proposed gate: **at least 6,000 projected tests/s on the RX 6700 XT** (about 12.2 M squarings/s, about 620 Gmad/s, about 22% of the measured `mad_u32_u24` ceiling).
 
