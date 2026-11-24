@@ -19,9 +19,10 @@
 //! Run benchmarks in a single process (this example does). The exit status is nonzero if any
 //! configuration failed validation, was rejected, or failed to benchmark.
 
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, Run, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_oracle::{LIMB_MASK, LIMBS, mont_square_chain, unpack_limbs};
+use num_bigint::BigUint;
 
 const BITS: u32 = 2029;
 const MAD_PER_SQUARING: f64 = 2.0 * (LIMBS * LIMBS) as f64;
@@ -52,6 +53,57 @@ fn validate(gpu: &Gpu, cfg: KernelConfig) -> Result<(), Failure> {
     Ok(())
 }
 
+/// Instances checked against the oracle after a timed run: the first 4, the last 4 (all below
+/// `count`), 16 spread across the batch, and the first instance of the second and of the last
+/// workgroup and the middle one. Always includes indices of the first and the last workgroup.
+fn sample_indices(count: u32, per_wg: u32) -> Vec<usize> {
+    let count = count as usize;
+    let mut set = std::collections::BTreeSet::new();
+    set.extend(0..4.min(count));
+    set.extend(count.saturating_sub(4)..count);
+    set.extend((1..=16).map(|i| i * (count - 1) / 17));
+    set.extend([per_wg as usize, count - per_wg as usize, count / 2].into_iter().filter(|&i| i < count));
+    set.into_iter().collect()
+}
+
+/// Compares the output of a timed run (`s` squarings per dispatch, `r` chained dispatches, so
+/// `s * r` squarings per instance) with the oracle for a sample of instances. Every sampled
+/// instance must have all limbs below 2^13, a value below 2n, and the right value modulo n. All
+/// failing sampled instances are listed. Returns the number of instances checked.
+fn verify_timed(values: &[(BigUint, BigUint)], per_wg: u32, out: &Run, s: u32, r: u32, what: &str) -> Result<usize, Failure> {
+    let squarings = s * r;
+    let sample = sample_indices(values.len() as u32, per_wg);
+    let mut bad = Vec::new();
+    for &i in &sample {
+        let (n, x0) = &values[i];
+        let limbs = &out.x[i * LIMBS..(i + 1) * LIMBS];
+        let got = unpack_limbs(limbs);
+        let why = if limbs.iter().any(|&l| l > LIMB_MASK) {
+            Some("limbs not normalised")
+        } else if got >= n * 2u32 {
+            Some("value not below 2n")
+        } else if &got % n != mont_square_chain(n, x0, squarings) {
+            Some("wrong value")
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            bad.push(format!("{i} ({why})"));
+        }
+    }
+    if bad.is_empty() {
+        Ok(sample.len())
+    } else {
+        Err(Failure::Wrong(format!(
+            "{what}: {} of {} sampled instances (of {}) failed the oracle after {squarings} squarings ({s} per dispatch x {r}); failing instance indices: {}",
+            bad.len(),
+            sample.len(),
+            values.len(),
+            bad.join(", ")
+        )))
+    }
+}
+
 /// Longest dispatch the amortisation loop may plan for (the plan's budget is 0.5 s per dispatch).
 const LONG_DISPATCH_BUDGET: f64 = 0.4;
 /// Stop lengthening once a dispatch takes this long: the fixed cost is then a small fraction.
@@ -65,6 +117,12 @@ struct Row {
     /// Squarings per dispatch and best time of the longest dispatch measured.
     long_squarings: u32,
     long_secs: f64,
+    /// Instances compared with the oracle after the short run and after the final long run, and the
+    /// squarings per instance those outputs had (squarings per dispatch x chained dispatches).
+    verified_short: usize,
+    verified_long: usize,
+    verified_short_sq: u32,
+    verified_long_sq: u32,
 }
 
 impl Row {
@@ -94,7 +152,7 @@ impl Row {
 /// dispatch is predicted to stay within LONG_DISPATCH_BUDGET (assuming linear scaling, the worst
 /// case) and the current one is shorter than LONG_DISPATCH_TARGET. Each longer dispatch is the best
 /// of 3.
-fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed_count: Option<u32>) -> Result<Row, String> {
+fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed_count: Option<u32>) -> Result<Row, Failure> {
     let per_wg = cfg.instances_per_workgroup();
     let cap = (max_count / per_wg).max(1) * per_wg;
     // With --fixed-count the batch is exactly that size (rounded down to whole workgroups) and the
@@ -104,20 +162,41 @@ fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed
         None => ((1024 / per_wg).max(1) * per_wg).min(cap),
     };
     loop {
-        let batch = Batch::from_values(&Batch::random_values(count, BITS, 99));
-        let probe = run(gpu, cfg, &batch, 2, 1)?;
+        let values = Batch::random_values(count, BITS, 99);
+        let batch = Batch::from_values(&values);
+        let probe = run(gpu, cfg, &batch, 2, 1).map_err(Failure::Rejected)?;
         if fixed_count.is_some() || probe.best_secs >= 0.05 || count >= cap {
-            let short_secs = run(gpu, cfg, &batch, 2, 5)?.best_secs;
+            // `run` chains `repeats` dispatches from the previous output, so the output of
+            // run(.., s, r) has had s * r squarings.
+            let short = run(gpu, cfg, &batch, 2, 5).map_err(Failure::Rejected)?;
+            let short_secs = short.best_secs;
+            let verified_short = verify_timed(&values, per_wg, &short, 2, 5, "short run")?;
             let (mut long_squarings, mut long_secs) = (2u32, short_secs);
+            let (mut long_run, mut long_repeats) = (short, 5u32);
             while long_secs < LONG_DISPATCH_TARGET {
                 let next = long_squarings * 2;
                 if next > max_squarings || long_secs * f64::from(next) / f64::from(long_squarings) > LONG_DISPATCH_BUDGET {
                     break;
                 }
-                long_secs = run(gpu, cfg, &batch, next, 3)?.best_secs;
+                long_run = run(gpu, cfg, &batch, next, 3).map_err(Failure::Rejected)?;
+                long_secs = long_run.best_secs;
                 long_squarings = next;
+                long_repeats = 3;
             }
-            return Ok(Row { cfg, count, short_secs, long_squarings, long_secs });
+            // The run whose time is reported as `long ms` is `long_run` (the short run when the
+            // loop never lengthened it).
+            let verified_long = if long_squarings == 2 { verified_short } else { verify_timed(&values, per_wg, &long_run, long_squarings, long_repeats, "long run")? };
+            return Ok(Row {
+                cfg,
+                count,
+                short_secs,
+                long_squarings,
+                long_secs,
+                verified_short,
+                verified_long,
+                verified_short_sq: 2 * 5,
+                verified_long_sq: long_squarings * long_repeats,
+            });
         }
         count = (count * 2).min(cap);
     }
@@ -215,11 +294,12 @@ fn main() {
             }
             match bench(&gpu, cfg, max_count, max_squarings, fixed_count) {
                 Ok(r) => {
+                    let verified = format!("ok, verified {} inst x {} sq (long), {} inst x {} sq (short)", r.verified_long, r.verified_long_sq, r.verified_short, r.verified_short_sq);
                     let long = r.rate_long();
                     let slope = r.rate_slope().map_or("n/a".to_string(), |s| format!("{s:.0}"));
                     let fixed = r.fixed_ms().map_or("n/a".to_string(), |f| format!("{f:.1}"));
                     println!(
-                        "{:>8} {:>4} {:>4} {:>9} {:>5} {:>9.2} {:>12.0} {:>12.0} {:>12} {:>8} {:>9.1} {:>11.0}  ok",
+                        "{:>8} {:>4} {:>4} {:>9} {:>5} {:>9.2} {:>12.0} {:>12.0} {:>12} {:>8} {:>9.1} {:>11.0}  {}",
                         variant_name,
                         r.cfg.tpi,
                         r.cfg.wg,
@@ -231,17 +311,23 @@ fn main() {
                         slope,
                         fixed,
                         long * MAD_PER_SQUARING / 1e9,
-                        long / f64::from(BITS)
+                        long / f64::from(BITS),
+                        verified
                     );
                 }
-                Err(e) => {
+                Err(Failure::Rejected(e)) => {
                     println!("{variant_name:>8} {tpi:>4} {wg:>4}  bench failed: {e}");
+                    failures += 1;
+                }
+                Err(Failure::Wrong(e)) => {
+                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  TIMED OUTPUT FAILED ORACLE: {e} (no speed reported)");
                     failures += 1;
                 }
             }
         }
     }
     println!();
+    println!("Each row's timed outputs were compared with the oracle (first 4, last 4 and spread instances; limbs < 2^13, value < 2n, value mod n == mont_square_chain): 'verified K inst x S sq' = K instances checked after S squarings per instance, for the final long run and for the 2 squarings x 5 run. A row that fails prints no speed. Times are wall-clock around submit plus a blocking poll (no GPU timestamps); best of 3 (best of 5 for the short run).");
     println!("sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).");
     println!("'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.");
     println!("* tests/s*@L = sq/s @long / {BITS}: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.");

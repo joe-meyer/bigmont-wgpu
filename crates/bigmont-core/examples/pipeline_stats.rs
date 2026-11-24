@@ -2,7 +2,17 @@
 //! reports about it (VK_KHR_pipeline_executable_properties): registers, LDS, scratch (spills),
 //! instruction counts, and save any text internal representation (for example AMD ISA).
 //!
-//!   cargo run --release -p bigmont-core --example pipeline_stats -- TPI WG [DEVICE_NAME_SUBSTRING [rolled|unrolled]]
+//!   cargo run --release -p bigmont-core --example pipeline_stats -- TPI WG [DEVICE_NAME_SUBSTRING [rolled|unrolled [wgpu|flags|plain]]]
+//!
+//! Mode `wgpu` (default) mirrors what wgpu-hal 30.0.2 does for a compute pipeline on a device that
+//! has Features::SUBGROUP: VK_EXT_subgroup_size_control (Vulkan 1.3 feature) is enabled and the stage
+//! is created with PipelineShaderStageCreateFlags::ALLOW_VARYING_SUBGROUP_SIZE. wgpu sets no
+//! required subgroup size and not REQUIRE_FULL_SUBGROUPS (see wgpu-hal src/vulkan/device.rs,
+//! `compile_stage`) and the SPIR-V is written with the same naga options as wgpu-hal builds
+//! (SPIR-V 1.6, bounds-check policy Restrict, native workgroup zero-init, group-non-uniform
+//! capabilities). Mode `plain` creates the stage with no flags and no feature and uses naga's default
+//! options (the earlier behaviour of this tool), for comparison. Mode `flags` sets only the stage
+//! flag and feature, with naga's default options, to separate the two effects.
 //!
 //! Adapted from the equivalent diagnostic in the gapsieve project (same author, MIT OR Apache-2.0).
 //! It talks to Vulkan directly with `ash`, so it shows what the driver does with the SPIR-V that
@@ -24,6 +34,13 @@ fn main() {
         None | Some("rolled") => Variant::Rolled,
         Some("unrolled") => Variant::Unrolled,
         Some(other) => panic!("fourth argument must be rolled or unrolled, got {other}"),
+    };
+    // wgpu: stage flag + wgpu's naga SPIR-V options; flags: only the stage flag (naga defaults); plain: neither.
+    let (stage_flag_on, wgpu_mode, mode_name) = match args.get(4).map(String::as_str) {
+        None | Some("wgpu") => (true, true, "wgpu"),
+        Some("flags") => (true, false, "flags"),
+        Some("plain") => (false, false, "plain"),
+        Some(other) => panic!("fifth argument must be wgpu, flags or plain, got {other}"),
     };
     let cfg = KernelConfig { tpi, wg, variant };
     if let Err(e) = cfg.validate() {
@@ -58,7 +75,7 @@ fn main() {
             .expect("no matching Vulkan device");
         let props = instance.get_physical_device_properties(pdev);
         println!("device: {}", CStr::from_ptr(props.device_name.as_ptr()).to_string_lossy());
-        println!("config: tpi {tpi}, wg {wg}, limbs per lane {}, variant {variant:?}", cfg.limbs_per_lane());
+        println!("config: tpi {tpi}, wg {wg}, limbs per lane {}, variant {variant:?}, mode {mode_name}", cfg.limbs_per_lane());
         let family = instance
             .get_physical_device_queue_family_properties(pdev)
             .iter()
@@ -68,7 +85,7 @@ fn main() {
         let queues = [vk::DeviceQueueCreateInfo::default().queue_family_index(family).queue_priorities(&priorities)];
         let extensions = [ash::khr::pipeline_executable_properties::NAME.as_ptr()];
         let mut exec_props = vk::PhysicalDevicePipelineExecutablePropertiesFeaturesKHR::default().pipeline_executable_info(true);
-        let mut vk13 = vk::PhysicalDeviceVulkan13Features::default().shader_zero_initialize_workgroup_memory(true);
+        let mut vk13 = vk::PhysicalDeviceVulkan13Features::default().shader_zero_initialize_workgroup_memory(true).subgroup_size_control(stage_flag_on);
         let device = instance
             .create_device(
                 pdev,
@@ -100,10 +117,57 @@ fn main() {
         let set_layouts = [set_layout];
         let layout = device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts), None).unwrap();
         let options = naga::back::spv::PipelineOptions { shader_stage: naga::ShaderStage::Compute, entry_point: name.clone() };
-        let spirv = naga::back::spv::write_vec(&module, &info, &naga::back::spv::Options::default(), Some(&options)).expect("SPIR-V");
+        let spv_options = if wgpu_mode {
+            // Mirrors wgpu-hal 30.0.2 `naga_options` (src/vulkan/adapter.rs) for a Vulkan 1.3 device with
+            // Features::SUBGROUP, default runtime checks (bounds checks and loop bounding on),
+            // native zero-initialisation of workgroup memory, and robustBufferAccess2 absent (so
+            // storage-buffer accesses are clamped by naga with BoundsCheckPolicy::Restrict).
+            use naga::back::spv::Capability as C;
+            let capabilities = [
+                C::Shader,
+                C::Matrix,
+                C::Sampled1D,
+                C::Image1D,
+                C::ImageQuery,
+                C::DerivativeControl,
+                C::StorageImageExtendedFormats,
+                C::GroupNonUniform,
+                C::GroupNonUniformVote,
+                C::GroupNonUniformArithmetic,
+                C::GroupNonUniformBallot,
+                C::GroupNonUniformShuffle,
+                C::GroupNonUniformShuffleRelative,
+                C::GroupNonUniformQuad,
+            ];
+            naga::back::spv::Options {
+                lang_version: (1, 6),
+                flags: naga::back::spv::WriterFlags::FORCE_POINT_SIZE,
+                capabilities: Some(capabilities.iter().cloned().collect()),
+                bounds_check_policies: naga::proc::BoundsCheckPolicies {
+                    index: naga::proc::BoundsCheckPolicy::Restrict,
+                    buffer: naga::proc::BoundsCheckPolicy::Restrict,
+                    image_load: naga::proc::BoundsCheckPolicy::Restrict,
+                    binding_array: naga::proc::BoundsCheckPolicy::Unchecked,
+                },
+                zero_initialize_workgroup_memory: naga::back::spv::ZeroInitializeWorkgroupMemoryMode::Native,
+                force_loop_bounding: true,
+                fake_missing_bindings: false,
+                // wgpu builds this from the bind group layout; for these four bindings it is the identity map on set 0.
+                binding_map: (0..4)
+                    .map(|b| (naga::ResourceBinding { group: 0, binding: b }, naga::back::spv::BindingInfo { descriptor_set: 0, binding: b, binding_array_size: None }))
+                    .collect(),
+                ..Default::default()
+            }
+        } else {
+            naga::back::spv::Options::default()
+        };
+        // wgpu writes the whole module (no entry point filter); this module has the single entry point `main`.
+        let spirv = naga::back::spv::write_vec(&module, &info, &spv_options, if wgpu_mode { None } else { Some(&options) }).expect("SPIR-V");
+        println!("spirv: {} words, version {:#x}", spirv.len(), spirv[1]);
         let shader = device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&spirv), None).unwrap();
         let main = CString::new(name.as_str()).unwrap();
-        let stage = vk::PipelineShaderStageCreateInfo::default().stage(vk::ShaderStageFlags::COMPUTE).module(shader).name(&main);
+        let stage_flags = if stage_flag_on { vk::PipelineShaderStageCreateFlags::ALLOW_VARYING_SUBGROUP_SIZE } else { vk::PipelineShaderStageCreateFlags::empty() };
+        let stage = vk::PipelineShaderStageCreateInfo::default().flags(stage_flags).stage(vk::ShaderStageFlags::COMPUTE).module(shader).name(&main);
         let create = [vk::ComputePipelineCreateInfo::default()
             .stage(stage)
             .layout(layout)
@@ -141,7 +205,7 @@ fn main() {
             let _ = get(device.handle(), &exec, &mut count, reps.as_mut_ptr());
             for (r, b) in reps.iter().zip(&bufs) {
                 let rep = CStr::from_ptr(r.name.as_ptr()).to_string_lossy().replace([' ', '/'], "_");
-                let path = out_dir.join(format!("{}_tpi{tpi}_wg{wg}_{rep}.{}", format!("{variant:?}").to_lowercase(), if r.is_text != 0 { "txt" } else { "bin" }));
+                let path = out_dir.join(format!("{}_tpi{tpi}_wg{wg}_{mode_name}_{rep}.{}", format!("{variant:?}").to_lowercase(), if r.is_text != 0 { "txt" } else { "bin" }));
                 std::fs::write(&path, b.split(|&c| c == 0).next().unwrap_or(&[])).unwrap();
                 println!("   saved {} ({} bytes)", path.display(), r.data_size);
             }
