@@ -54,3 +54,14 @@ So the honest statement is "undecided", not "met" or "failed". Two measurements 
 1. Adopt this three-test gate, change its thresholds (3x, 33%, 10%, 2x are my proposals, not derived values), or keep the old 6,000 number.
 2. Whether I may measure the CPU baseline on the desktop and laptop (small downloads: `gmpy2` wheels or GMP source).
 3. Whether I may install CUDA on the laptop for Test B (several GB; I'd ask which route you prefer: `apt` with sudo, or a user-directory installer).
+
+## 7. Update after the unrolled kernel (same day; measured and projected as labelled in `2026-11-24-unrolled-cross-vendor.md`)
+
+The unrolled cooperative kernel changed the numbers by 3x to 27x, so sections 3 and 5 above (written from the rolled kernel) are out of date. Best oracle-verified row per adapter, projected tests/s: RTX 4070 Laptop 45,655; RX 6700 XT 40,303 (Vulkan) and 37,184 (Dx12); Radeon 780M 11,399; Quadro P4000 6,645 (shared). Still projections (squarings/s / 2029), not measured Fermat tests.
+
+- **Old gate (6,000 projected tests/s on the RX 6700 XT):** 40,303 is about 6.7x that, so it would now be met. The reasons to drop it (section 2: unverified inputs) still stand.
+- **Test A (at least 3x native CPU on the same machine):** against the only CPU measurement (GMP, 4 vCPUs of a 2013 Xeon, about 1,085 tests/s) the ratios are about 42x (4070), 37x (6700 XT), 10x (780M) and 6x (P4000). That is against a weak, different machine's baseline; it needs GMP timings on the desktop and laptop before it counts.
+- **Test B (portability tax against CUDA on the same card):** still unmeasured. The earlier forecast of 2% to 4% of native no longer applies. Using the same arithmetic as before (516k / lane-ops ratio of about 6.3 for the 4070, about 8.5 for the 6700 XT; core counts and clocks from memory, unverified; it also assumes Beacon's 516k counts full tests), a per-lane-equal CUDA port would reach about 82k tests/s on the 4070 and 61k on the 6700 XT, putting the unrolled kernel at roughly 55% and 66% of that. Those are forecasts, not measurements; only running CGBN on the same card gives the real fraction, and if Beacon's figure counts early-exit tests the real fraction is higher.
+- **Test C (headroom):** on AMD the kernel is already near a nominal vector-issue bound (about 85 to 89%, unverified peak), so the remaining headroom there is algorithmic (for example exploiting squaring symmetry, which the kernel does not, up to roughly a quarter fewer multiply-adds; not built or measured), not the loop structure.
+
+Still undecided: whether to adopt this gate, its thresholds, and whether to spend the CUDA install on Test B now that the forecast has moved from "below 10%" to "likely above 33%".

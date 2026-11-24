@@ -1,0 +1,44 @@
+commit ae14ce1 (verified build); laptop; 2026-11-24T17:55:01Z
+
+######## SWEEP unrolled VERIFIED adapter=4070 vulkan --max-count 131070
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  128  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  256  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64    131064   256    362.21     73197621     92633607     92827689      0.8    4742.8       45655  ok, verified 27 inst x 768 sq (long), 27 inst x 10 sq (short)
+unrolled    8  128    131056   256    362.50     82793536     92552335     92638313      0.3    4738.7       45615  ok, verified 27 inst x 768 sq (long), 27 inst x 10 sq (short)
+unrolled    8  256    131040   256    362.38     84456580     92570883     92640967      0.3    4739.6       45624  ok, verified 27 inst x 768 sq (long), 27 inst x 10 sq (short)
+unrolled   16   64    131068   128    219.06     69539953     76584825     76708175      0.4    3921.1       37745  ok, verified 26 inst x 384 sq (long), 26 inst x 10 sq (short)
+unrolled   16  128    131064   128    218.71     70361017     76705025     76814961      0.3    3927.3       37804  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled   16  256    131056   128    217.67     71844851     77065381     77154370      0.3    3945.7       37982  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+unrolled   32   64    131070   128    291.40     55580162     57573393     57606185      0.2    2947.8       28375  ok, verified 25 inst x 384 sq (long), 25 inst x 10 sq (short)
+unrolled   32  128    131068   128    290.06     55088770     57837890     57883741      0.2    2961.3       28506  ok, verified 26 inst x 384 sq (long), 26 inst x 10 sq (short)
+unrolled   32  256    131064   128    290.09     53893242     57830211     57897346      0.3    2960.9       28502  ok, verified 27 inst x 384 sq (long), 27 inst x 10 sq (short)
+
+######## SWEEP unrolled VERIFIED adapter=780M vulkan --max-count 131070
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  128  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    1  256  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64    131064    64    362.72     16075149     23125402     23457270      5.1    1184.0       11397  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled    8  128    131056    64    362.65     15936752     23128599     23470261      5.3    1184.2       11399  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled    8  256    131040    64    362.70     15878021     23122563     23467968      5.3    1183.9       11396  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled   16   64    131068    32    228.01     14743417     18394602     18703394      3.8     941.8        9066  ok, verified 26 inst x 96 sq (long), 26 inst x 10 sq (short)
+unrolled   16  128    131064    32    227.85     13876099     18407414     18817068      5.0     942.5        9072  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled   16  256    131056    32    227.97     14442204     18396324     18738348      4.2     941.9        9067  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled   32   64    131070    32    307.39     12550384     13644571     13724341      1.8     698.6        6725  ok, verified 25 inst x 96 sq (long), 25 inst x 10 sq (short)
+unrolled   32  128    131068    32    306.88     12476373     13667035     13754545      2.0     699.8        6736  ok, verified 26 inst x 96 sq (long), 26 inst x 10 sq (short)
+unrolled   32  256    131064    32    306.05     12491896     13703766     13792972      2.0     701.6        6754  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+
+######## SWEEP unrolled VERIFIED llvmpipe --quick
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    1   64  skipped: the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)
+unrolled    8   64     65536    16    203.02      3540010      5164997      5527468     13.3     264.4        2546  ok, verified 27 inst x 48 sq (long), 27 inst x 10 sq (short)
+unrolled   16   64  skipped: subgroup size 8..8 is not a multiple of tpi 16
+unrolled   32   64  skipped: subgroup size 8..8 is not a multiple of tpi 32

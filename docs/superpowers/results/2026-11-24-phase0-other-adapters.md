@@ -1,5 +1,7 @@
 # Phase 0 addendum: other adapters (2026-11-24)
 
+> **Update (later the same day):** the speed figures in this addendum are for the original ('rolled') kernels. A new unrolled kernel is 3x to 27x faster on every GPU tested (best oracle-verified rows: RTX 4070 92.6 M squarings/s, RX 6700 XT 81.8 M, Radeon 780M 23.1 M, Quadro P4000 13.5 M); see `2026-11-24-unrolled-cross-vendor.md`. The correctness results, coverage matrix and CPU baseline here still stand.
+
 Code under test: commit `63ae502` (same kernels, runner and sweep as the main results doc, `2026-11-24-phase0-results.md`). Raw outputs are in `other-adapters/`. The main doc's definitions apply: **squarings/s is measured; Gmad/s is derived; tests/s is a projection** (squarings/s / 2029), not a measured full Fermat test.
 
 ## 0. Coverage matrix: every adapter on the four hosts (strict suite vs the CPU oracle)
