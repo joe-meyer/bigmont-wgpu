@@ -116,3 +116,59 @@ fn single_squaring_matches_definition_at_full_size() {
         assert_eq!((&y << R_BITS) % &n, (&x0 * &x0) % &n);
     }
 }
+
+#[test]
+fn limbs_for_bits_covers_the_ladder_invariant() {
+    assert_eq!(limbs_for_bits(2029), 157);
+    assert_eq!(limbs_for_bits(1024), 80);
+    for bits in [64u32, 127, 521, 1019, 2029, 3000] {
+        let r = BigUint::one() << (13 * limbs_for_bits(bits) as u32);
+        let n_max = (BigUint::one() << bits) - 1u32;
+        assert!(r > &n_max * 16u32, "R must exceed 16n at {bits} bits");
+    }
+}
+
+#[test]
+fn pack_unpack_round_trip_at_other_limb_counts() {
+    let mut rng = XorShift64::new(11);
+    for limbs in [8usize, 40, 80, 96, 157] {
+        let x = random_bits(&mut rng, (limbs as u32) * 13 - 1);
+        let packed = pack_limbs_n(&x, limbs);
+        assert_eq!(packed.len(), limbs);
+        assert!(packed.iter().all(|&l| l <= LIMB_MASK));
+        assert_eq!(unpack_limbs(&packed), x);
+    }
+}
+
+#[test]
+fn square_chain_n_satisfies_the_montgomery_relation() {
+    let mut rng = XorShift64::new(5);
+    for limbs in [40usize, 80, 120] {
+        let bits = (limbs as u32) * 13 - 3;
+        let n = random_odd_modulus(&mut rng, bits);
+        let x = random_below(&mut rng, &n);
+        let r = BigUint::one() << (13 * limbs as u32);
+        let y = mont_square_chain_n(&n, &x, 1, limbs);
+        assert_eq!((&y * &r) % &n, (&x * &x) % &n);
+    }
+}
+
+#[test]
+fn fermat_base2_known_values() {
+    let mersenne = |p: u32| (BigUint::one() << p) - 1u32;
+    assert!(fermat_base2(&mersenne(127)));
+    assert!(fermat_base2(&mersenne(521)));
+    assert!(!fermat_base2(&BigUint::from(91u32)));
+    assert!(fermat_base2(&BigUint::from(341u32))); // smallest base-2 pseudoprime: the test is Fermat, not primality
+    assert!(!fermat_base2(&BigUint::from(100u32)));
+    assert!(fermat_base2(&BigUint::from(2u32)));
+    assert!(!fermat_base2(&BigUint::one()));
+}
+
+#[test]
+fn random_prp_passes_the_fermat_test() {
+    let mut rng = XorShift64::new(3);
+    let p = random_prp(&mut rng, 160);
+    assert_eq!(p.bits(), 160);
+    assert!(fermat_base2(&p));
+}
