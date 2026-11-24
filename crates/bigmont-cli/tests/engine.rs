@@ -17,6 +17,19 @@ fn batch() -> (Vec<BigUint>, Vec<u8>) {
     (ns, want)
 }
 
+/// (PRPs, composites) among the candidates that take the GPU path with `opts(Backend::Gpu)`: odd,
+/// at least 64 bits, in a bit-length bucket of at least `min_gpu_batch` (4) entries.
+fn gpu_path_counts(ns: &[BigUint], want: &[u8]) -> (u64, u64) {
+    let on_gpu = |n: &BigUint| n.bit(0) && n.bits() >= 64 && ns.iter().filter(|m| m.bits() == n.bits() && m.bit(0)).count() >= 4;
+    let (mut prps, mut composites) = (0, 0);
+    for (n, &w) in ns.iter().zip(want) {
+        if on_gpu(n) {
+            if w == 1 { prps += 1 } else { composites += 1 }
+        }
+    }
+    (prps, composites)
+}
+
 #[test]
 fn cpu_backend_matches_the_oracle_including_degenerate_inputs() {
     let (ns, want) = batch();
@@ -34,6 +47,10 @@ fn gpu_backend_matches_the_oracle_and_buckets_by_bit_length() {
     assert_eq!(r.prp_disagreements, 0);
     assert!(r.gpu_tests > 0, "the 1019-bit bucket has 12 entries, above min_gpu_batch 4: it must run on the GPU");
     assert!(r.cpu_tests > 0, "tiny and tiny-bucket candidates run on the CPU");
+    let (gpu_prps, _) = gpu_path_counts(&ns, &want);
+    assert!(gpu_prps >= 2, "the batch holds at least the two planted probable primes");
+    assert_eq!(r.gpu_errors, 0);
+    assert!(r.rechecks >= gpu_prps, "every GPU PRP must be re-run on the CPU: {} rechecks, {gpu_prps} PRPs", r.rechecks);
 }
 
 #[test]
@@ -59,5 +76,13 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
     let (ns, want) = batch();
     let mut e = Engine::open(Options { verify_rate: 2, ..opts(Backend::Gpu) });
     assert_eq!(e.verdicts(&ns).unwrap(), want);
-    assert_eq!(e.report().composite_disagreements, 0);
+    let r = e.report();
+    assert_eq!(r.composite_disagreements, 0);
+    assert_eq!(r.prp_disagreements, 0);
+    assert_eq!(r.gpu_errors, 0, "the GPU path must not have fallen back");
+    let (prps, composites) = gpu_path_counts(&ns, &want);
+    assert_eq!(r.gpu_tests, prps + composites, "every odd >= 64-bit candidate in a big enough bucket runs on the GPU");
+    // Every PRP, plus every 2nd GPU composite (counted across the call).
+    assert_eq!(r.rechecks, prps + composites / 2);
+    assert!(r.rechecks >= 7);
 }
