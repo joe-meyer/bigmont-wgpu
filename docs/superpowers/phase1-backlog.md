@@ -33,6 +33,11 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - Add a native CPU backend (GMP-class big-integer modexp) as a first-class engine option: fallback where no usable GPU exists (host1's GeForce 9800 GT can run nothing in wgpu) and the baseline GPU results must beat. A single old quad-core i7-3770K is estimated at about 1,000 to 1,300 tests/s native (`results/2026-11-24-phase0-other-adapters.md` section 5a, from `openssl speed`), against 122 projected tests/s for the shader kernels on llvmpipe on a newer 16-thread CPU, and about 2,300 to 3,400 for the best GPU rows printed so far. Now measured with GMP on a same-generation Xeon (host2 CT 104): about 265 tests/s per core and about 1,085 tests/s on 4 vCPUs (`tools/cpu-baseline/`); still not run on the 3770K itself or on the laptop.
 - Revisit the proposed 6,000 tests/s gate in light of that CPU baseline.
 
+## Dynamic size classes (user idea, 2026-11-24)
+- Derive the limb count and lane width from the number's bit length at runtime instead of the fixed 160 limbs: `L = ceil((bits + 1) / 13)` rounded up to a multiple of the chosen TPI (needs R > 4n for the x < 2n invariant), TPI picked by a per-adapter startup autotune (best width differs by vendor and will shift with L), WGSL generated per (L, TPI, wg) and pipelines cached. Make the oracle's `LIMBS` a parameter. Bucket mixed-size batches by class, as Beacon's driver does. Keep gapsieve's unrolled one-thread kernel as the path for small sizes (roughly 260 bits and below).
+- Expected effect (arithmetic, not measured): a squaring costs about 2L^2 multiply-adds and a test needs about `bits` squarings, so cost per test scales roughly with the cube of the size (about 8x cheaper at 1,024 bits than at 2,029). All Phase 0 numbers are for the 2,029-bit class only; the GMP CPU baseline scales about the same way, so GPU-versus-CPU ratios should roughly carry over.
+- Test matrix grows to sizes x widths x adapters; every combination must pass the oracle before the autotune may select it.
+
 ## Runner design (Phase 1, per spec section 3)
 - `run()` rebuilds shader, pipeline and buffers on every call; reuse them.
 - A `Backend` trait and async API; move test helpers out of the public `Batch`.
