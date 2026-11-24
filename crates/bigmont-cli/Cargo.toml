@@ -1,0 +1,18 @@
+[package]
+name = "bigmont-cli"
+description = "Beacon-compatible candidate/verdict driver and autotuned engine for bigmont"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bigmont-core = { path = "../bigmont-core" }
+bigmont-cpu = { path = "../bigmont-cpu" }
+bigmont-oracle = { path = "../bigmont-oracle" }
+num-bigint = "0.4"
+num-traits = "0.2"
+wgpu = "30.0.2"
+
+[[bin]]
+name = "bigmont"
+path = "src/main.rs"
