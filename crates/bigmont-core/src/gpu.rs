@@ -12,6 +12,25 @@ use std::time::Instant;
 /// (the spike example does).
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 
+/// Which adapter to open. All fields `None` means the high-performance default.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AdapterSelector {
+    /// Case-insensitive substring of the adapter name.
+    pub name: Option<String>,
+    /// Case-insensitive substring of the backend name ("Vulkan", "Dx12", "Gl", ...).
+    pub backend: Option<String>,
+    /// Index among the non-CPU adapters (after the name/backend filters), in `enumerate_adapters`
+    /// order: Beacon's `--device N`.
+    pub index: Option<usize>,
+}
+
+impl AdapterSelector {
+    /// `BIGMONT_ADAPTER` and `BIGMONT_BACKEND`.
+    pub fn from_env() -> AdapterSelector {
+        AdapterSelector { name: std::env::var("BIGMONT_ADAPTER").ok(), backend: std::env::var("BIGMONT_BACKEND").ok(), index: None }
+    }
+}
+
 pub struct Gpu {
     pub info: wgpu::AdapterInfo,
     pub has_subgroups: bool,
@@ -24,26 +43,41 @@ fn describe(info: &wgpu::AdapterInfo) -> String {
 }
 
 impl Gpu {
-    /// Picks the adapter named by env `BIGMONT_ADAPTER` (substring of the adapter name) and
+    /// Opens the adapter named by env `BIGMONT_ADAPTER` (substring of the adapter name) and
     /// `BIGMONT_BACKEND` (substring of the backend name, e.g. "Vulkan", "Dx12"); otherwise the
     /// high-performance default. Requests `Features::SUBGROUP` when the adapter has it.
     pub fn new() -> Result<Gpu, String> {
+        Gpu::open(&AdapterSelector::from_env())
+    }
+
+    /// Opens the adapter chosen by `selector` (see [`AdapterSelector`]); the high-performance
+    /// default when the selector is empty. Requests `Features::SUBGROUP` when the adapter has it.
+    pub fn open(selector: &AdapterSelector) -> Result<Gpu, String> {
         let _init = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         pollster::block_on(async {
             let instance = wgpu::Instance::default();
-            let name = std::env::var("BIGMONT_ADAPTER").ok().map(|s| s.to_lowercase());
-            let backend = std::env::var("BIGMONT_BACKEND").ok().map(|s| s.to_lowercase());
-            let adapter = if name.is_some() || backend.is_some() {
-                instance
+            let name = selector.name.as_ref().map(|s| s.to_lowercase());
+            let backend = selector.backend.as_ref().map(|s| s.to_lowercase());
+            let adapter = if name.is_some() || backend.is_some() || selector.index.is_some() {
+                let mut matching: Vec<wgpu::Adapter> = instance
                     .enumerate_adapters(wgpu::Backends::all())
                     .await
                     .into_iter()
-                    .find(|a| {
+                    .filter(|a| {
                         let i = a.get_info();
                         name.as_ref().is_none_or(|w| i.name.to_lowercase().contains(w))
                             && backend.as_ref().is_none_or(|w| format!("{:?}", i.backend).to_lowercase().contains(w))
                     })
-                    .ok_or("no adapter matches BIGMONT_ADAPTER / BIGMONT_BACKEND")?
+                    .collect();
+                if let Some(index) = selector.index {
+                    matching.retain(|a| a.get_info().device_type != wgpu::DeviceType::Cpu);
+                    if index >= matching.len() {
+                        return Err(format!("no adapter matches {selector:?} ({} non-CPU adapters match the name/backend filters)", matching.len()));
+                    }
+                    matching.swap_remove(index)
+                } else {
+                    matching.into_iter().next().ok_or_else(|| format!("no adapter matches {selector:?}"))?
+                }
             } else {
                 instance
                     .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() })
