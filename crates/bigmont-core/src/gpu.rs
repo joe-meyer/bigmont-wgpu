@@ -145,7 +145,7 @@ pub struct Run {
 /// Runs `f` with Validation, Internal and OutOfMemory error scopes active, so that errors raised
 /// while creating shader modules, pipelines, buffers or bind groups come back as `Err` instead of
 /// reaching wgpu's uncaptured-error handler (which panics).
-fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Result<T, String> {
+pub(crate) fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Result<T, String> {
     let scopes = [wgpu::ErrorFilter::OutOfMemory, wgpu::ErrorFilter::Internal, wgpu::ErrorFilter::Validation].map(|filter| device.push_error_scope(filter));
     let out = f();
     let mut first = None;

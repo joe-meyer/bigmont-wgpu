@@ -6,8 +6,22 @@
 //! the accumulate, so there are no limb arrays and no loops over limbs. Only the loop over the owning
 //! lane (`owner`), the squaring loop and the normalisation rounds stay as (uniform) loops.
 //!
-//! Same bindings, entry point and arithmetic contract as the rolled kernel: per instance
-//! `x <- x^2 * R^-1 mod n` (R = 2^(13 * limbs), result in [0, 2n), limbs fully normalised), `params.y` times.
+//! Two modes share the generator ([`Mode`]):
+//! - Squarings: same bindings, entry point and arithmetic contract as the rolled kernel: per
+//!   instance `x <- x^2 * R^-1 mod n` (R = 2^(13 * limbs), result in [0, 2n), limbs fully
+//!   normalised), `params.y` times.
+//! - Fermat: one left-to-right binary ladder step per iteration, for the base-2 Fermat test. After
+//!   each squaring the exponent bit `i = fp.y - 2 - (fp.x + s)` of `e_words` (`n - 1`, `fp.z` words
+//!   per instance) is read, `t = 2x` is formed limbwise and fully normalised, and
+//!   `x = select(x, t, bit == 1)` per limb. The doubling is branch-free on purpose: instances of one
+//!   subgroup take different bits, and the subgroup shuffles and `subgroupAny` in the next squaring
+//!   (and in the normalisation of `t` itself) must stay in uniform control flow, so every lane
+//!   always computes `t` and the bit only picks the result.
+//!
+//!   This needs R > 16n (`KernelConfig::for_bits` guarantees it: `13 * limbs >= bits + 4`). After a
+//!   doubling x < 4n, and a Montgomery squaring of x < 4n gives `(x^2 + m n) / R < 16n^2 / R + n`,
+//!   which is below 2n exactly when R > 16n; so x stays below 2n after every squaring and below 4n
+//!   (far below R) after every doubling, and no carry ever leaves the top limb.
 
 use crate::kernel::{KernelConfig, SUBGROUP_HELPERS, Target};
 
@@ -18,13 +32,22 @@ const PERIOD: u32 = 20;
 /// Operand mask that steers AMD's compiler to the 24-bit multiply-add.
 const M24: &str = "0xffffffu";
 
+/// Which kernel the generator emits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Mode {
+    /// `params.y` Montgomery squarings per dispatch.
+    Squarings,
+    /// `params.y` base-2 Fermat ladder steps per dispatch (squaring, then conditional doubling).
+    Fermat,
+}
+
 /// Emits the complete unrolled WGSL source for `cfg` (`cfg.tpi` must be 4, 8, 16 or 32).
 ///
 /// Where the light carry passes go. At most `PERIOD` = 20 single-limb steps ever run between two
 /// passes (or between the start of a squaring and the first pass), at every width and limb count:
 /// - `LPL` > `PERIOD`: a pass is emitted INSIDE the unrolled owner body after every `PERIOD`-th step,
-///   and after the last step too when `LPL` is not a multiple of `PERIOD` (the remainder is shorter
-///   than `PERIOD`), so every owner iteration ends with a pass.
+///   plus an extra end-of-owner pass after the last step when `LPL % PERIOD != 0` (the remainder is
+///   shorter than `PERIOD`), so every owner iteration ends with a pass.
 /// - `LPL` <= `PERIOD`: a runtime `(owner % K) == K - 1` pass with `K = PERIOD / LPL` (floor, at
 ///   least 1), so a pass follows every `K` owner iterations, `K * LPL <= PERIOD` steps. `K` need not
 ///   divide `PERIOD` or `TPI`: the full normalisation at the end of each squaring resets the limbs,
@@ -45,7 +68,7 @@ const M24: &str = "0xffffffu";
 /// use the 24-bit multiply instead of a full 32-bit low multiply. `ninv` is masked once when it is
 /// loaded (it is already below 2^13): without that mask the compiler cannot see that the second
 /// factor is small and still emits a full 32-bit low multiply (measured in the ISA).
-pub(crate) fn wgsl(cfg: &KernelConfig, target: Target) -> String {
+pub(crate) fn wgsl(cfg: &KernelConfig, target: Target, mode: Mode) -> String {
     assert!(matches!(cfg.tpi, 4 | 8 | 16 | 32), "unrolled generator supports tpi 4, 8, 16, 32 only");
     let lpl = cfg.limbs_per_lane();
     // LPL > PERIOD: passes are emitted inside the body and every owner iteration ends with one.
@@ -54,7 +77,7 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target) -> String {
     let k = if in_body { 1 } else { PERIOD / lpl };
 
     let mut g = Gen { lines: Vec::new(), depth: 0 };
-    header(&mut g, cfg, target, lpl, k, in_body);
+    header(&mut g, cfg, target, mode, lpl, k, in_body);
     g.raw(SUBGROUP_HELPERS);
     g.line("@compute @workgroup_size(WG)");
     g.line("fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) li: u32, @builtin(subgroup_invocation_id) sg_in: u32) {");
@@ -69,8 +92,8 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target) -> String {
     g.depth += 1;
     for w in 0..lpl {
         iteration(&mut g, lpl, w);
-        // LPL > PERIOD: a pass every PERIOD steps inside the body, and after the last step when the
-        // body length is not a multiple of PERIOD (otherwise the rule above already covers it).
+        // LPL > PERIOD: a pass every PERIOD steps inside the body, plus an extra end-of-owner pass
+        // after the last step when LPL % PERIOD != 0 (otherwise the first rule already covers it).
         if in_body && ((w + 1) % PERIOD == 0 || (w + 1 == lpl && lpl % PERIOD != 0)) {
             light_pass(&mut g, lpl);
         }
@@ -87,6 +110,9 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target) -> String {
     full_normalize(&mut g, lpl);
     for c in 0..lpl {
         g.line(format!("x{c} = t{c};"));
+    }
+    if mode == Mode::Fermat {
+        conditional_double(&mut g, lpl);
     }
     g.depth -= 1;
     g.line("}");
@@ -111,7 +137,7 @@ impl Gen {
     }
 }
 
-fn header(g: &mut Gen, cfg: &KernelConfig, target: Target, lpl: u32, k: u32, in_body: bool) {
+fn header(g: &mut Gen, cfg: &KernelConfig, target: Target, mode: Mode, lpl: u32, k: u32, in_body: bool) {
     // Native source has no prelude (naga 30 rejects `enable subgroups;`); browsers require it.
     let prelude = target.prelude();
     if !prelude.is_empty() {
@@ -125,15 +151,20 @@ fn header(g: &mut Gen, cfg: &KernelConfig, target: Target, lpl: u32, k: u32, in_
     g.line("const B: u32 = 13u;");
     g.line("const MASK: u32 = 0x1fffu;");
     if in_body {
-        g.line(format!("// light carry passes are emitted inside the unrolled body every {PERIOD} steps (LPL {lpl} > {PERIOD})"));
+        let tail = if lpl % PERIOD != 0 { format!(", plus an extra one at the end of each owner (LPL % {PERIOD} = {})", lpl % PERIOD) } else { String::new() };
+        g.line(format!("// light carry passes are emitted inside the unrolled body every {PERIOD} steps (LPL {lpl} > {PERIOD}){tail}"));
     } else {
-        g.line(format!("const K: u32 = {k}u;       // owners between light carry passes (K * LPL = {PERIOD} steps)"));
+        g.line(format!("const K: u32 = {k}u;       // owners between light carry passes (K * LPL <= {PERIOD} steps)"));
     }
     g.line("");
     g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");
     g.line("@group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;");
     g.line("@group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;");
+    if mode == Mode::Fermat {
+        g.line("@group(0) @binding(4) var<storage, read> e_words: array<u32>;   // n - 1, words per instance = fp.z");
+        g.line("@group(0) @binding(5) var<uniform> fp: vec4<u32>;               // x = first iteration, y = nbits, z = words per instance");
+    }
 }
 
 fn prologue(g: &mut Gen) {
@@ -222,6 +253,21 @@ fn full_normalize(g: &mut Gen, lpl: u32) {
     light_pass(g, lpl);
     g.depth -= 1;
     g.line("}");
+}
+
+/// Fermat mode: `x <- 2x` (fully normalised) when exponent bit `fp.y - 2 - (fp.x + s)` is set.
+/// Every lane computes the doubling and the bit only selects the result, so the shuffles and
+/// `subgroupAny` in `full_normalize` stay in uniform control flow.
+fn conditional_double(g: &mut Gen, lpl: u32) {
+    g.line("let gi = fp.y - 2u - (fp.x + s);");
+    g.line("let ebit = (e_words[ic * fp.z + (gi >> 5u)] >> (gi & 31u)) & 1u;");
+    for c in 0..lpl {
+        g.line(format!("t{c} = x{c} << 1u;"));
+    }
+    full_normalize(g, lpl);
+    for c in 0..lpl {
+        g.line(format!("x{c} = select(x{c}, t{c}, ebit == 1u);"));
+    }
 }
 
 fn store(g: &mut Gen, lpl: u32) {

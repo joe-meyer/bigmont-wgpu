@@ -2,4 +2,5 @@
 
 pub mod gpu;
 pub mod kernel;
+pub mod runner;
 mod unrolled;

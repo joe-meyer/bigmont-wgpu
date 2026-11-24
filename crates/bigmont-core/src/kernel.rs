@@ -117,7 +117,7 @@ impl KernelConfig {
     /// The complete squaring-mode WGSL source for this configuration.
     pub fn wgsl_for(&self, target: Target) -> String {
         if self.variant == Variant::Unrolled {
-            return crate::unrolled::wgsl(self, target);
+            return crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Squarings);
         }
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
             (target.prelude(), ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
@@ -132,5 +132,13 @@ impl KernelConfig {
             .replace("__SGPARAM__", sgparam)
             .replace("__SGLET__", sglet)
             .replace("__SHUFFLES__", helpers)
+    }
+
+    /// The complete Fermat-ladder WGSL source (unrolled variant only): bindings 0..3 as in squaring
+    /// mode plus `@binding(4) e_words` (`n - 1` as u32 words, read-only storage) and `@binding(5) fp`
+    /// (uniform: first iteration, nbits, words per instance). Needs R > 16n (see `for_bits`).
+    pub fn fermat_wgsl_for(&self, target: Target) -> String {
+        assert_eq!(self.variant, Variant::Unrolled, "the Fermat ladder is generated for the unrolled variant only");
+        crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Fermat)
     }
 }

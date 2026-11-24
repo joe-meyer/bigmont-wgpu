@@ -19,6 +19,20 @@ fn browser_source_is_native_source_plus_the_two_directives() {
 }
 
 #[test]
+fn fermat_browser_source_is_native_source_plus_the_two_directives() {
+    for tpi in [4u32, 8, 16, 32] {
+        for bits in [64u32, 1019, 2029] {
+            let cfg = KernelConfig::for_bits(bits, tpi, 64, Variant::Unrolled);
+            let native = cfg.fermat_wgsl_for(Target::Native);
+            let browser = cfg.fermat_wgsl_for(Target::Browser);
+            assert!(!native.contains("enable subgroups"), "{cfg:?}");
+            assert!(native.contains("var<uniform> fp: vec4<u32>"), "{cfg:?}");
+            assert_eq!(browser, format!("{PRELUDE}{native}"), "{cfg:?}");
+        }
+    }
+}
+
+#[test]
 fn wgsl_is_native() {
     let cfg = KernelConfig::new(8, 64, Variant::Unrolled);
     assert_eq!(cfg.wgsl(), cfg.wgsl_for(Target::Native));
