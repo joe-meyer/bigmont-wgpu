@@ -42,3 +42,12 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - `run()` rebuilds shader, pipeline and buffers on every call; reuse them.
 - A `Backend` trait and async API; move test helpers out of the public `Batch`.
 - Add the groups > 65535 and storage-binding-size limits as first-class errors (a guard exists in `run()`; the `--max-count` clamp is in the example only).
+
+## After the unrolled kernel (2026-11-24; see `results/2026-11-24-unrolled-cross-vendor.md`)
+- Decide on Test B (CGBN on the RTX 4070 via the CUDA toolkit): the unrolled kernels move the forecast from about 2% of native CUDA to roughly 55% to 65% (arithmetic only, unverified). The real number is the one measurement that replaces the guesswork.
+- Try TPI 4 (40 limbs per lane; CGBN allows 4) since TPI 8 was best or near-best on all four GPUs and the trend runs toward fewer lanes per number; the generator is parametric in limbs per lane.
+- Squaring symmetry (the kernel computes the full product; up to roughly a quarter fewer multiply-adds, not built or measured) is now the main remaining arithmetic saving on AMD, which is near a nominal issue bound.
+- Measurement hygiene: GPU timestamp queries, repeat runs for variance, more verified instances per row (25 to 27 now), inspect the NVIDIA, Mesa and Dx12/DXC code generation (only the Vulkan AMD ISA was read), and a negative control that also exercises the limb-normalisation and below-2n checks.
+- Wave64 was never observed. Intel remains untested. The unrolled kernel is still not browser-valid (`enable subgroups;`).
+- Dynamic size classes (above) are now cheap to try: the unrolled generator takes limbs per lane as a parameter.
+- Release the test container resources if no longer needed: CT 104 on host2 (24 GB) and the user-level Rust install on the laptop.
