@@ -84,6 +84,16 @@ Full tables are in `other-adapters/raw-sweep-laptop-vulkan.txt`.
 - CGBN on any card; a full Fermat test.
 - Only llvmpipe on Linux and WARP on Windows were tried as CPU adapters. They show the kernels run without a GPU. They are not a performance fallback (llvmpipe: about 0.25 M squarings/s, projected 122 tests/s).
 
+## 5a. A native CPU baseline (host1, Intel i7-3770K, a 2012 quad-core) — an estimate, not a run of our code
+
+Raw: `other-adapters/raw-openssl-host1-i7-3770k.txt`. One core of the 3770K does an RSA-2048 signature in 0.915 ms (OpenSSL 3.5.9, measured). An RSA-2048 signature is two 1,024-bit modular exponentiations (CRT). A single 2,048-bit modular exponentiation with a 2,048-bit exponent, which is the shape of one Fermat test, costs about 8 times one of those (cubic scaling assumed, not measured), so roughly 3.7 ms, about 270 tests/s per core. With four cores, and hyper-threading assumed to add about 20% (also an assumption), that is **roughly 1,000 to 1,300 tests/s for the whole CPU, using optimised native code**.
+
+How to read it:
+- It is directly comparable with the "projected tests/s" columns above (both are "one exponentiation per test"), but both sides are estimates: the GPU figures are projections from squarings/s, this one is extrapolated from RSA signatures.
+- The shader path running on a CPU adapter is far slower than native code: llvmpipe on the 16-thread Ryzen 7 7840HS projects to 122 tests/s, so a 2012 quad-core running native code is roughly 8 to 10 times faster than shaders on a much newer CPU.
+- Against the GPUs: the best printed projections are 2,312 (RX 6700 XT, Dx12), 3,370 (Radeon 780M) and 1,679 (RTX 4070, probably under-measured, see section 4). One old quad-core is therefore on the order of half of those. This is the most useful sanity check on the proposed 6,000 tests/s gate and on how much a GPU port buys at this size, and it argues for a first-class native CPU backend (fallback for machines with no usable GPU, and a baseline to beat) in Phase 1.
+- Caveats: OpenSSL's code is constant-time and includes blinding, a real PRP test would use GMP or Beacon's own code (similar order, not identical), and it ignores Gerbicz checking.
+
 ## 6. What would settle the open questions (candidates for Phase 1 or a follow-up, not done)
 
 1. Time with many squarings per dispatch (for example 32 to 256) so fixed costs vanish, then redo the laptop and desktop sweeps.

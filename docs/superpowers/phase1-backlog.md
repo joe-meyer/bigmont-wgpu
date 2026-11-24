@@ -27,6 +27,10 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - Quadro P4000: correctness passes (all 5 configs) in container CT 104 on `host2`; its throughput is low-confidence (shared GPU, ramping clocks, `--quick` sweep only). Re-run with the other containers idle.
 - No Intel GPU exists on any available machine; Intel (subgroup 8 to 32) untested. Find one.
 
+## CPU path (decide early in Phase 1)
+- Add a native CPU backend (GMP-class big-integer modexp) as a first-class engine option: fallback where no usable GPU exists (host1's GeForce 9800 GT can run nothing in wgpu) and the baseline GPU results must beat. A single old quad-core i7-3770K is estimated at about 1,000 to 1,300 tests/s native (`results/2026-11-24-phase0-other-adapters.md` section 5a, from `openssl speed`), against 122 projected tests/s for the shader kernels on llvmpipe on a newer 16-thread CPU, and about 2,300 to 3,400 for the best GPU rows printed so far. Measure properly with GMP before relying on these.
+- Revisit the proposed 6,000 tests/s gate in light of that CPU baseline.
+
 ## Runner design (Phase 1, per spec section 3)
 - `run()` rebuilds shader, pipeline and buffers on every call; reuse them.
 - A `Backend` trait and async API; move test helpers out of the public `Batch`.

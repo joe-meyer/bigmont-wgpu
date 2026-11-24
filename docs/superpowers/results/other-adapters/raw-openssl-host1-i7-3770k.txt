@@ -1,0 +1,8 @@
+host1 (Proxmox, Intel Core i7-3770K, 4 cores / 8 threads), 2026-11-24, OpenSSL 3.5.9, `nice -n 19 openssl speed -seconds 4 rsa2048`, one process (one core), load average before 0.25.
+
+                   sign    verify    encrypt   decrypt   sign/s verify/s  encr./s  decr./s
+rsa  2048 bits 0.000915s 0.000027s 0.000029s 0.000929s   1092.8  36701.0  34461.5   1076.4
+                               keygen    encaps    decaps keygens/s  encaps/s  decaps/s
+                    rsa2048 0.069310s 0.000030s 0.000924s      14.4   33636.6    1082.2
+                               keygen     signs    verify keygens/s    sign/s  verify/s
+                    rsa2048 0.081373s 0.000915s 0.000027s      12.3    1093.0   36594.5
