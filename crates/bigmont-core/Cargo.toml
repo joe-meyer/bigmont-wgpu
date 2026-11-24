@@ -12,3 +12,7 @@ num-bigint = "0.4"
 num-traits = "0.2"
 pollster = "1.0.3"
 wgpu = "30.0.2"
+
+[dev-dependencies]
+ash = "0.38"
+naga = { version = "30.0.2", features = ["wgsl-in", "spv-out"] }
