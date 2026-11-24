@@ -1,0 +1,17 @@
+commit ba8e963 (code unchanged since 63ae502); CT104 on host2; 2026-11-24T15:40:59Z
+######## strict tests, adapter=llvmpipe backend=vulkan allow_skip=1 (host2 CPU)
+Model name:                              Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz
+running 5 tests
+test tpi16_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64 }: subgroup size 8..8 is not a multiple of tpi 16
+ok
+test tpi1_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... SKIP KernelConfig { tpi: 32, wg: 64 }: subgroup size 8..8 is not a multiple of tpi 32
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... SKIP KernelConfig { tpi: 32, wg: 128 }: subgroup size 8..8 is not a multiple of tpi 32
+SKIP KernelConfig { tpi: 32, wg: 256 }: subgroup size 8..8 is not a multiple of tpi 32
+ok
+test tpi8_matches_oracle ... adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 8, wg: 64 }
+ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.69s
+rc=0

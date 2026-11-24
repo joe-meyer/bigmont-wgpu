@@ -2,6 +2,28 @@
 
 Code under test: commit `63ae502` (same kernels, runner and sweep as the main results doc, `2026-11-24-phase0-results.md`). Raw outputs are in `other-adapters/`. The main doc's definitions apply: **squarings/s is measured; Gmad/s is derived; tests/s is a projection** (squarings/s / 2029), not a measured full Fermat test.
 
+## 0. Coverage matrix: every adapter on the four hosts (strict suite vs the CPU oracle)
+
+"All 5" means the five configurations of the suite (TPI 1, 8, 16, 32 at wg 64, plus TPI 32 at wg 128 and 256), none skipped. Cooperative widths skip where an adapter has no subgroup feature or a subgroup size that does not divide the width; that is a limit of the adapter, not a failure.
+
+| Host | Adapter (API) | Result | Raw file |
+|---|---|---|---|
+| Desktop (Windows) | RX 6700 XT (Vulkan) | all 5 pass | `../raw-tests-6700-vulkan.txt` |
+| Desktop | RX 6700 XT (Dx12, dxcompiler.dll on PATH) | all 5 pass | `../raw-tests-6700-dx12-dxc.txt` |
+| Desktop | RX 6700 XT (Dx12, default) | TPI 1 only (no SUBGROUP feature) | `../raw-6700-dx12-nodxc.txt` (sweep) |
+| Desktop | RX 6700 XT (OpenGL) | TPI 1 passes; cooperative widths skip (no SUBGROUP) | `raw-tests-desktop-gl.txt` |
+| Desktop | Microsoft Basic Render Driver (Dx12, CPU) | TPI 1 passes; cooperative skip | `raw-tests-warp-dx12.txt` |
+| Laptop | RTX 4070 Laptop (Vulkan) | all 5 pass | `raw-tests-laptop-vulkan.txt` |
+| Laptop | Radeon 780M iGPU (Vulkan) | all 5 pass | `raw-tests-laptop-vulkan.txt` |
+| Laptop | llvmpipe, Ryzen 7 7840HS (Vulkan, CPU) | TPI 1 and 8 pass; 16, 32 skip (subgroup 8) | `raw-tests-laptop-vulkan.txt` |
+| host2 (CT 104) | Quadro P4000 (Vulkan) | all 5 pass | `raw-tests-host2-ct104-p4000-vulkan.txt` |
+| host2 (CT 104) | llvmpipe, Xeon E5-2690 v2 (Vulkan, CPU) | TPI 1 and 8 pass; 16, 32 skip (subgroup 8) | `raw-tests-host2-ct104-llvmpipe.txt` |
+| host1 | GeForce 9800 GT (2008, DX10-class, nouveau) | **cannot run, not executed**: no compute-capable API (nouveau has no Vulkan; OpenGL 3.3 has no compute; DX12 needs feature level 11_0). Judged from the wgpu source and the card's generation, not from a run on host1 | none |
+| host1 | Intel HD Graphics 4000 (i7-3770K iGPU) | **not testable**: disabled in the BIOS, no PCI device 00:02.0 | none |
+| host1 | llvmpipe on the i7-3770K (AVX only, no AVX2) | **not run**: host1 has no Vulkan stack, Rust or test container | none |
+
+Not covered anywhere: any Intel GPU, wave64, browsers, OpenGL on the laptop and host2 GPUs, and the Windows Dx12 default path beyond the one-thread kernel.
+
 ## 1. Where it ran
 
 | Machine | Adapter | API | Subgroup size | Result file |

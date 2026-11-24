@@ -1,0 +1,15 @@
+desktop (Windows), commit ba8e963; 2026-11-24T15:41:10Z
+######## strict tests, adapter=6700 backend=gl allow_skip=1
+running 5 tests
+test tpi16_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test tpi1_matches_oracle ... adapter: AMD Radeon RX 6700 XT (Gl), config KernelConfig { tpi: 1, wg: 64 }
+ok
+test tpi32_matches_oracle ... SKIP KernelConfig { tpi: 32, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test tpi32_other_workgroup_sizes_match_oracle ... SKIP KernelConfig { tpi: 32, wg: 128 }: adapter lacks wgpu::Features::SUBGROUP
+SKIP KernelConfig { tpi: 32, wg: 256 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test tpi8_matches_oracle ... SKIP KernelConfig { tpi: 8, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP
+ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.95s
