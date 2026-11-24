@@ -19,7 +19,7 @@
 //! configuration failed validation, was rejected, or failed to benchmark.
 
 use bigmont_core::gpu::{Batch, Gpu, run};
-use bigmont_core::kernel::KernelConfig;
+use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_oracle::{LIMB_MASK, LIMBS, mont_square_chain, unpack_limbs};
 
 const BITS: u32 = 2029;
@@ -170,7 +170,7 @@ fn main() {
     );
     for &tpi in tpis.iter() {
         for &wg in wgs {
-            let cfg = KernelConfig { tpi, wg };
+            let cfg = KernelConfig { tpi, wg, variant: Variant::Rolled };
             if let Err(e) = cfg.validate() {
                 println!("{tpi:>4} {wg:>4}  skipped: {e}");
                 continue;

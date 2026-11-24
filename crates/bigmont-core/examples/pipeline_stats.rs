@@ -13,14 +13,14 @@
 use std::ffi::{CStr, CString};
 
 use ash::vk;
-use bigmont_core::kernel::KernelConfig;
+use bigmont_core::kernel::{KernelConfig, Variant};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let tpi: u32 = args.first().and_then(|v| v.parse().ok()).expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
     let wg: u32 = args.get(1).and_then(|v| v.parse().ok()).expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
     let want = args.get(2).map(|s| s.to_lowercase());
-    let cfg = KernelConfig { tpi, wg };
+    let cfg = KernelConfig { tpi, wg, variant: Variant::Rolled };
     cfg.validate().expect("invalid configuration");
     let out_dir = std::env::temp_dir().join("bigmont-isa");
     std::fs::create_dir_all(&out_dir).unwrap();

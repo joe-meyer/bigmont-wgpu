@@ -1,5 +1,5 @@
 use bigmont_core::gpu::{Batch, Gpu, run};
-use bigmont_core::kernel::KernelConfig;
+use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
@@ -59,26 +59,47 @@ fn check(cfg: KernelConfig) {
 
 #[test]
 fn tpi1_matches_oracle() {
-    check(KernelConfig { tpi: 1, wg: 64 });
+    check(KernelConfig { tpi: 1, wg: 64, variant: Variant::Rolled });
 }
 
 #[test]
 fn tpi8_matches_oracle() {
-    check(KernelConfig { tpi: 8, wg: 64 });
+    check(KernelConfig { tpi: 8, wg: 64, variant: Variant::Rolled });
 }
 
 #[test]
 fn tpi16_matches_oracle() {
-    check(KernelConfig { tpi: 16, wg: 64 });
+    check(KernelConfig { tpi: 16, wg: 64, variant: Variant::Rolled });
 }
 
 #[test]
 fn tpi32_matches_oracle() {
-    check(KernelConfig { tpi: 32, wg: 64 });
+    check(KernelConfig { tpi: 32, wg: 64, variant: Variant::Rolled });
 }
 
 #[test]
 fn tpi32_other_workgroup_sizes_match_oracle() {
-    check(KernelConfig { tpi: 32, wg: 128 });
-    check(KernelConfig { tpi: 32, wg: 256 });
+    check(KernelConfig { tpi: 32, wg: 128, variant: Variant::Rolled });
+    check(KernelConfig { tpi: 32, wg: 256, variant: Variant::Rolled });
+}
+
+#[test]
+fn tpi8_unrolled_matches_oracle() {
+    check(KernelConfig { tpi: 8, wg: 64, variant: Variant::Unrolled });
+}
+
+#[test]
+fn tpi16_unrolled_matches_oracle() {
+    check(KernelConfig { tpi: 16, wg: 64, variant: Variant::Unrolled });
+}
+
+#[test]
+fn tpi32_unrolled_matches_oracle() {
+    check(KernelConfig { tpi: 32, wg: 64, variant: Variant::Unrolled });
+}
+
+#[test]
+fn tpi32_unrolled_other_workgroup_sizes_match_oracle() {
+    check(KernelConfig { tpi: 32, wg: 128, variant: Variant::Unrolled });
+    check(KernelConfig { tpi: 32, wg: 256, variant: Variant::Unrolled });
 }

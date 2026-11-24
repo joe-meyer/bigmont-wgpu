@@ -13,12 +13,21 @@ fn any_nonzero(v: u32) -> bool { return v != 0u; }
 ";
 
 /// Subgroup helpers for TPI > 1; `base` is the subgroup lane id of this instance's lane 0.
-const SUBGROUP_HELPERS: &str = "
+pub(crate) const SUBGROUP_HELPERS: &str = "
 fn bcast(v: u32, src_lane: u32, base: u32) -> u32 { return subgroupShuffle(v, base + src_lane); }
 fn down1(v: u32, lane: u32) -> u32 { return select(0u, subgroupShuffleDown(v, 1u), lane != TPI - 1u); }
 fn up1(v: u32, lane: u32) -> u32 { return select(0u, subgroupShuffleUp(v, 1u), lane != 0u); }
 fn any_nonzero(v: u32) -> bool { return subgroupAny(v != 0u); }
 ";
+
+/// Which code generator produces the kernel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Variant {
+    /// The `mont.wgsl` template: limb arrays and loops (the Phase 0 baseline).
+    Rolled,
+    /// Fully unrolled straight-line code with named scalar limbs (TPI 8, 16, 32 only).
+    Unrolled,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KernelConfig {
@@ -26,6 +35,8 @@ pub struct KernelConfig {
     pub tpi: u32,
     /// Workgroup size (invocations).
     pub wg: u32,
+    /// Code generator: rolled template or unrolled straight-line generator.
+    pub variant: Variant,
 }
 
 impl KernelConfig {
@@ -38,6 +49,9 @@ impl KernelConfig {
         }
         if self.wg == 0 || self.wg % self.tpi != 0 || self.wg > 256 {
             return Err(format!("workgroup size {} must be a multiple of tpi {} and at most 256", self.wg, self.tpi));
+        }
+        if self.variant == Variant::Unrolled && self.tpi == 1 {
+            return Err("the unrolled variant supports tpi 8, 16, 32 only (tpi 1 is rolled-only)".to_string());
         }
         Ok(())
     }
@@ -56,6 +70,9 @@ impl KernelConfig {
 
     /// The complete WGSL source for this configuration.
     pub fn wgsl(&self) -> String {
+        if self.variant == Variant::Unrolled {
+            return crate::unrolled::wgsl(self);
+        }
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
             // naga 30 rejects `enable subgroups;` as unimplemented; the subgroup built-ins need no
             // directive there and are gated by wgpu::Features::SUBGROUP at device creation.
