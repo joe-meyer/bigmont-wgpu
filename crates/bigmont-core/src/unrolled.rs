@@ -157,7 +157,11 @@ fn header(g: &mut Gen, cfg: &KernelConfig, target: Target, mode: Mode, lpl: u32,
         g.line(format!("const K: u32 = {k}u;       // owners between light carry passes (K * LPL <= {PERIOD} steps)"));
     }
     g.line("");
-    g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
+    if mode == Mode::Fermat {
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch");
+    } else {
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
+    }
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");
     g.line("@group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;");
     g.line("@group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;");

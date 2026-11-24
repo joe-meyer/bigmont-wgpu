@@ -9,7 +9,7 @@ const B: u32 = 13u;
 const MASK: u32 = 0x1fffu;
 const K: u32 = 1u;       // owners between light carry passes (K * LPL <= 20 steps)
 
-@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings
+@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch
 @group(0) @binding(1) var<storage, read> n_limbs: array<u32>;
 @group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;
 @group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;
