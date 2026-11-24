@@ -1,8 +1,14 @@
 [package]
 name = "bigmont-core"
+description = "Portable (wgpu) 2048-bit Montgomery arithmetic kernels"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 bigmont-oracle = { path = "../bigmont-oracle" }
+bytemuck = { version = "1.25.2", features = ["derive"] }
+num-bigint = "0.4"
+num-traits = "0.2"
+pollster = "1.0.3"
+wgpu = "30.0.2"
