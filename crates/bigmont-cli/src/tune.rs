@@ -8,7 +8,7 @@ use bigmont_oracle::{LIMB_MASK, XorShift64, limbs_for_bits, mont_square_chain_n,
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 const TPIS: [u32; 4] = [4, 8, 16, 32];
@@ -208,19 +208,76 @@ fn read_cache(path: &Path) -> Vec<String> {
     std::fs::read_to_string(path).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
 }
 
-fn write_cache(path: &Path, key: &str, value: &str) {
+/// Replaces (or adds) the entry for `key` in the cache file at `path`, creating missing parent
+/// directories. The file is written to `<path>.tmp.<pid>` and renamed over `path`, so concurrent
+/// readers never see a partial file and several processes can share one cache. (Two processes
+/// writing at the same moment can each drop the other's new entry, which only costs a retune.)
+/// Failures are reported on stderr and otherwise ignored: the cache is an optimisation.
+pub fn write_cache(path: &Path, key: &str, value: &str) {
     let prefix = format!("{key}|");
     let mut lines: Vec<String> = read_cache(path).into_iter().filter(|l| !l.starts_with(&prefix)).collect();
     lines.push(format!("{prefix}{value}"));
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".tmp.{}", std::process::id()));
+    let tmp = PathBuf::from(tmp);
     let result = (|| {
         if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(path, lines.join("\n") + "\n")
+        std::fs::write(&tmp, lines.join("\n") + "\n")?;
+        std::fs::rename(&tmp, path)
     })();
     if let Err(e) = result {
+        let _ = std::fs::remove_file(&tmp);
         eprintln!("cannot write tuning cache {}: {e}", path.display());
     }
+}
+
+/// Records `cfg` as the best configuration for `bits`-bit numbers on this adapter.
+pub fn store(gpu: &Gpu, bits: u32, cfg: &KernelConfig, squarings_per_sec: f64, path: &Path) {
+    write_cache(path, &cache_key(gpu, bits), &cache_value(cfg, squarings_per_sec));
+}
+
+/// The environment values that decide where the tuning cache lives (injectable for tests).
+#[derive(Clone, Debug, Default)]
+pub struct CacheEnv {
+    /// `BIGMONT_CACHE`: the cache file itself.
+    pub bigmont_cache: Option<PathBuf>,
+    /// `LOCALAPPDATA` (Windows).
+    pub local_app_data: Option<PathBuf>,
+    /// `XDG_CACHE_HOME`.
+    pub xdg_cache_home: Option<PathBuf>,
+    /// `HOME`.
+    pub home: Option<PathBuf>,
+}
+
+impl CacheEnv {
+    pub fn from_process() -> CacheEnv {
+        let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
+        CacheEnv { bigmont_cache: var("BIGMONT_CACHE"), local_app_data: var("LOCALAPPDATA"), xdg_cache_home: var("XDG_CACHE_HOME"), home: var("HOME") }
+    }
+}
+
+/// The per-user default cache file, or `None` when no cache directory can be determined (the
+/// engine then runs without a cache). `BIGMONT_CACHE` wins; otherwise Windows uses
+/// `%LOCALAPPDATA%\bigmont\tune.cache` and other systems `$XDG_CACHE_HOME/bigmont/tune.cache` or
+/// `$HOME/.cache/bigmont/tune.cache`. Empty variables count as unset.
+pub fn default_cache_path(env: &CacheEnv, windows: bool) -> Option<PathBuf> {
+    let set = |p: &Option<PathBuf>| p.clone().filter(|p| !p.as_os_str().is_empty());
+    if let Some(p) = set(&env.bigmont_cache) {
+        return Some(p);
+    }
+    let dir = if windows {
+        set(&env.local_app_data)?
+    } else {
+        set(&env.xdg_cache_home).or_else(|| set(&env.home).map(|h| h.join(".cache")))?
+    };
+    Some(dir.join("bigmont").join("tune.cache"))
+}
+
+/// The cache file to use: none with `--no-cache`, else `--cache PATH`, else the default.
+pub fn resolve_cache(explicit: Option<PathBuf>, disabled: bool, env: &CacheEnv, windows: bool) -> Option<PathBuf> {
+    if disabled { None } else { explicit.or_else(|| default_cache_path(env, windows)) }
 }
 
 /// Picks the fastest configuration that passes the self-test, reusing `cache` unless `retune`.
@@ -263,7 +320,7 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
     }
     let best = best.ok_or_else(|| format!("no kernel configuration passed the self-test on {}: {}", gpu.describe(), reasons.join("; ")))?;
     if let Some(path) = cache {
-        write_cache(path, &key, &cache_value(&best.cfg, best.squarings_per_sec));
+        store(gpu, bits, &best.cfg, best.squarings_per_sec, path);
     }
     Ok(best)
 }

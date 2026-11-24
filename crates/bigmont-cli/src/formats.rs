@@ -2,7 +2,7 @@
 //!
 //! Both start with a 16-byte little-endian header: magic `u32`, container bits `u32`, count `u64`.
 //! A candidate body is `count` numbers of `ceil(bits / 32)` little-endian `u32` limbs; a verdict
-//! body is `count` bytes (0 composite, 1 probable prime, 2 reserved for "not tested").
+//! body is `count` bytes (0 composite, 1 probable prime, 2 GEC alarm; this driver never writes 2).
 
 use num_bigint::BigUint;
 use std::path::{Path, PathBuf};
@@ -102,7 +102,10 @@ pub fn write_verdicts(path: &Path, bits: u32, verdicts: &[u8]) -> Result<(), Str
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, out).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
+    std::fs::write(&tmp, out).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp); // a failed write can leave a partial file
+        format!("cannot write {}: {e}", tmp.display())
+    })?;
     std::fs::rename(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("cannot rename {} to {}: {e}", tmp.display(), path.display())

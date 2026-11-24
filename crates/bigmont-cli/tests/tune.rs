@@ -147,3 +147,64 @@ fn a_cache_entry_naming_a_non_candidate_falls_back_to_a_retune() {
     assert_ne!(tuned.squarings_per_sec, 1e9);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---- default cache location (pure, no GPU) ----
+
+use std::path::PathBuf as P;
+
+fn env(bigmont: Option<&str>, local: Option<&str>, xdg: Option<&str>, home: Option<&str>) -> tune::CacheEnv {
+    let p = |s: Option<&str>| s.map(P::from);
+    tune::CacheEnv { bigmont_cache: p(bigmont), local_app_data: p(local), xdg_cache_home: p(xdg), home: p(home) }
+}
+
+#[test]
+fn default_cache_path_on_windows_is_under_localappdata() {
+    let e = env(None, Some(r"C:\Users\j\AppData\Local"), Some("/xdg"), Some("/home/j"));
+    assert_eq!(tune::default_cache_path(&e, true), Some(P::from(r"C:\Users\j\AppData\Local").join("bigmont").join("tune.cache")));
+    assert_eq!(tune::default_cache_path(&env(None, None, Some("/xdg"), Some("/home/j")), true), None, "no LOCALAPPDATA: run without a cache");
+}
+
+#[test]
+fn default_cache_path_elsewhere_prefers_xdg_then_home() {
+    let e = env(None, None, Some("/xdg"), Some("/home/j"));
+    assert_eq!(tune::default_cache_path(&e, false), Some(P::from("/xdg").join("bigmont").join("tune.cache")));
+    let e = env(None, None, None, Some("/home/j"));
+    assert_eq!(tune::default_cache_path(&e, false), Some(P::from("/home/j").join(".cache").join("bigmont").join("tune.cache")));
+    let e = env(None, None, Some(""), Some("/home/j"));
+    assert_eq!(tune::default_cache_path(&e, false), Some(P::from("/home/j").join(".cache").join("bigmont").join("tune.cache")), "empty XDG_CACHE_HOME counts as unset");
+    assert_eq!(tune::default_cache_path(&env(None, None, None, None), false), None, "no home directory: run without a cache");
+    assert_eq!(tune::default_cache_path(&env(None, None, None, Some("")), false), None);
+}
+
+#[test]
+fn bigmont_cache_overrides_the_default_on_every_platform() {
+    for windows in [true, false] {
+        let e = env(Some("/custom/tune.cache"), Some("/local"), Some("/xdg"), Some("/home/j"));
+        assert_eq!(tune::default_cache_path(&e, windows), Some(P::from("/custom/tune.cache")));
+        // Even with no home at all.
+        assert_eq!(tune::default_cache_path(&env(Some("/custom/tune.cache"), None, None, None), windows), Some(P::from("/custom/tune.cache")));
+    }
+}
+
+#[test]
+fn resolve_cache_applies_the_flags_over_the_default() {
+    let e = env(Some("/from-env"), None, None, None);
+    assert_eq!(tune::resolve_cache(Some(P::from("/flag")), false, &e, false), Some(P::from("/flag")), "--cache beats BIGMONT_CACHE");
+    assert_eq!(tune::resolve_cache(None, false, &e, false), Some(P::from("/from-env")));
+    assert_eq!(tune::resolve_cache(None, true, &e, false), None, "--no-cache disables the default");
+}
+
+#[test]
+fn write_cache_is_atomic_creates_parents_and_replaces_its_own_key() {
+    let dir = std::env::temp_dir().join(format!("bigmont-write-cache-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let cache = dir.join("a").join("b").join("tune.cache"); // parents do not exist
+    tune::write_cache(&cache, "k1", "v1");
+    tune::write_cache(&cache, "k2", "v2");
+    tune::write_cache(&cache, "k1", "v3");
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert_eq!(text.lines().collect::<Vec<_>>(), ["k2|v2", "k1|v3"]);
+    let names: Vec<_> = std::fs::read_dir(cache.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(names, ["tune.cache"], "no temporary file is left behind");
+    let _ = std::fs::remove_dir_all(dir);
+}

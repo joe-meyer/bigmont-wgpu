@@ -30,6 +30,14 @@ fn gpu_path_counts(ns: &[BigUint], want: &[u8]) -> (u64, u64) {
     (prps, composites)
 }
 
+/// Removes a file when dropped, also when the test fails.
+struct RemoveOnDrop(std::path::PathBuf);
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 #[test]
 fn cpu_backend_matches_the_oracle_including_degenerate_inputs() {
     let (ns, want) = batch();
@@ -40,13 +48,17 @@ fn cpu_backend_matches_the_oracle_including_degenerate_inputs() {
 #[test]
 fn gpu_backend_matches_the_oracle_and_buckets_by_bit_length() {
     let (ns, want) = batch();
-    let mut e = Engine::open(Options { cache: Some(std::env::temp_dir().join(format!("bigmont-engine-test-{}.cache", std::process::id()))), ..opts(Backend::Gpu) });
+    let cache = std::env::temp_dir().join(format!("bigmont-engine-test-{}.cache", std::process::id()));
+    let _cleanup = RemoveOnDrop(cache.clone());
+    let mut e = Engine::open(Options { cache: Some(cache), ..opts(Backend::Gpu) });
     eprintln!("{}", e.describe());
     assert_eq!(e.verdicts(&ns).unwrap(), want);
     let r = e.report();
     assert_eq!(r.prp_disagreements, 0);
     assert!(r.gpu_tests > 0, "the 1019-bit bucket has 12 entries, above min_gpu_batch 4: it must run on the GPU");
-    assert!(r.cpu_tests > 0, "tiny and tiny-bucket candidates run on the CPU");
+    // Both bit-length buckets (1019 and 777 bits) are above min_gpu_batch, so the only candidate the
+    // CPU counts as a test is the 2-bit `3`; 0, 1, 2, 4 and the even number follow the verdict rules.
+    assert_eq!(r.cpu_tests, 1, "only the 2-bit candidate 3 is tested on the CPU");
     let (gpu_prps, _) = gpu_path_counts(&ns, &want);
     assert!(gpu_prps >= 2, "the batch holds at least the two planted probable primes");
     assert_eq!(r.gpu_errors, 0);

@@ -16,8 +16,9 @@ use std::time::Instant;
 pub enum Backend {
     /// GPU when one opens (and has subgroups), otherwise the CPU.
     Auto,
-    /// GPU only: `verdicts` fails if no adapter opens. Buckets still fall back to the CPU when the
-    /// GPU errors at run time (counted in `EngineReport::gpu_errors`).
+    /// GPU only: `verdicts` fails if no adapter opens. Buckets still fall back to the CPU when
+    /// autotuning or the runner returns `Err` (counted in `EngineReport::gpu_errors`); a lost device
+    /// or an uncaptured wgpu error is not handled that way (see `try_gpu`).
     Gpu,
     Cpu,
 }
@@ -26,7 +27,8 @@ pub enum Backend {
 pub struct Options {
     pub backend: Backend,
     pub selector: AdapterSelector,
-    /// Tuning cache file; `None` tunes every run.
+    /// Tuning cache file; `None` tunes every run. (The `bigmont` binary fills this from `--cache`,
+    /// `BIGMONT_CACHE` or the per-user default; the library default is no cache.)
     pub cache: Option<PathBuf>,
     pub retune: bool,
     /// One in `verify_rate` GPU composites is re-checked on the CPU (0 = never). Every GPU
@@ -113,6 +115,11 @@ impl Engine {
         }
     }
 
+    /// Whether a GPU is in use (the backend resolved to the GPU rather than the CPU).
+    pub fn gpu_active(&self) -> bool {
+        self.gpu.is_some()
+    }
+
     pub fn report(&self) -> EngineReport {
         self.report.clone()
     }
@@ -152,7 +159,15 @@ impl Engine {
     }
 
     /// Runs the bucket on the GPU with integrity checks. `None` means "use the CPU": the GPU is
-    /// not in play for this bucket, or it failed (the failure is counted, never propagated).
+    /// not in play for this bucket, or autotuning / `Runner::new` / `Runner::fermat` returned `Err`
+    /// (counted in `gpu_errors`, then the bucket is redone on the CPU).
+    ///
+    /// Only those `Err` returns are caught. A lost device or an uncaptured wgpu error (an
+    /// out-of-memory or validation error outside the runner's error scopes, e.g. in a submit,
+    /// `write_buffer` or poll) is not: `Gpu::open` installs no device-lost or uncaptured-error
+    /// handler, so wgpu's default uncaptured-error handler panics (a lost device reaches it with the
+    /// next failing operation) and the run aborts without writing a verdict file (the verdict write
+    /// is atomic, so no partial file is left).
     fn try_gpu(&mut self, bits: u32, nums: &[BigUint], composites_seen: &mut u64) -> Option<Vec<bool>> {
         let gpu = self.gpu.as_ref()?;
         if bits < 64 || nums.len() < self.opts.min_gpu_batch {
