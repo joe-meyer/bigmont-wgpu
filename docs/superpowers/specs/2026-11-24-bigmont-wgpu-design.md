@@ -1,7 +1,7 @@
 # bigmont-wgpu: portable GPU engine for Beacon-class prime-gap hunting
 
 Date: 2026-11-24
-Status: design, awaiting review
+Status: design, approved by user 2026-11-24 (incl. M1 and upstream strategy)
 Scope: sub-project A (the engine). Sub-project B (web distribution) is out of scope here; section 8 only fixes the boundary.
 
 ## 1. Goal
@@ -62,6 +62,20 @@ Gate: the threshold is set with the user once the numbers exist. If every backen
 2. `bigmont-sieve`: port of `gbs.cu`, identity gate against the CPU sieve.
 3. `bigmont-cli`: drop-in for `g1_fermat_v3`, verified against the callers in the kit.
 4. Portable orchestration: replace `nvidia-smi`, root and `/dev/shm` assumptions (in a wrapper or a Beacon fork).
+
+### Milestone M1: Beacon-compatible drop-in
+
+After Phase 0 passes its gate and the canary set passes, the first end-to-end milestone is: `bigmont-cli` replaces `g1_fermat_v3` in an unmodified (or minimally modified) Beacon checkout, passes the canary, and completes one real hunt cycle on a non-NVIDIA card. This comes before any web work.
+
+## 5a. Upstream strategy (merging into Beacon)
+
+Merging into djuk8/beacon is a goal to aim for, not a dependency. The crate stays standalone so gapsieve and the web build work whether or not upstream accepts it.
+
+- Beacon is a research pipeline (CUDA, C, Python, bash, SHA-256 stamps per kit version), not a library. The realistic merge is an optional portable backend that builds on its own and is selected by a setting, not Rust code woven into their tree.
+- Build with upstream in mind: keep Beacon's candidate and verdict file formats exactly, build with one `cargo` command, keep Beacon's gate and stamp style, Apache-2.0 headers.
+- The expected change to their scripts is small: a driver-path setting and portable device detection in place of `nvidia-smi` in `fresh_box.sh`. Unconfirmed until checked against the kit.
+- Timing: do not contact the author before Phase 0 produces speed numbers. A cross-vendor port that is much slower than CGBN is a weak pitch. After that, a short post on the mersenneforum Prime Gap Searches thread or an issue on the repo is the natural opener. The user decides whether and when; nothing is posted on their behalf.
+- Risks: the author may not want a Rust dependency or a non-NVIDIA path; Beacon's kit versions change quickly and can break file-format assumptions.
 
 ## 6. Correctness
 
