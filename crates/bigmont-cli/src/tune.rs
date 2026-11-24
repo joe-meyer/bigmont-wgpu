@@ -4,7 +4,7 @@
 use bigmont_core::gpu::{Batch, Gpu, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
-use bigmont_oracle::{LIMB_MASK, XorShift64, limbs_for_bits, mont_square_chain_n, random_odd_modulus, unpack_limbs};
+use bigmont_oracle::{LIMB_BITS, LIMB_MASK, XorShift64, limbs_for_bits, mont_square_chain_n, random_odd_modulus, unpack_limbs};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use std::collections::HashMap;
@@ -19,6 +19,29 @@ const MEASURE_GROUPS: u32 = 256;
 const CPU_MEASURE_GROUPS: u32 = 4;
 /// Grow the timed dispatch until it takes at least this long.
 const MEASURE_TARGET_SECS: f64 = 0.05;
+
+/// The smallest limb class: the unrolled kernels need at least `tpi` limbs and the narrowest width
+/// is 4, so every bit length that needs four limbs or fewer (up to 48 bits, down to the 2-bit number
+/// 3) builds the same kernels.
+const MIN_CLASS_LIMBS: u32 = 4;
+/// Self-tests need random moduli that are sometimes prime and sometimes not, which requires room for
+/// them: a 2-bit modulus has exactly one value and 8-bit ones are mostly prime or tiny.
+const MIN_SELF_TEST_BITS: u32 = 32;
+
+/// The tuning class of `bits`-bit numbers: the minimum limb count `limbs_for_bits(bits)` (R > 16n),
+/// at least 4. Every bit length of a class builds the same kernel for each cooperative width (the
+/// limb count is that minimum rounded up to a multiple of `tpi`), so the tuned configuration, the
+/// cache entry and the self-test are shared by the whole class.
+pub fn limb_class(bits: u32) -> u32 {
+    (limbs_for_bits(bits) as u32).max(MIN_CLASS_LIMBS)
+}
+
+/// The bit length autotuning uses to exercise limb class `limbs`: the largest length the class
+/// supports (`13 * limbs - 4`, so R > 16n still holds), which is at least 48 and so leaves room for
+/// both probable primes and composites even when the class's smallest members are tiny.
+pub fn class_bits(limbs: u32) -> u32 {
+    LIMB_BITS * limbs - 4
+}
 
 /// Unrolled configurations for `bits`-bit numbers that fit this adapter's subgroups. Empty when the
 /// adapter has no subgroup support.
@@ -90,6 +113,9 @@ pub fn self_test(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String> 
 
 fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String> {
     cfg.validate()?;
+    if bits < MIN_SELF_TEST_BITS {
+        return Err(format!("the self-test needs at least {MIN_SELF_TEST_BITS}-bit numbers, got {bits} (tune a limb class at tune::class_bits)"));
+    }
     if 13 * cfg.limbs < bits + 4 {
         return Err(format!("{} limbs are too few for {bits}-bit numbers (need R > 16n)", cfg.limbs));
     }
@@ -184,7 +210,7 @@ fn clean(s: &str) -> String {
 
 fn cache_key(gpu: &Gpu, bits: u32) -> String {
     let i = &gpu.info;
-    format!("{}|{:?}|{} {}|{}", clean(&i.name), i.backend, clean(&i.driver), clean(&i.driver_info), limbs_for_bits(bits))
+    format!("{}|{:?}|{} {}|{}", clean(&i.name), i.backend, clean(&i.driver), clean(&i.driver_info), limb_class(bits))
 }
 
 fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
@@ -233,7 +259,7 @@ pub fn write_cache(path: &Path, key: &str, value: &str) {
     }
 }
 
-/// Records `cfg` as the best configuration for `bits`-bit numbers on this adapter.
+/// Records `cfg` as the best configuration for the limb class of `bits`-bit numbers on this adapter.
 pub fn store(gpu: &Gpu, bits: u32, cfg: &KernelConfig, squarings_per_sec: f64, path: &Path) {
     write_cache(path, &cache_key(gpu, bits), &cache_value(cfg, squarings_per_sec));
 }
@@ -282,7 +308,14 @@ pub fn resolve_cache(explicit: Option<PathBuf>, disabled: bool, env: &CacheEnv, 
 
 /// Picks the fastest configuration that passes the self-test, reusing `cache` unless `retune`.
 /// `Err` when none passes (the engine then falls back to the CPU).
+///
+/// Tuning is per limb class (`limb_class(bits)`), not per exact bit length: the self-test and the
+/// timing run at the class's representative length `class_bits`, and the cache entry is keyed by the
+/// class. The returned configuration is the one `KernelConfig::for_bits` gives for `bits` too (same
+/// limb count across the class). This keeps tiny sizes testable (a 2-bit modulus has only the value
+/// 3) and means two bit lengths in one class cost one tuning, not two.
 pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Result<Tuned, String> {
+    let bits = class_bits(limb_class(bits));
     let cands = candidates(gpu, bits);
     if cands.is_empty() {
         let why = gpu.check_subgroups(4).err().unwrap_or_else(|| "no configuration fits".into());

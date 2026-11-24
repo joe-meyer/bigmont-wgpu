@@ -22,6 +22,11 @@ pub struct RunStats {
     pub tests: u64,
 }
 
+/// The smallest bit length a [`Runner`] accepts: 2, the length of n = 3, the smallest odd number
+/// the Fermat test applies to. Every length from here up is supported (the kernel arithmetic needs
+/// only R = 2^(13 * limbs) > 16n, which `KernelConfig::for_bits` guarantees at any size).
+pub const MIN_BITS: u32 = 2;
+
 pub struct Runner {
     cfg: KernelConfig,
     bits: u32,
@@ -53,15 +58,18 @@ struct Prep {
 }
 
 impl Runner {
-    /// Builds the Fermat shader, pipeline and buffers for `bits`-bit candidates. `capacity` (the
-    /// most candidates per dispatch) is clamped to the dispatch-size and storage-binding limits.
+    /// Builds the Fermat shader, pipeline and buffers for `bits`-bit candidates, `bits >= MIN_BITS`
+    /// (2). `capacity` (the most candidates per dispatch) is clamped to the dispatch-size and
+    /// storage-binding limits.
     pub fn new(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<Runner, String> {
         cfg.validate()?;
         if cfg.variant != Variant::Unrolled {
             return Err("the Fermat runner needs the unrolled variant".into());
         }
-        if bits < 64 {
-            return Err(format!("{bits} bits is below the 64-bit minimum"));
+        // The ladder runs `bits - 1` iterations and reads exponent bit `bits - 2 - iteration`, which
+        // needs bits >= 2; below that there is no odd n >= 3 anyway.
+        if bits < MIN_BITS {
+            return Err(format!("{bits} bits is below the {MIN_BITS}-bit minimum (the smallest odd candidate, n = 3, has {MIN_BITS} bits)"));
         }
         if 13 * cfg.limbs < bits + 4 {
             return Err(format!("{} limbs give R = 2^{}, which is not above 16n for {bits}-bit n (use KernelConfig::for_bits)", cfg.limbs, 13 * cfg.limbs));

@@ -208,3 +208,79 @@ fn write_cache_is_atomic_creates_parents_and_replaces_its_own_key() {
     assert_eq!(names, ["tune.cache"], "no temporary file is left behind");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---- limb classes: tuning is shared by every bit length with the same kernel shape ----
+
+#[test]
+fn limb_class_is_the_minimum_limb_count_floored_at_the_smallest_kernel() {
+    use bigmont_oracle::limbs_for_bits;
+    for bits in 1..=3000u32 {
+        let class = tune::limb_class(bits);
+        assert!(class >= 4, "{bits} bits: class {class} is below the smallest kernel (4 limbs)");
+        assert_eq!(class, (limbs_for_bits(bits) as u32).max(4), "{bits} bits");
+        let rep = tune::class_bits(class);
+        assert!(rep >= bits, "{bits} bits: the class representative ({rep} bits) must cover the class");
+        assert!(rep >= 32, "{bits} bits: the representative needs room for both PRPs and composites ({rep} bits)");
+        assert_eq!(tune::limb_class(rep), class, "{bits} bits: the representative must stay in its own class");
+        assert_eq!(rep, 13 * class - 4, "the representative is the largest length the class supports");
+    }
+    // 2 to 48 bits share the smallest class; 49 bits needs a fifth limb.
+    for bits in 2..=48u32 {
+        assert_eq!(tune::limb_class(bits), 4, "{bits} bits");
+    }
+    assert_eq!(tune::limb_class(49), 5);
+    assert_eq!(tune::limb_class(2029), 157);
+    assert_eq!(tune::class_bits(4), 48);
+}
+
+#[test]
+fn every_bit_length_of_a_class_builds_the_same_kernel_as_its_representative() {
+    // The tuned (tpi, wg) is chosen at the representative length; the Runner then uses it at the exact
+    // length. That is sound only if both give the same limb count for every cooperative width.
+    for bits in 2..=3000u32 {
+        let rep = tune::class_bits(tune::limb_class(bits));
+        for tpi in [4u32, 8, 16, 32] {
+            let at = KernelConfig::for_bits(bits, tpi, 64, Variant::Unrolled);
+            let at_rep = KernelConfig::for_bits(rep, tpi, 64, Variant::Unrolled);
+            assert_eq!(at, at_rep, "{bits} bits, tpi {tpi}");
+        }
+    }
+}
+
+#[test]
+fn self_test_refuses_lengths_too_small_for_a_meaningful_test_instead_of_hanging() {
+    let Some(gpu) = gpu() else { return };
+    let cfg = KernelConfig::for_bits(48, 8, 64, Variant::Unrolled);
+    if skip_unless(gpu.check_subgroups(8).is_ok(), "no tpi 8 on this adapter") {
+        return;
+    }
+    for bits in [2u32, 9, 31] {
+        let err = tune::self_test(&gpu, cfg, bits).expect_err("must be refused");
+        assert!(err.contains("at least 32"), "{bits} bits: {err}");
+    }
+}
+
+#[test]
+fn autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers() {
+    let Some(gpu) = gpu() else { return };
+    if skip_unless(!tune::candidates(&gpu, 20).is_empty(), "no subgroup candidates on this adapter") {
+        return;
+    }
+    let (dir, cache) = temp_cache("class");
+    // 2 bits: only the number 3 exists, so a self-test at 2 bits would be impossible; the class
+    // representative (48 bits) is used.
+    let first = tune::autotune(&gpu, 2, Some(&cache), false).expect("autotune at 2 bits");
+    assert!(!first.from_cache);
+    assert_eq!(first.cfg, KernelConfig::for_bits(2, first.cfg.tpi, first.cfg.wg, Variant::Unrolled));
+    for bits in [20u32, 40, 48] {
+        let again = tune::autotune(&gpu, bits, Some(&cache), false).expect("autotune from the class entry");
+        assert!(again.from_cache, "{bits} bits shares the 2-bit class and must be served from the cache");
+        assert_eq!(again.cfg, KernelConfig::for_bits(bits, first.cfg.tpi, first.cfg.wg, Variant::Unrolled));
+    }
+    let lines = std::fs::read_to_string(&cache).unwrap().lines().filter(|l| !l.is_empty()).count();
+    assert_eq!(lines, 1, "one cache line for the whole class");
+    // 49 bits is the next class: not served from that entry.
+    let next = tune::autotune(&gpu, 49, Some(&cache), false).expect("autotune at 49 bits");
+    assert!(!next.from_cache);
+    let _ = std::fs::remove_dir_all(dir);
+}

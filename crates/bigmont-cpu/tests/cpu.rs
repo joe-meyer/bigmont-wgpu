@@ -15,6 +15,21 @@ fn matches_the_oracle_on_small_and_edge_values() {
 }
 
 #[test]
+fn every_odd_number_below_8192_matches_the_oracle() {
+    // The engine sends 2- to 12-bit numbers to the GPU by default, but the CPU stays the fallback
+    // and the integrity re-check for them, so it must be right on every tiny modulus too.
+    for v in (3u32..8192).step_by(2) {
+        let n = BigUint::from(v);
+        assert_eq!(bigmont_cpu::fermat_base2(&n), bigmont_oracle::fermat_base2(&n), "n = {v}");
+    }
+    for k in [31u32, 32, 33, 63, 64, 65] {
+        for n in [mersenne(k), (BigUint::one() << (k - 1)) + 1u32, (BigUint::one() << k) + 1u32] {
+            assert_eq!(bigmont_cpu::fermat_base2(&n), bigmont_oracle::fermat_base2(&n), "n = {n}");
+        }
+    }
+}
+
+#[test]
 fn mersenne_numbers() {
     // For prime p, n = 2^p-1 has ord_n(2) = p, and p divides n-1 = 2^p-2 (Fermat's little theorem), so
     // 2^(n-1) = 1 mod n: every such n passes the base-2 Fermat test even when it is composite (2^67-1, 2^2029-1).

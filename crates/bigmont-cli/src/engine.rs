@@ -6,6 +6,7 @@
 
 use crate::tune;
 use bigmont_core::gpu::{AdapterSelector, Gpu};
+use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, HashMap};
@@ -34,7 +35,9 @@ pub struct Options {
     /// One in `verify_rate` GPU composites is re-checked on the CPU (0 = never). Every GPU
     /// probable prime is always re-checked.
     pub verify_rate: u32,
-    /// Buckets smaller than this run on the CPU (tuning and dispatch overhead is not worth it).
+    /// Bit-length buckets with fewer candidates than this run on the CPU (tuning and dispatch
+    /// overhead is not worth it). This is the only reason a bucket skips the GPU: the bit length
+    /// itself does not matter, the GPU is used from 2-bit numbers (n = 3) up.
     pub min_gpu_batch: usize,
     /// Most candidates per GPU dispatch.
     pub capacity: u32,
@@ -74,6 +77,9 @@ pub struct EngineReport {
     pub gpu_errors: u64,
     /// Seconds spent in autotuning (inside `verdicts`).
     pub tune_secs: f64,
+    /// Limb classes autotuned (or loaded from the cache) by this engine: one per distinct
+    /// `tune::limb_class` among the GPU buckets, however many bit lengths share it.
+    pub tuned_classes: u64,
 }
 
 pub struct Engine {
@@ -81,8 +87,12 @@ pub struct Engine {
     gpu: Option<Gpu>,
     /// Why no GPU is in use (open failure, or no subgroups for `Auto`).
     gpu_err: Option<String>,
-    /// One runner per bit length; `None` records that building it failed.
+    /// One runner per bit length (a runner bakes its exact `bits`); `None` records that building it
+    /// failed.
     runners: HashMap<u32, Option<Runner>>,
+    /// The tuned kernel shape per limb class (`tune::limb_class`), shared by every bit length in the
+    /// class; the error is why tuning the class failed.
+    tuned: HashMap<u32, Result<KernelConfig, String>>,
     report: EngineReport,
 }
 
@@ -99,7 +109,7 @@ impl Engine {
                 Err(e) => (None, Some(e)),
             },
         };
-        Engine { opts, gpu, gpu_err, runners: HashMap::new(), report: EngineReport::default() }
+        Engine { opts, gpu, gpu_err, runners: HashMap::new(), tuned: HashMap::new(), report: EngineReport::default() }
     }
 
     fn cpu_threads(&self) -> usize {
@@ -170,13 +180,28 @@ impl Engine {
     /// is atomic, so no partial file is left).
     fn try_gpu(&mut self, bits: u32, nums: &[BigUint], composites_seen: &mut u64) -> Option<Vec<bool>> {
         let gpu = self.gpu.as_ref()?;
-        if bits < 64 || nums.len() < self.opts.min_gpu_batch {
+        // The only size rule: a bucket under min_gpu_batch is not worth the GPU. Any bit length from 2
+        // (n = 3) up is fine; buckets only hold odd n >= 3.
+        if nums.len() < self.opts.min_gpu_batch {
             return None;
         }
         if !self.runners.contains_key(&bits) {
             let t = Instant::now();
-            let built = tune::autotune(gpu, bits, self.opts.cache.as_deref(), self.opts.retune)
-                .and_then(|tuned| Runner::new(gpu, tuned.cfg, bits, self.opts.capacity));
+            // Tune once per limb class, not per bit length; the Runner is still per exact length.
+            let class = tune::limb_class(bits);
+            if !self.tuned.contains_key(&class) {
+                self.report.tuned_classes += 1;
+                let tuned = tune::autotune(gpu, bits, self.opts.cache.as_deref(), self.opts.retune).map(|t| t.cfg);
+                self.tuned.insert(class, tuned);
+            }
+            let built = match &self.tuned[&class] {
+                // The class's kernel shape (tpi, wg) at this exact length: same limb count by construction.
+                Ok(tuned) => {
+                    let cfg = KernelConfig::for_bits(bits, tuned.tpi, tuned.wg, Variant::Unrolled);
+                    Runner::new(gpu, cfg, bits, self.opts.capacity)
+                }
+                Err(e) => Err(e.clone()),
+            };
             self.report.tune_secs += t.elapsed().as_secs_f64();
             if let Err(e) = &built {
                 eprintln!("bigmont: GPU unusable for {bits}-bit candidates, using the CPU: {e}");

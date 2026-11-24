@@ -17,10 +17,17 @@ fn batch() -> (Vec<BigUint>, Vec<u8>) {
     (ns, want)
 }
 
+/// Odd candidates of at least 3 (the ones that need a backend): the engine's verdict rules resolve
+/// 0, 1, 2 and the even numbers without one.
+fn needs_backend(n: &BigUint) -> bool {
+    n.bit(0) && n >= &BigUint::from(3u32)
+}
+
 /// (PRPs, composites) among the candidates that take the GPU path with `opts(Backend::Gpu)`: odd,
-/// at least 64 bits, in a bit-length bucket of at least `min_gpu_batch` (4) entries.
+/// at least 3, in a bit-length bucket of at least `min_gpu_batch` (4) entries. The bucket size is the
+/// only condition: the bit length does not matter, down to the 2-bit number 3.
 fn gpu_path_counts(ns: &[BigUint], want: &[u8]) -> (u64, u64) {
-    let on_gpu = |n: &BigUint| n.bit(0) && n.bits() >= 64 && ns.iter().filter(|m| m.bits() == n.bits() && m.bit(0)).count() >= 4;
+    let on_gpu = |n: &BigUint| needs_backend(n) && ns.iter().filter(|m| m.bits() == n.bits() && needs_backend(m)).count() >= 4;
     let (mut prps, mut composites) = (0, 0);
     for (n, &w) in ns.iter().zip(want) {
         if on_gpu(n) {
@@ -56,9 +63,10 @@ fn gpu_backend_matches_the_oracle_and_buckets_by_bit_length() {
     let r = e.report();
     assert_eq!(r.prp_disagreements, 0);
     assert!(r.gpu_tests > 0, "the 1019-bit bucket has 12 entries, above min_gpu_batch 4: it must run on the GPU");
-    // Both bit-length buckets (1019 and 777 bits) are above min_gpu_batch, so the only candidate the
-    // CPU counts as a test is the 2-bit `3`; 0, 1, 2, 4 and the even number follow the verdict rules.
-    assert_eq!(r.cpu_tests, 1, "only the 2-bit candidate 3 is tested on the CPU");
+    // Both bit-length buckets (1019 and 777 bits) are above min_gpu_batch. The 2-bit `3` is alone in
+    // its bucket, below min_gpu_batch (4), so it is the only candidate the CPU counts as a test; 0, 1,
+    // 2, 4 and the even number follow the verdict rules.
+    assert_eq!(r.cpu_tests, 1, "only the 2-bit candidate 3 (a bucket of one) is tested on the CPU");
     let (gpu_prps, _) = gpu_path_counts(&ns, &want);
     assert!(gpu_prps >= 2, "the batch holds at least the two planted probable primes");
     assert_eq!(r.gpu_errors, 0);
@@ -93,8 +101,69 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
     assert_eq!(r.prp_disagreements, 0);
     assert_eq!(r.gpu_errors, 0, "the GPU path must not have fallen back");
     let (prps, composites) = gpu_path_counts(&ns, &want);
-    assert_eq!(r.gpu_tests, prps + composites, "every odd >= 64-bit candidate in a big enough bucket runs on the GPU");
+    assert_eq!(r.gpu_tests, prps + composites, "every odd candidate in a bucket of at least min_gpu_batch runs on the GPU, whatever its bit length");
     // Every PRP, plus every 2nd GPU composite (counted across the call).
     assert_eq!(r.rechecks, prps + composites / 2);
     assert!(r.rechecks >= 7);
+}
+
+// ---- small bit lengths run on the GPU; bucket size is the only reason to skip it ----
+
+/// `random` random odd numbers and `prps` probable primes of exactly `bits` bits.
+fn bucket(bits: u32, random: usize, prps: usize, seed: u64) -> Vec<BigUint> {
+    let mut rng = XorShift64::new(seed);
+    let mut ns: Vec<BigUint> = (0..random).map(|_| random_odd_modulus(&mut rng, bits)).collect();
+    ns.extend((0..prps).map(|_| random_prp(&mut rng, bits)));
+    ns
+}
+
+#[test]
+fn buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size() {
+    // The default min_gpu_batch (64) with buckets of 70 at 20, 40, 63 and 64 bits: all on the GPU.
+    // A 63-entry bucket at 30 bits is one short of min_gpu_batch: that, and only that, sends it to the CPU.
+    let defaults = Options::default();
+    assert_eq!(defaults.min_gpu_batch, 64, "this test is about the default batch size");
+    let mut ns = Vec::new();
+    for bits in [20u32, 40, 63, 64] {
+        ns.extend(bucket(bits, 67, 3, u64::from(bits)));
+    }
+    ns.extend(bucket(30, 60, 3, 30));
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    // Expected counts derived from the inputs, not from engine counters.
+    let big: Vec<&BigUint> = ns.iter().filter(|n| n.bits() != 30).collect();
+    assert_eq!(big.len(), 4 * 70);
+    let gpu_prps = big.iter().filter(|n| fermat_base2(n)).count() as u64;
+    assert!(gpu_prps >= 12, "at least the 3 planted PRPs per bucket: {gpu_prps}");
+
+    let mut e = Engine::open(Options { backend: Backend::Gpu, capacity: 64, verify_rate: 0, ..defaults });
+    eprintln!("{}", e.describe());
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    let r = e.report();
+    assert_eq!(r.gpu_tests, 4 * 70, "the 20, 40, 63 and 64-bit buckets all run on the GPU");
+    assert_eq!(r.cpu_tests, 63, "only the 63-entry bucket (below min_gpu_batch) runs on the CPU");
+    assert_eq!(r.gpu_errors, 0);
+    assert_eq!((r.prp_disagreements, r.composite_disagreements), (0, 0));
+    assert_eq!(r.rechecks, gpu_prps, "every GPU PRP is re-run on the CPU (verify_rate 0: no composite samples)");
+    // 20 and 40 bits share limb class 4 and 63 and 64 bits share class 6 (see tune::limb_class).
+    assert_eq!(r.tuned_classes, 2, "four bit lengths in two limb classes tune twice");
+}
+
+#[test]
+fn every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_once() {
+    // Every odd number from 3 to 2047, four copies each, so each bit length from 2 (the number 3) to
+    // 11 has a bucket of at least min_gpu_batch (4): ten distinct bit lengths in one limb class.
+    let ns: Vec<BigUint> = (3u32..2048).step_by(2).flat_map(|v| std::iter::repeat_n(BigUint::from(v), 4)).collect();
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    let bit_lengths: std::collections::BTreeSet<u64> = ns.iter().map(BigUint::bits).collect();
+    assert_eq!(bit_lengths.len(), 10);
+    let prps = want.iter().filter(|&&w| w == 1).count() as u64;
+
+    let mut e = Engine::open(Options { backend: Backend::Gpu, min_gpu_batch: 4, capacity: 256, verify_rate: 0, ..Options::default() });
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    let r = e.report();
+    assert_eq!(r.gpu_tests, ns.len() as u64, "all 2- to 11-bit candidates run on the GPU");
+    assert_eq!(r.cpu_tests, 0);
+    assert_eq!(r.gpu_errors, 0);
+    assert_eq!(r.rechecks, prps);
+    assert_eq!(r.tuned_classes, 1, "ten bit lengths, one limb class: autotuned once, not ten times");
 }

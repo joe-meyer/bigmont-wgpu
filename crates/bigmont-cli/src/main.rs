@@ -182,15 +182,17 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     }
     let gpu = Gpu::open(&a.opts.selector).map_err(|e| format!("bigmont: no GPU: {e}"))?;
     println!("adapter: {}", gpu.describe());
-    let cands = tune::candidates(&gpu, a.bits);
+    // Tuning is per limb class: test and time at the class's representative length.
+    let (class, bits) = (tune::limb_class(a.bits), tune::class_bits(tune::limb_class(a.bits)));
+    let cands = tune::candidates(&gpu, bits);
     if cands.is_empty() {
         return Err(format!("bigmont: no kernel configuration fits {} for {} bits", gpu.describe(), a.bits));
     }
-    println!("{} bits: {} candidate configurations", a.bits, cands.len());
+    println!("{} bits: limb class {class}, tuned at {bits} bits, {} candidate configurations", a.bits, cands.len());
     println!("{:>4} {:>5} {:>16}  {}", "tpi", "wg", "squarings/s", "status");
     let mut best: Option<(f64, KernelConfig)> = None;
     for cfg in cands {
-        match tune::self_test(&gpu, cfg, a.bits).and_then(|()| tune::measure(&gpu, cfg)) {
+        match tune::self_test(&gpu, cfg, bits).and_then(|()| tune::measure(&gpu, cfg)) {
             Ok(rate) => {
                 println!("{:>4} {:>5} {:>16.0}  ok", cfg.tpi, cfg.wg, rate);
                 if best.as_ref().is_none_or(|(r, _)| rate > *r) {
@@ -205,7 +207,7 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
             println!("best: tpi {} wg {} at {rate:.0} squarings/s", cfg.tpi, cfg.wg);
             match &a.opts.cache {
                 Some(path) => {
-                    tune::store(&gpu, a.bits, &cfg, rate, path);
+                    tune::store(&gpu, bits, &cfg, rate, path);
                     println!("cached in {}", path.display());
                 }
                 None => println!("not cached (--no-cache, or no cache location)"),
