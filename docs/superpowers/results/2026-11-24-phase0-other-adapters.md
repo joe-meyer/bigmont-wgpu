@@ -88,6 +88,12 @@ Full tables are in `other-adapters/raw-sweep-laptop-vulkan.txt`.
 
 Raw: `other-adapters/raw-openssl-host1-i7-3770k.txt`. One core of the 3770K does an RSA-2048 signature in 0.915 ms (OpenSSL 3.5.9, measured). An RSA-2048 signature is two 1,024-bit modular exponentiations (CRT). A single 2,048-bit modular exponentiation with a 2,048-bit exponent, which is the shape of one Fermat test, costs about 8 times one of those (cubic scaling assumed, not measured), so roughly 3.7 ms, about 270 tests/s per core. With four cores, and hyper-threading assumed to add about 20% (also an assumption), that is **roughly 1,000 to 1,300 tests/s for the whole CPU, using optimised native code**.
 
+**Measured with GMP (added after the estimate above).** `tools/cpu-baseline/gmp_modexp.c` times GMP 6.3.0's `mpz_powm` for one base-2 Fermat exponentiation 2^(n-1) mod n on random odd 2,029-bit n. It ran inside CT 104 on host2, on an Intel Xeon E5-2690 v2 (Ivy Bridge-EP, the same generation as the 3770K; the host was carrying a load average of about 3.7 from other guests, so this is conservative). Raw: `tools/cpu-baseline/raw-gmp-host2-ct104-xeon-e5-2690v2.txt`.
+- One thread: 3.70 to 3.85 ms per test, **about 260 to 270 tests/s per core** (three runs of 100 tests; a 2,048-bit run gave 262.7).
+- Four processes in parallel (the container's four vCPUs): 268 to 273 tests/s each, **about 1,085 tests/s in total**.
+- This agrees with the OpenSSL-derived figure for the 3770K (3.7 ms per test), so the estimate above held up. It was not run on the 3770K itself and not on the laptop (no GMP headers there, and installing them needs sudo).
+- A real test also does Gerbicz checking and runs inside Beacon's pipeline, so treat these as upper-bound reference points for a native CPU path, not as Beacon's CPU rate.
+
 How to read it:
 - It is directly comparable with the "projected tests/s" columns above (both are "one exponentiation per test"), but both sides are estimates: the GPU figures are projections from squarings/s, this one is extrapolated from RSA signatures.
 - The shader path running on a CPU adapter is far slower than native code: llvmpipe on the 16-thread Ryzen 7 7840HS projects to 122 tests/s, so a 2012 quad-core running native code is roughly 8 to 10 times faster than shaders on a much newer CPU.

@@ -1,0 +1,17 @@
+host2 load before: 3.75 3.42 3.47
+Version: 2:6.3.0+dfsg-5ubuntu2
+built
+CPU(s):                                  40
+Model name:                              Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz
+CPU(s) scaling MHz:                      69%
+--- one thread (3 runs):
+bits=2029 count=100 ms/test=3.768 tests/s=265.4 (prp-like hits: 0)
+bits=2029 count=100 ms/test=3.703 tests/s=270.0 (prp-like hits: 1)
+bits=2029 count=100 ms/test=3.850 tests/s=259.8 (prp-like hits: 1)
+--- 4 processes in parallel (the container has 4 cores):
+bits=2029 count=100 ms/test=3.657 tests/s=273.4 (prp-like hits: 0)
+bits=2029 count=100 ms/test=3.669 tests/s=272.5 (prp-like hits: 0)
+bits=2029 count=100 ms/test=3.679 tests/s=271.8 (prp-like hits: 1)
+bits=2029 count=100 ms/test=3.727 tests/s=268.3 (prp-like hits: 1)
+--- 2048-bit, one thread:
+bits=2048 count=100 ms/test=3.807 tests/s=262.7 (prp-like hits: 0)
