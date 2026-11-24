@@ -1,0 +1,18 @@
+# cmd: target/release/bigmont tune --bits 1024 --adapter 780M --vk-backend Vulkan | host: test-laptop | adapter: 780M | date: 2026-11-24T17:36:32-05:00 | commit b7f6a34
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+1024 bits: 12 candidate configurations
+ tpi    wg      squarings/s  status
+   4    64         55487818  ok
+   4   128         56880145  ok
+   4   256         57434039  ok
+   8    64         66580213  ok
+   8   128         69143161  ok
+   8   256         71591049  ok
+  16    64         45772871  ok
+  16   128         47944844  ok
+  16   256         49948515  ok
+  32    64         24183545  ok
+  32   128         25886014  ok
+  32   256         27140799  ok
+best: tpi 8 wg 256 at 71591049 squarings/s
+exit code: 0

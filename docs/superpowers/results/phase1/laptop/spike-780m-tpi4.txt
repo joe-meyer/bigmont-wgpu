@@ -1,0 +1,15 @@
+# cmd: BIGMONT_ADAPTER=780M BIGMONT_BACKEND=Vulkan target/release/examples/spike --variant unrolled --tpi 4 --max-count 131072 | host: test-laptop | adapter: Radeon 780M | date: 2026-11-24T17:52:47-05:00 | commit b7f6a34
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+variant: unrolled
+subgroups feature: true
+max batch (instances): 131072
+
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    4   64    131072    64    344.81     16078058     24328299     24737778      5.7    1245.6       11990  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled    4  128    131072    64    345.52     15224224     24278458     24753343      6.6    1243.1       11966  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled    4  256    131072    64    345.40     15505081     24286929     24738921      6.3    1243.5       11970  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+
+Each row's timed outputs were compared with the oracle (first 4, last 4 and spread instances; limbs < 2^13, value < 2n, value mod n == mont_square_chain): 'verified K inst x S sq' = K instances checked after S squarings per instance, for the final long run and for the 2 squarings x 5 run. A row that fails prints no speed. Times are wall-clock around submit plus a blocking poll (no GPU timestamps); best of 3 (best of 5 for the short run).
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.

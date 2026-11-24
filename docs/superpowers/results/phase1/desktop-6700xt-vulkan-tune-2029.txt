@@ -1,0 +1,18 @@
+# cmd: bigmont tune --bits 2029 --adapter 6700 --vk-backend Vulkan | host: desktop (Windows 11) | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:39:57-05:00 | commit b7f6a34
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+2029 bits: 12 candidate configurations
+ tpi    wg      squarings/s  status
+   4    64         81466999  ok
+   4   128         83854886  ok
+   4   256         82102003  ok
+   8    64         71001447  ok
+   8   128         75046905  ok
+   8   256         76550547  ok
+  16    64         50368719  ok
+  16   128         55410875  ok
+  16   256         58726563  ok
+  32    64         34648836  ok
+  32   128         38841183  ok
+  32   256         43525180  ok
+best: tpi 4 wg 128 at 83854886 squarings/s
+exit code: 0

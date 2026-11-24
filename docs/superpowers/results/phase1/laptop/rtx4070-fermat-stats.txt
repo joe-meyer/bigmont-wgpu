@@ -1,0 +1,17 @@
+# cmd: BIGMONT_ADAPTER=4070 target/release/examples/fermat_stats out/cand_16384.bin | host: test-laptop | adapter: 4070 | date: 2026-11-24T17:35:05-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 81161850 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 79647085 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 85371595 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 80028807 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 81322204 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 81123050 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: 61057714 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160 }: 64472054 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160 }: 67164546 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: 43016938 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: 46187434 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: 49043809 squarings/s
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85371595 squarings/s measured by autotune)
+16387 tests, 2029 bits, capacity 16384: wall 0.498 s (32905.1 tests/s) | gpu 0.443 s (37019.9 tests/s) | host prep 0.028 s (5.6% of wall) | PRP 23
+exit code: 0

@@ -6,7 +6,7 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - (Done) Long-dispatch re-timing on all GPUs: `results/2026-11-24-phase0-other-adapters.md` section 3a. It showed fixed per-dispatch cost is small (0 to 13 ms), so my first guess (a 60 ms floor on the 4070) was wrong.
 - Explain the RTX 4070's slow TPI 16 (2.15 M against 3.1 M for TPI 8 and 3.4 M for TPI 32 at every batch size) and its TPI 8 penalty at wg 128/256 (1.83 M against 3.08 M at wg 64).
 - The proposed gate (6,000 projected tests/s) is not met by any measured row (best 3,941, Radeon 780M); re-derive it against the CPU baseline.
-- Spot-check the timed outputs of the benchmark against the oracle (about 16 instances of the large batches); today only the 50-instance validation batch is checked.
+- ~~Spot-check the timed outputs of the benchmark against the oracle (about 16 instances of the large batches); today only the 50-instance validation batch is checked.~~ (Done in Phase 1: the autotune `measure` checks 4 of its timed instances against the oracle every time, and the Runner output is checked in `bigmont-core/tests/fermat.rs`.)
 - Run the RX 6700 XT under Linux to separate "AMD Windows driver" from "RDNA2 hardware" (the 780M under Mesa printed faster).
 - Investigate the one-thread kernel being about 4x faster on Dx12 without dxcompiler (presumably FXC) than under Vulkan or Dx12/DXC.
 
@@ -30,30 +30,68 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - No Intel GPU exists on any available machine; Intel (subgroup 8 to 32) untested. Find one.
 
 ## CPU path (decide early in Phase 1)
-- Add a native CPU backend (GMP-class big-integer modexp) as a first-class engine option: fallback where no usable GPU exists (host1's GeForce 9800 GT can run nothing in wgpu) and the baseline GPU results must beat. A single old quad-core i7-3770K is estimated at about 1,000 to 1,300 tests/s native (`results/2026-11-24-phase0-other-adapters.md` section 5a, from `openssl speed`), against 122 projected tests/s for the shader kernels on llvmpipe on a newer 16-thread CPU, and about 2,300 to 3,400 for the best GPU rows printed so far. Now measured with GMP on a same-generation Xeon (host2 CT 104): about 265 tests/s per core and about 1,085 tests/s on 4 vCPUs (`tools/cpu-baseline/`); still not run on the 3770K itself or on the laptop.
+- ~~Add a native CPU backend (GMP-class big-integer modexp) as a first-class engine option: fallback where no usable GPU exists (host1's GeForce 9800 GT can run nothing in wgpu) and the baseline GPU results must beat. A single old quad-core i7-3770K is estimated at about 1,000 to 1,300 tests/s native (`results/2026-11-24-phase0-other-adapters.md` section 5a, from `openssl speed`), against 122 projected tests/s for the shader kernels on llvmpipe on a newer 16-thread CPU, and about 2,300 to 3,400 for the best GPU rows printed so far. Now measured with GMP on a same-generation Xeon (host2 CT 104): about 265 tests/s per core and about 1,085 tests/s on 4 vCPUs (`tools/cpu-baseline/`); still not run on the 3770K itself or on the laptop.~~ (Done as `bigmont-cpu` (pure-Rust Montgomery, no GMP). Measured in Phase 1: about 1,800 to 2,030 tests/s on 16-thread Ryzen machines, 484 to 521 on 4 vCPUs of an E5-2690 v2; `results/2026-11-24-phase1-validation.md` section 4.5. Not compared with GMP on the same machine.)
 - Revisit the proposed 6,000 tests/s gate in light of that CPU baseline.
 
 ## Dynamic size classes (user idea, 2026-11-24)
-- Derive the limb count and lane width from the number's bit length at runtime instead of the fixed 160 limbs: `L = ceil((bits + 1) / 13)` rounded up to a multiple of the chosen TPI (needs R > 4n for the x < 2n invariant), TPI picked by a per-adapter startup autotune (best width differs by vendor and will shift with L), WGSL generated per (L, TPI, wg) and pipelines cached. Make the oracle's `LIMBS` a parameter. Bucket mixed-size batches by class, as Beacon's driver does. Keep gapsieve's unrolled one-thread kernel as the path for small sizes (roughly 260 bits and below).
+- ~~Derive the limb count and lane width from the number's bit length at runtime instead of the fixed 160 limbs: `L = ceil((bits + 1) / 13)` rounded up to a multiple of the chosen TPI (needs R > 4n for the x < 2n invariant), TPI picked by a per-adapter startup autotune (best width differs by vendor and will shift with L), WGSL generated per (L, TPI, wg) and pipelines cached. Make the oracle's `LIMBS` a parameter. Bucket mixed-size batches by class, as Beacon's driver does. Keep gapsieve's unrolled one-thread kernel as the path for small sizes (roughly 260 bits and below).~~ (Done: `KernelConfig::for_bits`, size classes in the engine, per-bit-length runners. Only 2,029 bits has end-to-end throughput numbers.)
 - Expected effect (arithmetic, not measured): a squaring costs about 2L^2 multiply-adds and a test needs about `bits` squarings, so cost per test scales roughly with the cube of the size (about 8x cheaper at 1,024 bits than at 2,029). All Phase 0 numbers are for the 2,029-bit class only; the GMP CPU baseline scales about the same way, so GPU-versus-CPU ratios should roughly carry over.
 - Test matrix grows to sizes x widths x adapters; every combination must pass the oracle before the autotune may select it.
 
 ## Runner design (Phase 1, per spec section 3)
-- `run()` rebuilds shader, pipeline and buffers on every call; reuse them.
+- ~~`run()` rebuilds shader, pipeline and buffers on every call; reuse them.~~ (Done: `Runner` builds them once per (config, bits).)
 - A `Backend` trait and async API; move test helpers out of the public `Batch`.
-- Add the groups > 65535 and storage-binding-size limits as first-class errors (a guard exists in `run()`; the `--max-count` clamp is in the example only).
+- ~~Add the groups > 65535 and storage-binding-size limits as first-class errors (a guard exists in `run()`; the `--max-count` clamp is in the example only).~~ (Done in `Runner::new`: capacity is clamped to both limits; the `--max-count` clamp remains in the example.)
 
 ## After the unrolled kernel (2026-11-24; see `results/2026-11-24-unrolled-cross-vendor.md`)
 - (Done) Test B measured: Beacon's CUDA/CGBN driver does about 132 k tests/s on the RTX 4070 Laptop; our unrolled wgpu kernel projects to about 45.7 k, about 34.6% (`results/2026-11-24-test-b-cuda-vs-wgpu.md`). Open: close the 2.9x gap on NVIDIA (squaring symmetry, a native-only 32-bit-limb variant), and a CGBN comparison on an AMD card (needs a HIP port).
-- Try TPI 4 (40 limbs per lane; CGBN allows 4) since TPI 8 was best or near-best on all four GPUs and the trend runs toward fewer lanes per number; the generator is parametric in limbs per lane.
+- ~~Try TPI 4 (40 limbs per lane; CGBN allows 4) since TPI 8 was best or near-best on all four GPUs and the trend runs toward fewer lanes per number; the generator is parametric in limbs per lane.~~ (Done in the tuning pass; TPI 4 is the best width on the AMD cards and the 4070.)
 - Squaring symmetry (the kernel computes the full product; up to roughly a quarter fewer multiply-adds, not built or measured) is now the main remaining arithmetic saving on AMD, which is near a nominal issue bound.
 - Measurement hygiene: GPU timestamp queries, repeat runs for variance, more verified instances per row (25 to 27 now), inspect the NVIDIA, Mesa and Dx12/DXC code generation (only the Vulkan AMD ISA was read), and a negative control that also exercises the limb-normalisation and below-2n checks.
 - Wave64 was never observed. Intel remains untested. The unrolled kernel is still not browser-valid (`enable subgroups;`).
-- Dynamic size classes (above) are now cheap to try: the unrolled generator takes limbs per lane as a parameter.
+- ~~Dynamic size classes (above) are now cheap to try: the unrolled generator takes limbs per lane as a parameter.~~ (Done in Phase 1.)
 - Release the test container resources if no longer needed: CT 104 on host2 (24 GB) and the user-level Rust install on the laptop.
 
 ## After the tuning pass and the browser check (2026-11-24)
-- Best width differs per adapter and per environment (TPI 4 on AMD and the 4070, TPI 8 on the P4000 and in the browser, rolled best in the browser): the engine needs a per-adapter autotune that validates against the oracle before choosing. The generator should also be able to emit browser-valid source (`enable subgroups;` plus `diagnostic(off, subgroup_uniformity);`) as an option, since naga 30 rejects the first line natively.
+- ~~Best width differs per adapter and per environment (TPI 4 on AMD and the 4070, TPI 8 on the P4000 and in the browser, rolled best in the browser): the engine needs a per-adapter autotune that validates against the oracle before choosing. The generator should also be able to emit browser-valid source (`enable subgroups;` plus `diagnostic(off, subgroup_uniformity);`) as an option, since naga 30 rejects the first line natively.~~ (Done: `bigmont-cli::tune::autotune` validates every candidate against the oracle and picks by speed; see the open autotune-accuracy item below. The browser-valid source emission is also done: `Target::Browser`, compile-checked in Chrome for the Fermat kernel.)
 - Browser: test other GPUs and vendors and other browsers (Firefox, Safari), real batch sizes and the browser's watchdog; compare WebGPU speed with and without the unrolled generator per browser.
 - Unexplained: TPI 4 is a third as fast on the P4000 and drops at Dx12 wg 256; try 14-bit limbs and squaring symmetry (both portable) only after the autotune exists to find where they pay off.
 - Housekeeping: the browser pane's `.claude/launch.json` lives in `N:\Programming\.claude` (outside the repo); a copy is in the repo's ignored `.claude/`.
+
+## Phase 1 results and open items (2026-11-24; see `results/2026-11-24-phase1-validation.md`)
+
+Phase 1 delivered: reusable Fermat `Runner`, size classes, `Target::Browser` source, pure-Rust CPU backend, oracle-validated autotune with a cache, the `bigmont` driver (Beacon file formats, `canary`, `tune`), and the hardware matrix and Beacon canary run (0 mismatches over 32,000 verdicts against Beacon's own driver).
+
+### Open: from the validation run
+- Engine default capacity (16,384 candidates per dispatch) leaves 10% (RTX 4070) to 19% (RX 6700 XT) of GPU-time throughput on the table against 65,536; expose `--capacity` and make the default depend on the adapter (or on the autotune).
+- Autotune timing is short (256 workgroups, best of 2): it reads 11% to 13% below long-dispatch sweeps on the big GPUs and misranked TPI 4 on the Radeon 780M (8.0 M against 24.3 M squarings/s at 0.35 s dispatches), so it picked a configuration about 3% slower. Lengthen or warm up the measurement and re-check the ranking at a long dispatch.
+- CPU re-check of every GPU PRP: fine for sparse primes, but on PRP-dense input (Beacon's canary file, half primes) it dominates (3.8 k tests/s engine against 43.6 k raw runner on the 4070). Overlap the re-check with GPU work, re-check a sample, or add the Gerbicz-Li check on the GPU and re-check only alarms.
+- Two unexplained one-off failures: RTX 4070 `Xid 32` plus "Parent device is lost" in `chain.rs::unrolled_long_chain_matches_oracle` (once, not reproduced in 6 later runs), and a desktop `engine` test binary exit crash 0xc0000409 after all 5 tests passed (once in about 10 runs). Needs a reproduction (loop the tests, debug build, crash dump, wgpu validation layers).
+- Engine throughput under Dx12 (with and without dxcompiler) was not measured; Dx12 TPI 4 at wg 256 is still slow (66.5 M against 73.6 M at wg 64, 2,029 bits).
+- Only 2,029 bits has end-to-end throughput; measure 1,024 bits and mixed-size files end to end.
+
+### Open: new work
+- **Gerbicz-Li error check** (Beacon's `FERMAT_GEC`); verdict 2 is never produced. This is the main integrity gap.
+- **Sieve** in front of the Fermat test (small-prime sieve on the CPU or GPU; today every odd candidate is Fermat-tested).
+- **Beacon `--ee` mode** and the other unsupported Beacon flags (`--inject`, `--bins`, `--chunk`, `--growth`, `--marker`; `--repeat` and `--lock` are accepted and ignored).
+- **Orchestration scripts**: multi-GPU, hourly canary, restart, as in Beacon's kit (`canary.sh`, `raid_loop_v2.sh`).
+- **Host-side preparation on the GPU** (`R mod n`, `2R mod n`, packing): small today (0.3% to 6.2% of runner wall, 6.2% at capacity 131,072 on the 4070) but it grows with capacity.
+- **GPU timestamp queries** instead of wall-clock around submit plus poll; repeat runs for variance.
+- **Intel GPU testing** (subgroup sizes 8 to 32; none available); Apple, Firefox and Safari; wave64.
+- **14-bit limbs** and squaring symmetry (both portable), now that the autotune can tell where they pay off.
+- Browser: run the generated Fermat kernel end to end (dispatch, oracle check, throughput) in Chrome and other browsers; only the compile check was done.
+- Compare the CPU backend with a GMP-class library on the same machine; the pure-Rust backend measured about half the Phase 0 GMP figure on 4 vCPUs of the E5-2690 v2.
+- Backend trait and async API in the Runner (spec section 3); move the test helpers out of the public `Batch`.
+
+### Deferred minors from the Phase 1 task reviews
+- Task 1: `random_prp` loops forever at bits == 1 (unreachable from callers); no tests for n = 0, 3 or even in `fermat_base2`; `mont_square_chain_n` has no n < R assert.
+- Task 2: stale comments in `unrolled.rs` (K*LPL is <= PERIOD; end-of-body pass omitted); the limbs > 1024 cap in `validate` is arbitrary; `wgsl_for` does not call `validate`; `batch_limb_mismatch` only asserts `is_err`; garbled `for_bits` test comment; lpl == 1 long chain not tested (only 3 squarings); `browser_source` tests only 160 limbs.
+- Task 3: `runner.rs` leaves the staging buffer mapped if `get_mapped_range` errs (unmap on every path); validation per chunk instead of up front in `fermat()`; capacity ignores `max_buffer_size`; submissions outside error scopes; emitted comment says y = squarings in Fermat mode (`unrolled.rs`); `Runner::new` error paths and `capacity()`/stats untested; the chunk test should assert `capacity() == 64`.
+- Task 4: Mersenne comment wording in `tests/cpu.rs`; `Mont::{new,mul,sqr}` are public but untested directly and their preconditions unasserted; no empty-input test for `fermat_batch`.
+- Task 5: fixed 256 groups bias toward larger workgroups on very large GPUs; `parse_value` 'rolled' asymmetry; cache write is not atomic; cached-failure log prints the config twice (`tune.rs`); no test for later-valid-line-wins; `skip_unless(false, ..)` used for its side effect.
+- Task 6: `composites_seen` resets per `verdicts()` call (the default 1-in-4096 sample takes nothing from small chunks); `gpu_errors` counts every later bucket of a failed bit length; a partial `.tmp` is left if `fs::write` fails; the files round-trip test does not pin raw byte/limb order; no CLI tests; no-argument usage exits 0; subcommand flag leniency; misleading `cpu_tests > 0` comment; engine-test cache file left in the temp directory; `--device N` maps oracle per backend (Vulkan and Dx12 count the same GPU twice); uncaptured wgpu errors or device loss would still panic.
+
+### Leftover test resources (not removed; the user decides)
+- CT 104 `bigmont-test` on host2 (24 GB disk, left running; repo and `target/` in `/root/bigmont-test`, outputs in `out/`; Rust installed by rustup as root).
+- Laptop `test-laptop`: user-level Rust (`~/.cargo`; `rustup self uninstall` removes it), `~/cuda-13.0` (CUDA toolkit, a patched `math_functions.h`), `~/beacon-test` (Beacon, CGBN, kit, `big_2048.bin`), `~/bigmont-test` (source, `target/`, `out/` with candidate and verdict files).
+- Desktop scratch: `/tmp/bm` in Git Bash (candidate and verdict files).

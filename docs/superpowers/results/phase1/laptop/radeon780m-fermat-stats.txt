@@ -1,0 +1,17 @@
+# cmd: BIGMONT_ADAPTER=780M target/release/examples/fermat_stats out/cand_16384.bin | host: test-laptop | adapter: 780M | date: 2026-11-24T17:36:48-05:00 | commit b7f6a34
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 7915021 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 8043944 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 8100414 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 21524012 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 21631357 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 21879783 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: 17202838 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160 }: 17850530 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160 }: 18492135 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: 12578725 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: 13224149 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: 13845587 squarings/s
+config: KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 } (21879783 squarings/s measured by autotune)
+16387 tests, 2029 bits, capacity 16384: wall 1.552 s (10557.9 tests/s) | gpu 1.500 s (10925.4 tests/s) | host prep 0.024 s (1.6% of wall) | PRP 23
+exit code: 0

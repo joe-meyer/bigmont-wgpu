@@ -1,0 +1,16 @@
+# cmd: BIGMONT_ADAPTER=4070 BIGMONT_BACKEND=Vulkan target/release/examples/fermat_stats out/cand_131072.bin 4096 | host: test-laptop | date: 2026-11-24T17:54:01-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85719639 squarings/s measured by autotune)
+131075 tests, 2029 bits, capacity 4096: wall 3.531 s (37122.9 tests/s) | gpu 3.259 s (40220.4 tests/s) | host prep 0.087 s (2.5% of wall) | PRP 197
+# cmd: BIGMONT_ADAPTER=4070 BIGMONT_BACKEND=Vulkan target/release/examples/fermat_stats out/cand_131072.bin 16384 | host: test-laptop | date: 2026-11-24T17:54:15-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85834024 squarings/s measured by autotune)
+131075 tests, 2029 bits, capacity 16384: wall 3.539 s (37035.9 tests/s) | gpu 3.197 s (41001.6 tests/s) | host prep 0.120 s (3.4% of wall) | PRP 197
+# cmd: BIGMONT_ADAPTER=4070 BIGMONT_BACKEND=Vulkan target/release/examples/fermat_stats out/cand_131072.bin 65536 | host: test-laptop | date: 2026-11-24T17:54:28-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85346651 squarings/s measured by autotune)
+131075 tests, 2029 bits, capacity 65536: wall 3.321 s (39465.9 tests/s) | gpu 2.896 s (45261.2 tests/s) | host prep 0.174 s (5.2% of wall) | PRP 197
+# cmd: BIGMONT_ADAPTER=4070 BIGMONT_BACKEND=Vulkan target/release/examples/fermat_stats out/cand_131072.bin 131072 | host: test-laptop | date: 2026-11-24T17:54:41-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85289915 squarings/s measured by autotune)
+131075 tests, 2029 bits, capacity 131072: wall 3.311 s (39592.9 tests/s) | gpu 2.856 s (45899.8 tests/s) | host prep 0.206 s (6.2% of wall) | PRP 197

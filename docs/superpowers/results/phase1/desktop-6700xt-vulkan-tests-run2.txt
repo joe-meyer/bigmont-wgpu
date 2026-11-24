@@ -1,0 +1,173 @@
+# cmd: cargo test --release --workspace --no-fail-fast -- --test-threads=1 | host: desktop (Windows 11) | adapter: AMD Radeon RX 6700 XT, default (Vulkan, auto) | date: 2026-11-24T17:35:56-05:00 | commit b7f6a34
+    Finished `release` profile [optimized] target(s) in 0.17s
+     Running unittests src\lib.rs (target\release\build\bigmont-cli/e9e73d2b1195b56b\out\bigmont_cli-e9e73d2b1195b56b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\release\build\bigmont-cli/1712b09aa53e5e03\out\bigmont-1712b09aa53e5e03.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\engine.rs (target\release\build\bigmont-cli/bfb83bdca75695aa\out\engine-bfb83bdca75695aa.exe)
+
+running 5 tests
+test auto_falls_back_to_cpu_when_no_gpu_works ... ok
+test cpu_backend_matches_the_oracle_including_degenerate_inputs ... ok
+test forced_gpu_backend_errors_when_the_adapter_is_missing ... ok
+test gpu_backend_matches_the_oracle_and_buckets_by_bit_length ... ok
+test verify_rate_rechecks_composites_without_changing_verdicts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.71s
+
+     Running tests\files.rs (target\release\build\bigmont-cli/79353eb38d7cd0cf\out\files-79353eb38d7cd0cf.exe)
+
+running 6 tests
+test a_number_wider_than_the_container_is_not_written ... ok
+test absurd_counts_are_rejected_without_allocating ... ok
+test candidate_file_round_trips_and_has_the_beacon_layout ... ok
+test malformed_files_are_errors ... ok
+test verdict_file_layout_and_atomic_write ... ok
+test verdict_file_rejects_wrong_magic_and_length ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\tune.rs (target\release\build\bigmont-cli/dc06ca52f420ba10\out\tune-dc06ca52f420ba10.exe)
+
+running 6 tests
+test a_cache_entry_naming_a_non_candidate_falls_back_to_a_retune ... ok
+test a_corrupt_cache_is_ignored_and_rewritten ... ok
+test autotune_picks_a_verified_config_and_uses_its_cache ... ok
+test candidates_are_valid_and_fit_the_adapter ... ok
+test self_test_accepts_a_good_config_at_two_sizes ... ok
+test self_test_rejects_a_config_too_small_for_the_numbers ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.40s
+
+     Running unittests src\lib.rs (target\release\build\bigmont-core/bd9e7e4310c40522\out\bigmont_core-bd9e7e4310c40522.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\browser_source.rs (target\release\build\bigmont-core/f12c3e7c4c71e77e\out\browser_source-f12c3e7c4c71e77e.exe)
+
+running 3 tests
+test browser_source_is_native_source_plus_the_two_directives ... ok
+test fermat_browser_source_is_native_source_plus_the_two_directives ... ok
+test wgsl_is_native ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\chain.rs (target\release\build\bigmont-core/926bd42fdc212d46\out\chain-926bd42fdc212d46.exe)
+
+running 13 tests
+test tpi16_matches_oracle ... ok
+test tpi16_unrolled_matches_oracle ... ok
+test tpi1_matches_oracle ... ok
+test tpi32_matches_oracle ... ok
+test tpi32_other_workgroup_sizes_match_oracle ... ok
+test tpi32_unrolled_matches_oracle ... ok
+test tpi32_unrolled_other_workgroup_sizes_match_oracle ... ok
+test tpi4_matches_oracle ... ok
+test tpi4_unrolled_matches_oracle ... ok
+test tpi8_matches_oracle ... ok
+test tpi8_unrolled_matches_oracle ... ok
+test unrolled_long_chain_matches_oracle ... ok
+test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.62s
+
+     Running tests\fermat.rs (target\release\build\bigmont-core/ba57e01a6be0f5d9\out\fermat-ba57e01a6be0f5d9.exe)
+
+running 6 tests
+test every_cooperative_width_agrees_with_the_oracle ... ok
+test mersenne_primes_and_composites_across_sizes ... ok
+test mixed_batch_at_the_beacon_size_class_spans_chunks ... ok
+test other_bit_lengths_and_workgroup_sizes ... ok
+test rejects_candidates_of_the_wrong_length_or_even ... ok
+test runner_is_reusable_across_calls ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.31s
+
+     Running tests\sizes.rs (target\release\build\bigmont-core/7e21b4c0031f8308\out\sizes-7e21b4c0031f8308.exe)
+
+running 6 tests
+test batch_limb_mismatch_is_an_error_not_a_panic ... ok
+test for_bits_rounds_up_to_a_multiple_of_tpi ... ok
+test rolled_size_classes_match_oracle ... ok
+test unrolled_size_classes_long_chain_match_oracle ... ok
+test unrolled_size_classes_match_oracle ... ok
+test unrolled_tiny_limbs_per_lane_match_oracle ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.34s
+
+     Running unittests src\lib.rs (target\release\build\bigmont-cpu/950abee22c4e6c6b\out\bigmont_cpu-950abee22c4e6c6b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\cpu.rs (target\release\build\bigmont-cpu/66363a48d7f52bee\out\cpu-66363a48d7f52bee.exe)
+
+running 4 tests
+test batch_preserves_order_for_any_thread_count ... ok
+test matches_the_oracle_on_small_and_edge_values ... ok
+test mersenne_numbers ... ok
+test random_numbers_at_many_sizes ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.19s
+
+     Running unittests src\lib.rs (target\release\build\bigmont-oracle/4bb86b6ffed2fbed\out\bigmont_oracle-4bb86b6ffed2fbed.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\oracle.rs (target\release\build\bigmont-oracle/b67661d02f6d0a35\out\oracle-b67661d02f6d0a35.exe)
+
+running 13 tests
+test chain_composes_at_full_size ... ok
+test chain_matches_independent_small_case ... ok
+test fermat_base2_known_values ... ok
+test inv_mod_pow2_property ... ok
+test limbs_for_bits_covers_the_ladder_invariant ... ok
+test neg_inv_limb_property ... ok
+test pack_unpack_round_trip_at_other_limb_counts ... ok
+test pack_unpack_roundtrip ... ok
+test random_modulus_has_exact_size_and_is_odd ... ok
+test random_prp_passes_the_fermat_test ... ok
+test single_squaring_matches_definition_at_full_size ... ok
+test square_chain_n_satisfies_the_montgomery_relation ... ok
+test unpack_accepts_unnormalized_limbs ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_cpu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_oracle
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+exit code: 0

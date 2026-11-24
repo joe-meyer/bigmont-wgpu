@@ -1,0 +1,17 @@
+# cmd: BIGMONT_ADAPTER=P4000 target/release/examples/fermat_stats out/cand_16384.bin | host: bigmont-test | adapter: P4000 | date: 2026-11-24T22:46:02+00:00 | commit b7f6a34
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 4114483 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 4188503 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 4332378 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 9470671 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 11459423 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 12246591 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: 11373669 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160 }: 12187575 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160 }: 11947573 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: 9143058 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: 9819248 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: 10313000 squarings/s
+config: KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 } (12246591 squarings/s measured by autotune)
+16387 tests, 2029 bits, capacity 16384: wall 2.969 s (5519.9 tests/s) | gpu 2.710 s (6047.5 tests/s) | host prep 0.172 s (5.8% of wall) | PRP 23
+exit code: 0

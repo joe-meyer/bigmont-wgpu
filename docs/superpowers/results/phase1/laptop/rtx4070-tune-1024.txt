@@ -1,0 +1,18 @@
+# cmd: target/release/bigmont tune --bits 1024 --adapter 4070 --vk-backend Vulkan | host: test-laptop | adapter: 4070 | date: 2026-11-24T17:34:49-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+1024 bits: 12 candidate configurations
+ tpi    wg      squarings/s  status
+   4    64        315440591  ok
+   4   128        321547493  ok
+   4   256        323166799  ok
+   8    64        242268109  ok
+   8   128        253335451  ok
+   8   256        265764022  ok
+  16    64        163859622  ok
+  16   128        174196647  ok
+  16   256        183828333  ok
+  32    64         78918169  ok
+  32   128         85254529  ok
+  32   256         91129311  ok
+best: tpi 4 wg 256 at 323166799 squarings/s
+exit code: 0

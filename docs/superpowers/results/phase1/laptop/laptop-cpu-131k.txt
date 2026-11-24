@@ -1,0 +1,11 @@
+# cmd: target/release/bigmont out/cand_131072.bin (CPU only; whole file) out/cpu131k.verdict --backend cpu | host: test-laptop | date: 2026-11-24T17:50:03-05:00 | commit b7f6a34
+bigmont: CPU: 16 threads
+bigmont: 32768/131075 candidates
+bigmont: 65536/131075 candidates
+bigmont: 98304/131075 candidates
+bigmont: 131072/131075 candidates
+bigmont: 131075/131075 candidates
+bigmont: CPU: 16 threads | tests 131075 (gpu 0, cpu 131075) | 64.62 s (0.00 s tuning) | 2028.4 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+exit code: 0
+4070 GPU == CPU on all 131075 verdicts
+780M GPU == CPU on all 131075 verdicts

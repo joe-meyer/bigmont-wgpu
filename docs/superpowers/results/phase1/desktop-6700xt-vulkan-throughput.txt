@@ -1,0 +1,16 @@
+# cmd: bigmont cand_16384.bin gpu.verdict --backend gpu --adapter 6700 --vk-backend Vulkan --cache c.cache | host: desktop (Windows 11, 16 threads) | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:40:59-05:00 | commit b7f6a34
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 80582984 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 82891875 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 80371129 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 70032175 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 73964223 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 76310021 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: 50260258 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160 }: 55545161 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160 }: 58651915 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: 34549456 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: 39152340 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: 42022378 squarings/s
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 11.81 s (11.23 s tuning) | 28229.0 tests/s excluding tuning | PRP 23 | disagreements: prp 0, composite 0 | rechecks 26 | gpu errors 0
+exit code: 0

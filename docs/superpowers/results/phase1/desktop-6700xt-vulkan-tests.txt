@@ -1,0 +1,30 @@
+# cmd: cargo test --release --workspace -- --test-threads=1 | host: desktop (Windows 11) | adapter: AMD Radeon RX 6700 XT, default (Vulkan, auto) | date: 2026-11-24T17:31:25-05:00 | commit b7f6a34
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running unittests src\lib.rs (target\release\build\bigmont-cli/e9e73d2b1195b56b\out\bigmont_cli-e9e73d2b1195b56b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\release\build\bigmont-cli/1712b09aa53e5e03\out\bigmont-1712b09aa53e5e03.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\engine.rs (target\release\build\bigmont-cli/bfb83bdca75695aa\out\engine-bfb83bdca75695aa.exe)
+
+running 5 tests
+test auto_falls_back_to_cpu_when_no_gpu_works ... ok
+test cpu_backend_matches_the_oracle_including_degenerate_inputs ... ok
+test forced_gpu_backend_errors_when_the_adapter_is_missing ... ok
+test gpu_backend_matches_the_oracle_and_buckets_by_bit_length ... ok
+test verify_rate_rechecks_composites_without_changing_verdicts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.03s
+
+error: test failed, to rerun pass `-p bigmont-cli --test engine`
+
+Caused by:
+  process didn't exit successfully: `N:\Programming\bigmont-wgpu\target\release\build\bigmont-cli/bfb83bdca75695aa\out\engine-bfb83bdca75695aa.exe --test-threads=1` (exit code: 0xc0000409, STATUS_STACK_BUFFER_OVERRUN)
+note: test exited abnormally; to see the full output pass --no-capture to the harness.

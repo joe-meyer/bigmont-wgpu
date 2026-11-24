@@ -1,0 +1,10 @@
+# cmd: target/release/bigmont out/cand_131072.bin out/radeon780m-gpu131k.verdict --backend gpu --adapter 780M --vk-backend Vulkan --cache out/radeon780m.cache | host: test-laptop | date: 2026-11-24T17:49:49-05:00 | commit b7f6a34
+bigmont: GPU: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan]
+bigmont: 32768/131075 candidates
+bigmont: 65536/131075 candidates
+bigmont: 98304/131075 candidates
+bigmont: 131072/131075 candidates
+bigmont: 131075/131075 candidates
+bigmont: GPU: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 13.88 s (1.53 s tuning) | 10615.5 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0
+exit code: 0
+2026-11-24T17:50:03-05:00

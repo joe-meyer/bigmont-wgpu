@@ -1,0 +1,17 @@
+# cmd: fermat_stats cand_131072.bin | host: desktop (Windows 11, 16 threads) | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:41:45-05:00 | commit b7f6a34
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 79456085 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 80547700 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 82526051 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 71184489 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 75335636 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 77680784 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: 50832716 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160 }: 55381316 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160 }: 58793077 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: 34342271 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: 39060602 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: 42027094 squarings/s
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (82526051 squarings/s measured by autotune)
+131075 tests, 2029 bits, capacity 16384: wall 4.175 s (31395.6 tests/s) | gpu 3.809 s (34414.9 tests/s) | host prep 0.096 s (2.3% of wall) | PRP 197
+exit code: 0

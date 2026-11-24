@@ -1,0 +1,15 @@
+# cmd: same with --tpi 8 | host: test-laptop | adapter: Radeon 780M | date: 2026-11-24T17:53:04-05:00 | commit b7f6a34
+adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
+variant: unrolled
+subgroups feature: true
+max batch (instances): 131072
+
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    8   64    131072    64    354.46     15950752     23665747     24040843      5.5    1211.7       11664  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled    8  128    131072    64    354.18     16185019     23684268     24043639      5.3    1212.6       11673  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+unrolled    8  256    131072    64    354.07     16180915     23692241     24052413      5.3    1213.0       11677  ok, verified 27 inst x 192 sq (long), 27 inst x 10 sq (short)
+
+Each row's timed outputs were compared with the oracle (first 4, last 4 and spread instances; limbs < 2^13, value < 2n, value mod n == mont_square_chain): 'verified K inst x S sq' = K instances checked after S squarings per instance, for the final long run and for the 2 squarings x 5 run. A row that fails prints no speed. Times are wall-clock around submit plus a blocking poll (no GPU timestamps); best of 3 (best of 5 for the short run).
+sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).
+'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.
+* tests/s*@L = sq/s @long / 2029: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.

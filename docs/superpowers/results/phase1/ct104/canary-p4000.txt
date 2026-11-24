@@ -1,0 +1,5 @@
+# cmd: target/release/bigmont canary canary_2048.bin canary_expected.bin --backend gpu --adapter P4000 --vk-backend Vulkan --cache out/p4000.cache | host: bigmont-test (CT 104 on host2, 4 vCPU shared) | date: 2026-11-24T22:49:01+00:00 | commit b7f6a34
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 400 (gpu 400, cpu 0) | 4.08 s (3.10 s tuning) | 405.0 tests/s excluding tuning | PRP 200 | disagreements: prp 0, composite 0 | rechecks 200 | gpu errors 0
+bigmont: canary ok: all 400 verdicts match
+exit code: 0

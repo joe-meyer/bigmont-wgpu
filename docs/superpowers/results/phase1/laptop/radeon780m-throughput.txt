@@ -1,0 +1,16 @@
+# cmd: target/release/bigmont out/cand_16384.bin out/radeon780m-gpu.verdict --backend gpu --adapter 780M --vk-backend Vulkan --cache out/radeon780m.cache | host: test-laptop | adapter: 780M | date: 2026-11-24T17:36:37-05:00 | commit b7f6a34
+bigmont: GPU: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 7931321 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 8052296 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 8110992 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 21508853 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 21444695 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 22401116 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: 17262568 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160 }: 17803966 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160 }: 18404841 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: 12631361 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: 13228282 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: 13888313 squarings/s
+bigmont: GPU: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 9.98 s (8.40 s tuning) | 10406.5 tests/s excluding tuning | PRP 23 | disagreements: prp 0, composite 0 | rechecks 26 | gpu errors 0
+exit code: 0

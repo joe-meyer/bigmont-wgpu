@@ -1,0 +1,135 @@
+# cmd: BIGMONT_ADAPTER=llvmpipe BIGMONT_BACKEND=Vulkan cargo test --release --workspace -- --test-threads=1 | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:36:58-05:00 | commit b7f6a34
+    Finished `release` profile [optimized] target(s) in 0.05s
+     Running unittests src/lib.rs (target/release/build/bigmont-cli/3b435291acf84588/out/bigmont_cli-3b435291acf84588)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/build/bigmont-cli/0ee857c94b682f02/out/bigmont-0ee857c94b682f02)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/engine.rs (target/release/build/bigmont-cli/dbf764f259c3e1ce/out/engine-dbf764f259c3e1ce)
+
+running 5 tests
+test auto_falls_back_to_cpu_when_no_gpu_works ... ok
+test cpu_backend_matches_the_oracle_including_degenerate_inputs ... ok
+test forced_gpu_backend_errors_when_the_adapter_is_missing ... ok
+test gpu_backend_matches_the_oracle_and_buckets_by_bit_length ... ok
+test verify_rate_rechecks_composites_without_changing_verdicts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.89s
+
+     Running tests/files.rs (target/release/build/bigmont-cli/ddc01598d9762c0c/out/files-ddc01598d9762c0c)
+
+running 6 tests
+test a_number_wider_than_the_container_is_not_written ... ok
+test absurd_counts_are_rejected_without_allocating ... ok
+test candidate_file_round_trips_and_has_the_beacon_layout ... ok
+test malformed_files_are_errors ... ok
+test verdict_file_layout_and_atomic_write ... ok
+test verdict_file_rejects_wrong_magic_and_length ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tune.rs (target/release/build/bigmont-cli/06063a430a59208d/out/tune-06063a430a59208d)
+
+running 6 tests
+test a_cache_entry_naming_a_non_candidate_falls_back_to_a_retune ... ok
+test a_corrupt_cache_is_ignored_and_rewritten ... ok
+test autotune_picks_a_verified_config_and_uses_its_cache ... ok
+test candidates_are_valid_and_fit_the_adapter ... ok
+test self_test_accepts_a_good_config_at_two_sizes ... ok
+test self_test_rejects_a_config_too_small_for_the_numbers ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.77s
+
+     Running unittests src/lib.rs (target/release/build/bigmont-core/4000a2deb77d063f/out/bigmont_core-4000a2deb77d063f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/browser_source.rs (target/release/build/bigmont-core/ef3a547c45561a46/out/browser_source-ef3a547c45561a46)
+
+running 3 tests
+test browser_source_is_native_source_plus_the_two_directives ... ok
+test fermat_browser_source_is_native_source_plus_the_two_directives ... ok
+test wgsl_is_native ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/chain.rs (target/release/build/bigmont-core/d30c47bf2b0b2349/out/chain-d30c47bf2b0b2349)
+
+running 13 tests
+test tpi16_matches_oracle ... FAILED
+test tpi16_unrolled_matches_oracle ... FAILED
+test tpi1_matches_oracle ... ok
+test tpi32_matches_oracle ... FAILED
+test tpi32_other_workgroup_sizes_match_oracle ... FAILED
+test tpi32_unrolled_matches_oracle ... FAILED
+test tpi32_unrolled_other_workgroup_sizes_match_oracle ... FAILED
+test tpi4_matches_oracle ... ok
+test tpi4_unrolled_matches_oracle ... ok
+test tpi8_matches_oracle ... ok
+test tpi8_unrolled_matches_oracle ... ok
+test unrolled_long_chain_matches_oracle ... FAILED
+test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
+
+failures:
+
+---- tpi16_matches_oracle stdout ----
+
+thread 'tpi16_matches_oracle' (200971) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 16, wg: 64, variant: Rolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 16 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tpi16_unrolled_matches_oracle stdout ----
+
+thread 'tpi16_unrolled_matches_oracle' (201009) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 16 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- tpi32_matches_oracle stdout ----
+
+thread 'tpi32_matches_oracle' (201085) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 32, wg: 64, variant: Rolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 32 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- tpi32_other_workgroup_sizes_match_oracle stdout ----
+
+thread 'tpi32_other_workgroup_sizes_match_oracle' (201123) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 32, wg: 128, variant: Rolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 32 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- tpi32_unrolled_matches_oracle stdout ----
+
+thread 'tpi32_unrolled_matches_oracle' (201161) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 32 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- tpi32_unrolled_other_workgroup_sizes_match_oracle stdout ----
+
+thread 'tpi32_unrolled_other_workgroup_sizes_match_oracle' (201199) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 32 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- unrolled_long_chain_matches_oracle stdout ----
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }
+
+thread 'unrolled_long_chain_matches_oracle' (201463) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: subgroup size 8..8 is not a multiple of tpi 16 (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+
+failures:
+    tpi16_matches_oracle
+    tpi16_unrolled_matches_oracle
+    tpi32_matches_oracle
+    tpi32_other_workgroup_sizes_match_oracle
+    tpi32_unrolled_matches_oracle
+    tpi32_unrolled_other_workgroup_sizes_match_oracle
+    unrolled_long_chain_matches_oracle
+
+test result: FAILED. 6 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.39s
+
+error: test failed, to rerun pass `-p bigmont-core --test chain`
+exit code: 101

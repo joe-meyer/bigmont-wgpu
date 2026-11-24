@@ -1,0 +1,8 @@
+# check: Target::Browser Fermat WGSL (TPI 8, wg 64, 2,029-bit class, 160 limbs), web/kernels/fermat_tpi8_wg64.wgsl, 60,741 bytes
+# generated with: cargo run --release -p bigmont-core --example dump_wgsl -- 8 64 unrolled fermat-browser
+# host: desktop (Windows 11) | browser: Claude app pane, Chrome 156.0.8078.100, WebGPU adapter vendor amd / rdna-2 (RX 6700 XT), subgroups 32..64, feature "subgroups" present | date: 2026-11-24 | commit b7f6a34 + working tree
+# method: page served from web/ by the preview server; javascript run in the page:
+#   device.pushErrorScope("validation"); module = device.createShaderModule({code: <file as is, prelude included>});
+#   await module.getCompilationInfo(); await device.createComputePipelineAsync({layout:"auto", compute:{module, entryPoint:"main"}}); popErrorScope()
+result: compilation messages: none (0 errors, 0 warnings); createComputePipelineAsync: created; validation error scope: null
+not done: the kernel was not dispatched and no output was checked against an oracle in the browser.

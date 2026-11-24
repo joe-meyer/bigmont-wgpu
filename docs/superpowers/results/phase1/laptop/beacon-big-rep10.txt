@@ -1,0 +1,4 @@
+# cmd: g1_fermat_v3 big_2048.bin big.beacon.rep10.verdict --device 0 --repeat 10 (cwd ~/beacon-test/p3) | host: test-laptop | date: 2026-11-24T17:46:34-05:00 | commit b7f6a34
+g1_fermat[GPU]: bits=2048 count=32000 repeat=10 | 2.422s | 132096.0 tests/s | prp=16000 gec_alarm=0
+exit code: 0
+2026-11-24T17:46:36-05:00

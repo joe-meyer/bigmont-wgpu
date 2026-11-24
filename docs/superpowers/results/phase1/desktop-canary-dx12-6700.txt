@@ -1,0 +1,5 @@
+# cmd: PATH+=dxc; target/release/bigmont canary canary_2048.bin canary_expected.bin --backend gpu --adapter 6700 --vk-backend dx12 | host: desktop | date: 2026-11-24T17:47:34-05:00 | commit b7f6a34
+bigmont: GPU: AMD Radeon RX 6700 XT [Dx12]
+bigmont: GPU: AMD Radeon RX 6700 XT [Dx12] | tests 400 (gpu 400, cpu 0) | 16.36 s (16.15 s tuning) | 1900.4 tests/s excluding tuning | PRP 200 | disagreements: prp 0, composite 0 | rechecks 200 | gpu errors 0
+bigmont: canary ok: all 400 verdicts match
+exit code: 0

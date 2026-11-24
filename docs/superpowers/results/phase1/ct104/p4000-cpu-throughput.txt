@@ -1,0 +1,5 @@
+# cmd: target/release/bigmont out/cand_2048.bin out/cpu.verdict --backend cpu | host: bigmont-test (CT 104 on host2, 4 vCPU shared) | date: 2026-11-24T22:48:57+00:00 | commit b7f6a34
+bigmont: CPU: 4 threads
+bigmont: CPU: 4 threads | tests 2048 (gpu 0, cpu 2048) | 4.23 s (0.00 s tuning) | 484.3 tests/s excluding tuning | PRP 7 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+exit code: 0
+common subset 2048: mismatches 0; PRP in subset (full-run verdicts) 7, PRP in subset (this run) 7; full-run PRP total 23

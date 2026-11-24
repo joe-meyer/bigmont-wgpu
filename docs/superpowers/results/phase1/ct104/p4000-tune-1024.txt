@@ -1,0 +1,18 @@
+# cmd: target/release/bigmont tune --bits 1024 --adapter P4000 --vk-backend Vulkan | host: bigmont-test | adapter: P4000 | date: 2026-11-24T22:45:25+00:00 | commit b7f6a34
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+1024 bits: 12 candidate configurations
+ tpi    wg      squarings/s  status
+   4    64         44169952  ok
+   4   128         45324574  ok
+   4   256         50954633  ok
+   8    64         45416103  ok
+   8   128         48033946  ok
+   8   256         47451378  ok
+  16    64         36525561  ok
+  16   128         39145554  ok
+  16   256         38825970  ok
+  32    64         18977855  ok
+  32   128         20131722  ok
+  32   256         19657244  ok
+best: tpi 4 wg 256 at 50954633 squarings/s
+exit code: 0

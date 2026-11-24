@@ -1,0 +1,11 @@
+bea2e2d7a710952d6a36a7e66a2cbd68337a05e9dbdc4830d903658808c705ad  out/beacon/big.beacon.rep1.verdict
+bea2e2d7a710952d6a36a7e66a2cbd68337a05e9dbdc4830d903658808c705ad  out/beacon/big.beacon.rep10.verdict
+bea2e2d7a710952d6a36a7e66a2cbd68337a05e9dbdc4830d903658808c705ad  out/beacon/big.gpu4070.verdict
+bea2e2d7a710952d6a36a7e66a2cbd68337a05e9dbdc4830d903658808c705ad  out/beacon/big.cpu.verdict
+beacon == bigmont gpu4070 (byte for byte)
+beacon == bigmont cpu
+gpu4070 == cpu
+beacon rep1 == rep10
+beacon == big_expected.bin
+gpu4070 == big_expected.bin
+cpu == big_expected.bin

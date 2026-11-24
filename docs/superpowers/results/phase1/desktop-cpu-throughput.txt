@@ -1,0 +1,5 @@
+# cmd: bigmont cand_2048.bin cpu.verdict --backend cpu (first 2045 + last 3 of the 16384 file) | host: desktop (Windows 11, 16 threads) | adapter: CPU Ryzen? 16 threads | date: 2026-11-24T17:41:27-05:00 | commit b7f6a34
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 2048 (gpu 0, cpu 2048) | 1.11 s (0.00 s tuning) | 1845.1 tests/s excluding tuning | PRP 7 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+exit code: 0
+common subset 2048: mismatches 0; PRP in subset (full-run verdicts) 7, PRP in subset (this run) 7; full-run PRP total 23

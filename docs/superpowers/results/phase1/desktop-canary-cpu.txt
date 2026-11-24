@@ -1,0 +1,5 @@
+# cmd: target/release/bigmont canary canary_2048.bin canary_expected.bin --backend cpu | host: desktop | date: 2026-11-24T17:47:16-05:00 | commit b7f6a34
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 400 (gpu 0, cpu 400) | 0.23 s (0.00 s tuning) | 1749.7 tests/s excluding tuning | PRP 200 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+bigmont: canary ok: all 400 verdicts match
+exit code: 0

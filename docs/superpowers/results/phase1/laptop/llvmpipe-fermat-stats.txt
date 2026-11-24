@@ -1,0 +1,11 @@
+# cmd: BIGMONT_ADAPTER=llvmpipe target/release/examples/fermat_stats out/cand_4096.bin | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:38:10-05:00 | commit b7f6a34
+adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 1364393 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 1539677 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 1616420 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 2864857 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 2839017 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 2870523 squarings/s
+config: KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 } (2870523 squarings/s measured by autotune)
+4099 tests, 2029 bits, capacity 16384: wall 1.802 s (2274.6 tests/s) | gpu 1.786 s (2294.6 tests/s) | host prep 0.005 s (0.3% of wall) | PRP 9
+exit code: 0

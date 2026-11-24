@@ -1,0 +1,10 @@
+# cmd: target/release/bigmont out/cand_4096.bin out/llvmpipe-gpu.verdict --backend gpu --adapter llvmpipe --vk-backend Vulkan --cache out/llvmpipe.cache | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:37:59-05:00 | commit b7f6a34
+bigmont: GPU: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 1641348 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 1622901 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 }: 1539586 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: 2825910 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160 }: 2854662 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160 }: 2878014 squarings/s
+bigmont: GPU: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan] | tests 4099 (gpu 4099, cpu 0) | 11.18 s (9.36 s tuning) | 2253.4 tests/s excluding tuning | PRP 9 | disagreements: prp 0, composite 0 | rechecks 9 | gpu errors 0
+exit code: 0

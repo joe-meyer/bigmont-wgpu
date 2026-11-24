@@ -1,0 +1,5 @@
+# cmd: target/release/bigmont canary /home/<user>/beacon-test/p3/canary_2048.bin /home/<user>/beacon-test/p3/canary_expected.bin --backend gpu --adapter 4070 --vk-backend Vulkan | host: test-laptop | date: 2026-11-24T17:47:03-05:00 | commit b7f6a34
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 400 (gpu 400, cpu 0) | 8.57 s (8.38 s tuning) | 2097.1 tests/s excluding tuning | PRP 200 | disagreements: prp 0, composite 0 | rechecks 200 | gpu errors 0
+bigmont: canary ok: all 400 verdicts match
+exit code: 0

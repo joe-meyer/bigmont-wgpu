@@ -1,0 +1,4 @@
+# cmd: g1_fermat_v3 canary_2048.bin canary.beacon.verdict --device 0 (cwd ~/beacon-test/p3) | host: test-laptop | date: 2026-11-24T17:46:33-05:00 | commit b7f6a34
+g1_fermat[GPU]: bits=2048 count=400 repeat=1 | 0.017s | 24207.9 tests/s | prp=200 gec_alarm=0
+exit code: 0
+beacon canary == expected

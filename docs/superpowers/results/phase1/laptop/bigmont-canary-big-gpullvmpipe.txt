@@ -1,0 +1,5 @@
+# cmd: target/release/bigmont canary /home/<user>/beacon-test/p3/big_2048.bin /home/<user>/beacon-test/p3/big_expected.bin --backend gpu --adapter llvmpipe --vk-backend Vulkan | host: test-laptop | date: 2026-11-24T17:48:07-05:00 | commit b7f6a34
+bigmont: GPU: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan]
+bigmont: GPU: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan] | tests 32000 (gpu 32000, cpu 0) | 30.88 s (9.04 s tuning) | 1465.1 tests/s excluding tuning | PRP 16000 | disagreements: prp 0, composite 0 | rechecks 16003 | gpu errors 0
+bigmont: canary ok: all 32000 verdicts match
+exit code: 0

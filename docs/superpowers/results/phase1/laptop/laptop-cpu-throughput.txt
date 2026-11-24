@@ -1,0 +1,10 @@
+# cmd: target/release/bigmont out/cand_2048.bin out/cpu.verdict --backend cpu (laptop CPU, Ryzen 7 7840HS) | host: test-laptop | date: 2026-11-24T17:49:15-05:00 | commit b7f6a34
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 2048 (gpu 0, cpu 2048) | 1.12 s (0.00 s tuning) | 1823.8 tests/s excluding tuning | PRP 7 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+exit code: 0
+compare with rtx4070 full-run verdicts:
+common subset 2048: mismatches 0; PRP in subset (full-run verdicts) 7, PRP in subset (this run) 7; full-run PRP total 23
+compare with radeon780m full-run verdicts:
+common subset 2048: mismatches 0; PRP in subset (full-run verdicts) 7, PRP in subset (this run) 7; full-run PRP total 23
+llvmpipe (4096-candidate file) vs CPU on the common subset:
+common subset 2048: mismatches 0; PRP in subset (full-run verdicts) 7, PRP in subset (this run) 7; full-run PRP total 9

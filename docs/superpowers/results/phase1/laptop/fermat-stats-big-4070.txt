@@ -1,0 +1,5 @@
+# cmd: BIGMONT_ADAPTER=4070 target/release/examples/fermat_stats ~/beacon-test/p3/big_2048.bin | host: test-laptop | date: 2026-11-24T17:49:18-05:00 | commit b7f6a34
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85744187 squarings/s measured by autotune)
+32000 tests, 2029 bits, capacity 16384: wall 0.819 s (39068.9 tests/s) | gpu 0.734 s (43591.2 tests/s) | host prep 0.032 s (3.9% of wall) | PRP 16000
+exit code: 0
