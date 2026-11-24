@@ -51,3 +51,9 @@ Collected from the per-task reviews, the whole-branch review and the remote runs
 - Wave64 was never observed. Intel remains untested. The unrolled kernel is still not browser-valid (`enable subgroups;`).
 - Dynamic size classes (above) are now cheap to try: the unrolled generator takes limbs per lane as a parameter.
 - Release the test container resources if no longer needed: CT 104 on host2 (24 GB) and the user-level Rust install on the laptop.
+
+## After the tuning pass and the browser check (2026-11-24)
+- Best width differs per adapter and per environment (TPI 4 on AMD and the 4070, TPI 8 on the P4000 and in the browser, rolled best in the browser): the engine needs a per-adapter autotune that validates against the oracle before choosing. The generator should also be able to emit browser-valid source (`enable subgroups;` plus `diagnostic(off, subgroup_uniformity);`) as an option, since naga 30 rejects the first line natively.
+- Browser: test other GPUs and vendors and other browsers (Firefox, Safari), real batch sizes and the browser's watchdog; compare WebGPU speed with and without the unrolled generator per browser.
+- Unexplained: TPI 4 is a third as fast on the P4000 and drops at Dx12 wg 256; try 14-bit limbs and squaring symmetry (both portable) only after the autotune exists to find where they pay off.
+- Housekeeping: the browser pane's `.claude/launch.json` lives in `N:\Programming\.claude` (outside the repo); a copy is in the repo's ignored `.claude/`.

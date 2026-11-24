@@ -5,7 +5,7 @@ const L: u32 = TPI * LPL;
 const WG: u32 = 64u;
 const B: u32 = 13u;
 const MASK: u32 = 0x1fffu;
-const K: u32 = 1u;       // owners between light carry passes (K * LPL = 20 iterations, PERIOD caps it at 24)
+const K: u32 = 1u;       // owners between light carry passes (K * LPL = 20 steps)
 
 @group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings
 @group(0) @binding(1) var<storage, read> n_limbs: array<u32>;
@@ -86,7 +86,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
     var t17 = 0u;
     var t18 = 0u;
     var t19 = 0u;
-    let ninv = ninv_buf[ic];
+    let ninv = ninv_buf[ic] & MASK;                   // already below 2^13; the explicit mask lets the compiler see the m product fits 24 bits
     let is0 = select(0u, 0xffffffffu, lane == 0u);   // all ones on lane 0 only
     let N0 = bcast(n0, 0u, base);                     // lane 0's limb 0 of n
     let NN0 = down1(n0, lane);                        // next lane's limb 0 of n (0 for the last lane)
@@ -119,7 +119,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -148,7 +148,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -177,7 +177,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -206,7 +206,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -235,7 +235,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -264,7 +264,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -293,7 +293,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -322,7 +322,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -351,7 +351,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -380,7 +380,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -409,7 +409,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -438,7 +438,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -467,7 +467,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -496,7 +496,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -525,7 +525,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -554,7 +554,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -583,7 +583,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -612,7 +612,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -641,7 +641,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);
@@ -670,7 +670,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)
                 let p = T0 + (X0 & 0xffffffu) * bl;            // lane 0's limb 0 after adding x*b
-                let m = (p * ninv) & MASK;                 // Montgomery factor
+                let m = ((p & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter, product below 2^26 (24-bit multiply)
                 let carry0 = (p + (N0 & 0xffffffu) * m) >> B;  // exact: the low 13 bits are zero
                 // new t = old t shifted down one limb, plus x*b and n*m shifted the same way; each line reads the old value above it
                 t0 = t1 + (x1 & 0xffffffu) * bl + (n1 & 0xffffffu) * m + (carry0 & is0);

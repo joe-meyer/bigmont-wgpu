@@ -1,0 +1,23 @@
+commit 37c987a; host2 CT104; 2026-11-24T18:55:41Z
+other GPU users at start: 1 %, 4607 MiB, 1202 MHz
+
+######## STRICT TESTS adapter=P4000 vulkan
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.20s
+
+######## SWEEP unrolled VERIFIED P4000 vulkan --tpi 4,8,16,32 --max-count 131070
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+variant: unrolled
+ variant  tpi   wg instances  sq/d   long ms      sq/s @2   sq/s @long   sq/s slope fixed ms  Gmad/s@L  tests/s*@L  status
+unrolled    4   64    131056     8    235.45      3860665      4452868      4692818     12.0     228.0        2195  ok, verified 27 inst x 24 sq (long), 27 inst x 10 sq (short)
+unrolled    4  128    131040     8    234.51      4347237      4470171      4512709      2.2     228.9        2203  ok, verified 27 inst x 24 sq (long), 27 inst x 10 sq (short)
+unrolled    4  256    131008     8    236.43      3983077      4432870      4606260      8.9     227.0        2185  ok, verified 27 inst x 24 sq (long), 27 inst x 10 sq (short)
+unrolled    8   64    131064    32    341.80     11811657     12270652     12302524      0.9     628.3        6048  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled    8  128    131056    32    324.77     12210535     12913263     12962998      1.2     661.2        6364  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled    8  256    131040    32    304.24     10190464     13782787     14114495      7.2     705.7        6793  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled   16   64    131068    32    331.68     13236458     12645351     12607816      0.0     647.4        6232  ok, verified 26 inst x 96 sq (long), 26 inst x 10 sq (short)
+unrolled   16  128    131064    32    332.83     13112339     12601335     12568681      0.0     645.2        6211  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled   16  256    131056    32    329.94     12466524     12710625     12727239      0.4     650.8        6264  ok, verified 27 inst x 96 sq (long), 27 inst x 10 sq (short)
+unrolled   32   64    131070    16    201.02     10717825     10432537     10393017      0.0     534.1        5142  ok, verified 25 inst x 48 sq (long), 25 inst x 10 sq (short)
+unrolled   32  128    131068    16    201.28     10763886     10419010     10371538      0.0     533.5        5135  ok, verified 26 inst x 48 sq (long), 26 inst x 10 sq (short)
+unrolled   32  256    131064    16    200.81     10908277     10442839     10379571      0.0     534.7        5147  ok, verified 27 inst x 48 sq (long), 27 inst x 10 sq (short)
+other GPU users at end: 1 %, 4607 MiB, 1683 MHz
