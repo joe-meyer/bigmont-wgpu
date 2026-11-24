@@ -5,6 +5,7 @@
 //!   cargo run --release -p bigmont-core --example spike -- --list
 //!   BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=vulkan cargo run --release -p bigmont-core --example spike
 //!   cargo run --release -p bigmont-core --example spike -- --quick     (fewer configurations)
+//!   cargo run --release -p bigmont-core --example spike -- --max-count 131072   (raise the batch cap)
 //!
 //! Any run that is meant to count as validation should set `BIGMONT_REQUIRE_GPU=1` for the test
 //! suite (`cargo test` skips silently without a GPU otherwise). Run benchmarks in a single process
@@ -43,19 +44,20 @@ struct Row {
 }
 
 /// Grows the batch until one dispatch takes at least 50 ms (staying far below the ~2 s Windows
-/// GPU timeout), then takes the best of 5 dispatches.
-fn bench(gpu: &Gpu, cfg: KernelConfig) -> Result<Row, String> {
+/// GPU timeout) or the batch reaches `max_count`, then takes the best of 5 dispatches.
+fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32) -> Result<Row, String> {
     let squarings = 2;
     let per_wg = cfg.instances_per_workgroup();
-    let mut count = (1024 / per_wg).max(1) * per_wg;
+    let cap = (max_count / per_wg).max(1) * per_wg;
+    let mut count = ((1024 / per_wg).max(1) * per_wg).min(cap);
     loop {
         let batch = Batch::from_values(&Batch::random_values(count, BITS, 99));
         let probe = run(gpu, cfg, &batch, squarings, 1)?;
-        if probe.best_secs >= 0.05 || count >= 65536 {
+        if probe.best_secs >= 0.05 || count >= cap {
             let timed = run(gpu, cfg, &batch, squarings, 5)?;
             return Ok(Row { cfg, count, squarings, best: timed.best_secs });
         }
-        count *= 2;
+        count = (count * 2).min(cap);
     }
 }
 
@@ -68,9 +70,14 @@ fn main() {
         return;
     }
     let quick = args.iter().any(|a| a == "--quick");
+    let max_count: u32 = match args.iter().position(|a| a == "--max-count") {
+        Some(i) => args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (1024..=262_144).contains(&n)).expect("--max-count needs a number from 1024 to 262144"),
+        None => 65536,
+    };
     let gpu = Gpu::new().expect("no usable adapter");
     println!("adapter: {}", gpu.describe());
     println!("subgroups feature: {}", gpu.has_subgroups);
+    println!("max batch (instances): {max_count}");
     println!();
 
     let tpis = [1u32, 8, 16, 32];
@@ -83,6 +90,13 @@ fn main() {
                 println!("{tpi:>4} {wg:>4}  skipped: {e}");
                 continue;
             }
+            // The batch can grow to max_count, rounded down to whole workgroups; a dispatch is limited to
+            // 65535 workgroups in x.
+            let per_wg = cfg.instances_per_workgroup();
+            if max_count / per_wg > 65535 {
+                println!("{tpi:>4} {wg:>4}  skipped: {} workgroups at --max-count {max_count} exceeds 65535 per dispatch", max_count / per_wg);
+                continue;
+            }
             if cfg.needs_subgroups() {
                 if let Err(e) = gpu.check_subgroups(tpi) {
                     println!("{tpi:>4} {wg:>4}  skipped: {e}");
@@ -93,7 +107,7 @@ fn main() {
                 println!("{tpi:>4} {wg:>4}  VALIDATION FAILED: {e} (no speed reported)");
                 continue;
             }
-            match bench(&gpu, cfg) {
+            match bench(&gpu, cfg, max_count) {
                 Ok(r) => {
                     let sps = f64::from(r.count) * f64::from(r.squarings) / r.best;
                     println!(
