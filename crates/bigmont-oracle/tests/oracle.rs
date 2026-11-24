@@ -104,3 +104,15 @@ fn chain_composes_at_full_size() {
     assert_eq!(three, one_then_two);
     assert!(three < n);
 }
+
+#[test]
+fn single_squaring_matches_definition_at_full_size() {
+    // Independent of the oracle's m-based reduction: y = x0^2 * R^-1 mod n  <=>  y * R = x0^2 mod n.
+    let mut rng = XorShift64::new(6);
+    for _ in 0..5 {
+        let n = random_odd_modulus(&mut rng, 2029);
+        let x0 = random_below(&mut rng, &n);
+        let y = mont_square_chain(&n, &x0, 1);
+        assert_eq!((&y << R_BITS) % &n, (&x0 * &x0) % &n);
+    }
+}

@@ -4,23 +4,26 @@ use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
 
-/// True when env `BIGMONT_REQUIRE_GPU=1`: a missing adapter or unsupported configuration is then a
-/// failure instead of a skip, so a skip cannot masquerade as a pass.
-fn require_gpu() -> bool {
-    std::env::var("BIGMONT_REQUIRE_GPU").is_ok_and(|v| v == "1")
+/// Strict by default: a missing adapter or an unsupported configuration fails the test, so a skip
+/// cannot masquerade as a pass. Set `BIGMONT_ALLOW_SKIP=1` to turn those cases into loud skips
+/// (for machines without a GPU). `BIGMONT_REQUIRE_GPU=1` is still accepted for
+/// compatibility (strict is the default; if both are set, strict wins).
+fn skips_allowed() -> bool {
+    let is_one = |name: &str| std::env::var(name).is_ok_and(|v| v == "1");
+    is_one("BIGMONT_ALLOW_SKIP") && !is_one("BIGMONT_REQUIRE_GPU")
 }
 
-/// Skips (loudly) or, under `BIGMONT_REQUIRE_GPU=1`, panics.
+/// Panics, unless `BIGMONT_ALLOW_SKIP=1`, in which case it prints a loud SKIP line.
 fn skip(msg: String) {
-    if require_gpu() {
-        panic!("{msg} (BIGMONT_REQUIRE_GPU=1)");
+    if !skips_allowed() {
+        panic!("{msg} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
     }
     eprintln!("SKIP {msg}");
 }
 
 /// Runs `cfg` on the selected adapter and compares every instance with the oracle.
-/// Skips (loudly) only when there is no adapter or the adapter cannot run this configuration,
-/// and never when `BIGMONT_REQUIRE_GPU=1`.
+/// Fails when there is no adapter or the adapter cannot run this configuration, unless
+/// `BIGMONT_ALLOW_SKIP=1` (then it skips loudly).
 fn check(cfg: KernelConfig) {
     let gpu = match Gpu::new() {
         Ok(g) => g,

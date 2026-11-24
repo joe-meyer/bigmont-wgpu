@@ -134,72 +134,106 @@ pub struct Run {
     pub best_secs: f64,
 }
 
+/// Runs `f` with Validation, Internal and OutOfMemory error scopes active, so that errors raised
+/// while creating shader modules, pipelines, buffers or bind groups come back as `Err` instead of
+/// reaching wgpu's uncaptured-error handler (which panics).
+fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Result<T, String> {
+    let scopes = [wgpu::ErrorFilter::OutOfMemory, wgpu::ErrorFilter::Internal, wgpu::ErrorFilter::Validation].map(|filter| device.push_error_scope(filter));
+    let out = f();
+    let mut first = None;
+    for scope in scopes.into_iter().rev() {
+        let popped = pollster::block_on(scope.pop());
+        first = first.or(popped);
+    }
+    match first {
+        Some(e) => Err(format!("{what} rejected: {e}")),
+        None => Ok(out),
+    }
+}
+
 /// Uploads `batch`, runs `repeats` dispatches of `squarings` Montgomery squarings each (every
 /// dispatch continues from the previous one's output), and reads the result back.
 pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
     cfg.validate()?;
+    let count = batch.count as usize;
+    if count == 0 {
+        return Err("batch is empty".into());
+    }
+    if batch.x.len() != count * LIMBS || batch.n.len() != count * LIMBS || batch.ninv.len() != count {
+        return Err(format!(
+            "batch lengths do not match count {count}: x {}, n {}, ninv {} (expected {}, {}, {count})",
+            batch.x.len(),
+            batch.n.len(),
+            batch.ninv.len(),
+            count * LIMBS,
+            count * LIMBS
+        ));
+    }
+    let groups = batch.count.div_ceil(cfg.instances_per_workgroup());
+    if groups > 65535 {
+        return Err(format!("{groups} workgroups exceeds the 65535 per dispatch limit"));
+    }
     if cfg.needs_subgroups() {
         gpu.check_subgroups(cfg.tpi)?;
     }
     let (device, queue) = (&gpu.device, &gpu.queue);
-    let words = (batch.count as usize * LIMBS) as u64;
-    let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
-        device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(label),
-            size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | extra,
+    let words = (count * LIMBS) as u64;
+    let (params, n_buf, ninv_buf, x_buf, staging) = guarded(device, "buffer creation", || {
+        let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | extra,
+                mapped_at_creation: false,
+            })
+        };
+        let params = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("params"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
-        })
-    };
-    let params = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("params"),
-        size: 16,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    let n_buf = storage("n", words * 4, wgpu::BufferUsages::empty());
-    let ninv_buf = storage("ninv", u64::from(batch.count) * 4, wgpu::BufferUsages::empty());
-    let x_buf = storage("x", words * 4, wgpu::BufferUsages::COPY_SRC);
-    let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("staging"),
-        size: words * 4,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    queue.write_buffer(&params, 0, bytemuck::cast_slice(&[batch.count, squarings, 0u32, 0u32]));
-    queue.write_buffer(&n_buf, 0, bytemuck::cast_slice(&batch.n));
-    queue.write_buffer(&ninv_buf, 0, bytemuck::cast_slice(&batch.ninv));
-    queue.write_buffer(&x_buf, 0, bytemuck::cast_slice(&batch.x));
+        });
+        let n_buf = storage("n", words * 4, wgpu::BufferUsages::empty());
+        let ninv_buf = storage("ninv", u64::from(batch.count) * 4, wgpu::BufferUsages::empty());
+        let x_buf = storage("x", words * 4, wgpu::BufferUsages::COPY_SRC);
+        let staging = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("staging"),
+            size: words * 4,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&params, 0, bytemuck::cast_slice(&[batch.count, squarings, 0u32, 0u32]));
+        queue.write_buffer(&n_buf, 0, bytemuck::cast_slice(&batch.n));
+        queue.write_buffer(&ninv_buf, 0, bytemuck::cast_slice(&batch.ninv));
+        queue.write_buffer(&x_buf, 0, bytemuck::cast_slice(&batch.x));
+        (params, n_buf, ninv_buf, x_buf, staging)
+    })?;
 
-    // WGSL compile and pipeline errors come back as Err(String) instead of a panic.
-    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mont"), source: wgpu::ShaderSource::Wgsl(cfg.wgsl().into()) });
-    if let Some(e) = pollster::block_on(scope.pop()) {
-        return Err(format!("shader module for {cfg:?} rejected: {e}"));
-    }
-    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("mont"),
-        layout: None,
-        module: &module,
-        entry_point: Some("main"),
-        compilation_options: Default::default(),
-        cache: None,
-    });
-    if let Some(e) = pollster::block_on(scope.pop()) {
-        return Err(format!("compute pipeline for {cfg:?} rejected: {e}"));
-    }
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: None,
-        layout: &pipeline.get_bind_group_layout(0),
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: n_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: ninv_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: x_buf.as_entire_binding() },
-        ],
-    });
-    let groups = batch.count.div_ceil(cfg.instances_per_workgroup());
+    let module = guarded(device, &format!("shader module for {cfg:?}"), || {
+        device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mont"), source: wgpu::ShaderSource::Wgsl(cfg.wgsl().into()) })
+    })?;
+    let pipeline = guarded(device, &format!("compute pipeline for {cfg:?}"), || {
+        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("mont"),
+            layout: None,
+            module: &module,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        })
+    })?;
+    let bind_group = guarded(device, "bind group creation", || {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: n_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: ninv_buf.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: x_buf.as_entire_binding() },
+            ],
+        })
+    })?;
     let mut best = f64::MAX;
     for _ in 0..repeats.max(1) {
         let mut enc = device.create_command_encoder(&Default::default());

@@ -99,6 +99,7 @@ pub fn neg_inv_limb(n: &BigUint) -> u32 {
 
 /// n^-1 mod 2^bits for odd n (Newton / Hensel lifting).
 pub fn inv_mod_pow2(n: &BigUint, bits: u32) -> BigUint {
+    assert!(n.bit(0), "modulus must be odd");
     let mut inv = BigUint::one(); // n * 1 = 1 mod 2 for odd n
     let mut p = 1u32;
     while p < bits {
@@ -111,11 +112,13 @@ pub fn inv_mod_pow2(n: &BigUint, bits: u32) -> BigUint {
     inv
 }
 
-/// x <- x^2 * R^-1 mod n, `squarings` times, with R = 2^R_BITS. Result in [0, n).
+/// x <- x^2 * R^-1 mod n, `squarings` times, with R = 2^R_BITS. `n` must be odd. The result is in
+/// [0, n); with `squarings == 0` it is `x0 % n`.
 pub fn mont_square_chain(n: &BigUint, x0: &BigUint, squarings: u32) -> BigUint {
+    assert!(n.bit(0), "modulus must be odd");
     let mask = (BigUint::one() << R_BITS) - 1u32;
     let ninv = inv_mod_pow2(n, R_BITS);
-    let mut x = x0.clone();
+    let mut x = x0 % n;
     for _ in 0..squarings {
         let x2 = &x * &x;
         // m = -x2 * n^-1 mod R, so that x2 + m*n is divisible by R
