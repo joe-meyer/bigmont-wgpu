@@ -3,6 +3,8 @@ use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
 
+mod common;
+
 fn opts(backend: Backend) -> Options {
     Options { backend, min_gpu_batch: 4, capacity: 32, verify_rate: 0, ..Options::default() }
 }
@@ -54,6 +56,9 @@ fn cpu_backend_matches_the_oracle_including_degenerate_inputs() {
 
 #[test]
 fn gpu_backend_matches_the_oracle_and_buckets_by_bit_length() {
+    if !common::usable_gpu() {
+        return;
+    }
     let (ns, want) = batch();
     let cache = std::env::temp_dir().join(format!("bigmont-engine-test-{}.cache", std::process::id()));
     let _cleanup = RemoveOnDrop(cache.clone());
@@ -93,6 +98,9 @@ fn forced_gpu_backend_errors_when_the_adapter_is_missing() {
 
 #[test]
 fn verify_rate_rechecks_composites_without_changing_verdicts() {
+    if !common::usable_gpu() {
+        return;
+    }
     let (ns, want) = batch();
     let mut e = Engine::open(Options { verify_rate: 2, ..opts(Backend::Gpu) });
     assert_eq!(e.verdicts(&ns).unwrap(), want);
@@ -140,6 +148,9 @@ fn bucket(bits: u32, random: usize, prps: usize, seed: u64) -> Vec<BigUint> {
 
 #[test]
 fn buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size() {
+    if !common::usable_gpu() {
+        return;
+    }
     // The default min_gpu_batch (64) with buckets of 70 at 20, 40, 63 and 64 bits: all on the GPU.
     // A 63-entry bucket at 30 bits is one short of min_gpu_batch: that, and only that, sends it to the CPU.
     let defaults = Options::default();
@@ -175,6 +186,9 @@ fn buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size() {
 
 #[test]
 fn every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_once() {
+    if !common::usable_gpu() {
+        return;
+    }
     // Every odd number from 3 to 2047, four copies each, so each bit length from 2 (the number 3) to
     // 11 has a bucket of at least min_gpu_batch (4): ten distinct bit lengths in one limb class.
     let ns: Vec<BigUint> = (3u32..2048).step_by(2).flat_map(|v| std::iter::repeat_n(BigUint::from(v), 4)).collect();
@@ -213,6 +227,9 @@ fn scheme_batch() -> (Vec<BigUint>, Vec<u8>) {
 
 fn run_with_scheme(scheme: bigmont_cli::tune::SchemeChoice, tag: &str) -> Option<(std::path::PathBuf, RemoveOnDrop)> {
     use bigmont_cli::tune::SchemeChoice;
+    if !common::usable_gpu() {
+        return None;
+    }
     let gpu = match bigmont_core::gpu::Gpu::new() {
         Ok(g) => g,
         Err(e) => {

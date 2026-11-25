@@ -28,3 +28,18 @@ Names are `fermat_b<bits>_tpi<T>_wg<W>`. Names starting `limb32_` are the native
     cargo run --release -p bigmont-core --example dump_wgsl -- 8 64 unrolled fermat-native --bits 2029 --scheme 32 > web/kernels/matrix/limb32_native_fermat_b2029_tpi8_wg64.wgsl
 
 `dump_wgsl ... --scheme 32` with a `-browser` form exits 1 with the refusal (the 32-bit scheme is native-only). Results: `docs/superpowers/results/2026-11-25-browser-fermat-validation.md`.
+
+## The Rust engine in the browser (`rust.html`)
+
+`rust.html` runs the real Rust Fermat runner (`bigmont-core`, compiled to wasm32 by `crates/bigmont-wasm`) on the page's WebGPU, for several sizes and kernel shapes, and compares every verdict with a BigInt oracle. Only the 13-bit limb scheme runs in a browser (no 64-bit shader integers), the kernel shape is chosen by the page (`?tpi=8&wg=64`; there is no autotuner in the browser yet), and nothing times out: a device that hangs without being lost keeps the page waiting, while a reported device loss rejects the call.
+
+Build and serve:
+
+    rustup target add wasm32-unknown-unknown
+    cargo install wasm-bindgen-cli --version 0.2.130 --locked     # must match the wasm-bindgen in Cargo.lock
+    cargo build -p bigmont-wasm --target wasm32-unknown-unknown --release
+    wasm-bindgen --target web --out-dir web/pkg target/wasm32-unknown-unknown/release/bigmont_wasm.wasm
+    python3 -m http.server 8765 --directory web
+    # then open http://localhost:8765/rust.html?bits=255,1019,2029&tpi=8
+
+**wgpu is pinned to trunk for now.** Released wgpu 30.0.2 does not map the browser's `subgroups` feature to `wgpu::Features::SUBGROUP`, so a device cannot ask for it and the kernels' `enable subgroups;` is rejected (the page would report "needs subgroups, which the adapter lacks"). That is fixed upstream by [gfx-rs/wgpu#10265](https://github.com/gfx-rs/wgpu/pull/10265) (fixing [#10146](https://github.com/gfx-rs/wgpu/issues/10146)), merged to trunk on 2026-10-10 but not in 30.0.2, which is a patch release off an older branch. So `bigmont-core` and `bigmont-cli` depend on wgpu at trunk commit `60cef2be` (see the comment in their `Cargo.toml`), and the builds above need no patch. Switch back to a crates.io version as soon as a release contains #10265. Compiling for wasm32 does not depend on it; only running on the GPU does.

@@ -1,4 +1,4 @@
-//! `bigmont`: a drop-in for Beacon's `g1_fermat_v3` on candidate/verdict files.
+//! `bigmont`: tests candidate files and writes verdict files, a drop-in for an existing CUDA-based Fermat driver.
 //!
 //!   bigmont CAND VERDICT [engine flags]
 //!   bigmont canary CAND EXPECTED [engine flags]
@@ -34,7 +34,7 @@ limb scheme: --limbs auto (default) measures every scheme the adapter can run an
 tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPPDATA%\\bigmont\\tune.cache on Windows,
               $XDG_CACHE_HOME/bigmont/tune.cache or ~/.cache/bigmont/tune.cache elsewhere); --no-cache disables it";
 
-/// Beacon flags this driver does not implement yet.
+/// Flags of the driver this one replaces that are not implemented yet.
 const UNSUPPORTED: [&str; 6] = ["--inject", "--ee", "--bins", "--chunk", "--growth", "--marker"];
 
 struct Args {

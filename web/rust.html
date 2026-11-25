@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bigmont Rust engine in the browser</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; max-width: 980px; }
+  pre { background: #f4f4f4; padding: 10px; overflow: auto; white-space: pre-wrap; }
+  @media (prefers-color-scheme: dark) { body { background: #111; color: #ddd; } pre { background: #1c1c1c; } }
+</style>
+</head>
+<body>
+<h3>bigmont Rust engine on WebGPU</h3>
+<p>Runs the Rust Fermat runner (<code>bigmont-core</code>, compiled to wasm by <code>bigmont-wasm</code>) on this browser's
+WebGPU and checks every verdict against a BigInt <code>2^(n-1) mod n == 1</code> oracle. Needs
+<code>web/pkg/</code>, built as described in <a href="README.md">README.md</a>. Query: <code>?bits=255,1019,2029</code>,
+<code>&amp;tpi=8</code>, <code>&amp;wg=64</code>, <code>&amp;count=24</code> (candidates per size). Results are also in
+<code>window.__rust</code>.</p>
+<pre id="out">starting...</pre>
+<script type="module">
+import init, { Engine } from "./pkg/bigmont_wasm.js";
+
+const out = document.getElementById("out");
+const lines = [];
+const log = (s) => { lines.push(s); out.textContent = lines.join("\n"); };
+const q = new URLSearchParams(location.search);
+const bitList = (q.get("bits") || "255,1019,2029").split(",").map(Number);
+const tpi = Number(q.get("tpi") || 8), wg = Number(q.get("wg") || 64), count = Number(q.get("count") || 24);
+window.__rust = { done: false, ok: false, adapter: null, runs: [], error: null };
+
+// ---- BigInt helpers (the oracle side; nothing here is shared with the Rust code) ----
+function rnd(bits) {
+  const nb = Math.ceil(bits / 8), a = new Uint8Array(nb);
+  crypto.getRandomValues(a);
+  let v = 0n; for (const b of a) v = (v << 8n) | BigInt(b);
+  return v & ((1n << BigInt(bits)) - 1n);
+}
+const oddMod = (bits) => rnd(bits) | (1n << BigInt(bits - 1)) | 1n;
+function modPow2(n) { // 2^(n-1) mod n, left to right
+  const e = n - 1n; let x = 1n;
+  for (let i = e.toString(2).length - 1; i >= 0; i--) { x = (x * x) % n; if ((e >> BigInt(i)) & 1n) x = (x << 1n) % n; }
+  return x;
+}
+const fermat = (n) => modPow2(n) === 1n;
+const SMALL = (() => { const p = []; for (let i = 3; i < 1000; i += 2) if (p.every((q) => i % q)) p.push(i); return p; })();
+function randomPrp(bits) {
+  for (;;) {
+    const n = oddMod(bits);
+    if (SMALL.some((p) => n % BigInt(p) === 0n)) continue;
+    if (fermat(n)) return n;
+  }
+}
+
+try {
+  if (!navigator.gpu) throw new Error("this browser has no WebGPU (navigator.gpu is undefined)");
+  await init();
+  const engine = await Engine.open();
+  window.__rust.adapter = engine.describe();
+  log("adapter: " + window.__rust.adapter);
+  log(`kernel: 13-bit limbs, tpi ${tpi}, workgroup ${wg}`);
+  let allOk = true;
+  for (const bits of bitList) {
+    const nPrp = Math.max(2, Math.floor(count / 6));
+    const ns = [];
+    for (let i = 0; i < count - nPrp - 1; i++) ns.push(oddMod(bits));
+    for (let i = 0; i < nPrp; i++) ns.push(randomPrp(bits));
+    ns.push((1n << BigInt(bits)) - 1n); // all ones
+    const want = ns.map((n) => (fermat(n) ? 1 : 0));
+    const t0 = performance.now();
+    const got = Array.from(await engine.fermat_hex(bits, ns.map((n) => n.toString(16)), tpi, wg));
+    const ms = performance.now() - t0;
+    const bad = got.map((g, i) => (g === want[i] ? -1 : i)).filter((i) => i >= 0);
+    const run = { bits, candidates: ns.length, primes: want.reduce((a, b) => a + b, 0), mismatches: bad.length, ms: Math.round(ms) };
+    window.__rust.runs.push(run);
+    log(`${bits} bits: ${ns.length} candidates (${run.primes} PRP), ${bad.length} mismatches, ${run.ms} ms (includes shader compile)`);
+    if (bad.length || run.primes < 2) allOk = false;
+  }
+  window.__rust.ok = allOk;
+  log(allOk ? "PASS: every verdict equals the BigInt oracle" : "FAIL");
+} catch (e) {
+  window.__rust.error = String(e && e.message || e);
+  log("ERROR: " + window.__rust.error);
+}
+window.__rust.done = true;
+</script>
+</body>
+</html>

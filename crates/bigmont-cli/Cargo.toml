@@ -1,6 +1,6 @@
 [package]
 name = "bigmont-cli"
-description = "Beacon-compatible candidate/verdict driver and autotuned engine for bigmont"
+description = "Candidate/verdict file driver and autotuned engine for bigmont"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,10 @@ bigmont-cpu = { path = "../bigmont-cpu" }
 bigmont-oracle = { path = "../bigmont-oracle" }
 num-bigint = "0.4"
 num-traits = "0.2"
-wgpu = "30.0.2"
+# Pinned to wgpu trunk for gfx-rs/wgpu#10265 (merged 2026-10-10): the web backend maps the browser's
+# `subgroups` feature to `Features::SUBGROUP`, which the browser build needs. Released wgpu 30.0.2 lacks it.
+# Go back to a crates.io version (`wgpu = "31"` or the first release with #10265) once one ships.
+wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "60cef2be828e03ba54e2e1598001b4625c0c2163" }
 
 [[bin]]
 name = "bigmont"

@@ -12,4 +12,5 @@ pub mod runner;
 /// Limb schemes (radix-dependent host helpers) and device capabilities.
 pub mod scheme;
 mod limb32;
+mod signal;
 mod unrolled;

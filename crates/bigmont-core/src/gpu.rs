@@ -6,13 +6,17 @@ use bigmont_oracle::{LIMBS, XorShift64, random_below, random_odd_modulus};
 use num_bigint::BigUint;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, mpsc};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::mpsc;
+use std::time::Duration;
+use web_time::Instant;
 
 /// Serialises instance/adapter/device creation. Mitigation; root cause not investigated: creating
 /// several wgpu instances at once from parallel test threads intermittently made
 /// `enumerate_adapters` miss the requested adapter. Benchmarks should run in a single process
 /// (the spike example does).
+#[cfg(not(target_arch = "wasm32"))]
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 /// Which adapter to open. All fields `None` means the high-performance default.
@@ -23,7 +27,7 @@ pub struct AdapterSelector {
     /// Case-insensitive substring of the backend name ("Vulkan", "Dx12", "Gl", ...).
     pub backend: Option<String>,
     /// Index among the non-CPU adapters (after the name/backend filters), in `enumerate_adapters`
-    /// order: Beacon's `--device N`.
+    /// order: what a `--device N` flag selects.
     pub index: Option<usize>,
 }
 
@@ -40,9 +44,11 @@ impl AdapterSelector {
 pub const DEFAULT_POLL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Extra time [`Gpu::wait`] gives a poll that ignores its own timeout before it gives up on it.
+#[cfg(not(target_arch = "wasm32"))]
 const WAIT_GRACE: Duration = Duration::from_secs(2);
 
 /// How long [`Gpu::read_back`] waits for the mapping callback after a successful wait.
+#[cfg(not(target_arch = "wasm32"))]
 const READBACK_GUARD: Duration = Duration::from_secs(1);
 
 /// At most this many uncaptured error messages are kept per device.
@@ -100,7 +106,12 @@ struct Health {
     /// Uncaptured error messages, oldest first (at most `MAX_RECORDED_ERRORS`).
     errors: Mutex<Vec<String>>,
     /// Test hook: the next wait's poll panics (see `Gpu::inject_poll_panic`).
+    #[cfg(not(target_arch = "wasm32"))]
     inject_poll_panic: AtomicBool,
+    /// Tasks awaiting the device in a browser, woken when it is lost or poisoned (nothing there can
+    /// block, and a lost device may never run the completion callback they wait for).
+    #[cfg(target_arch = "wasm32")]
+    waiters: Mutex<Vec<std::task::Waker>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -120,6 +131,20 @@ impl Health {
             }
         }
         self.lost.store(true, Ordering::SeqCst);
+        self.wake_waiters();
+    }
+
+    /// Remembers `waker` so a later loss or poisoning wakes the task (browser build only).
+    #[cfg(target_arch = "wasm32")]
+    fn register(&self, waker: &std::task::Waker) {
+        lock(&self.waiters).push(waker.clone());
+    }
+
+    fn wake_waiters(&self) {
+        #[cfg(target_arch = "wasm32")]
+        for w in std::mem::take(&mut *lock(&self.waiters)) {
+            w.wake();
+        }
     }
 
     /// Whether dropping the device could block (see [`Gpu`]): a timed-out wait, or a loss that was
@@ -129,9 +154,12 @@ impl Health {
         self.poisoned.load(Ordering::SeqCst) || lost_by_driver
     }
 
+    /// A timed-out wait (native only: a browser has no timer to time out with).
+    #[cfg(not(target_arch = "wasm32"))]
     fn poison(&self, why: String) {
         lock(&self.poison_reason).get_or_insert(why);
         self.poisoned.store(true, Ordering::SeqCst);
+        self.wake_waiters();
     }
 
     /// The recorded problem, most serious first: a timeout, a loss, then the first uncaptured error.
@@ -255,59 +283,85 @@ impl Gpu {
     /// Opens the adapter named by env `BIGMONT_ADAPTER` (substring of the adapter name) and
     /// `BIGMONT_BACKEND` (substring of the backend name, e.g. "Vulkan", "Dx12"); otherwise the
     /// high-performance default. Requests `Features::SUBGROUP` when the adapter has it.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Result<Gpu, String> {
         Gpu::open(&AdapterSelector::from_env())
     }
 
     /// Opens the adapter chosen by `selector` (see [`AdapterSelector`]); the high-performance
     /// default when the selector is empty. Requests `Features::SUBGROUP` when the adapter has it.
+    /// Blocks; not available in a browser (use [`Gpu::open_async`]). Opens are serialised.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn open(selector: &AdapterSelector) -> Result<Gpu, String> {
         let _init = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        pollster::block_on(async {
-            let instance = shared_instance();
-            let name = selector.name.as_ref().map(|s| s.to_lowercase());
-            let backend = selector.backend.as_ref().map(|s| s.to_lowercase());
-            let adapter = if name.is_some() || backend.is_some() || selector.index.is_some() {
-                let mut matching: Vec<wgpu::Adapter> = instance
-                    .enumerate_adapters(wgpu::Backends::all())
-                    .await
-                    .into_iter()
-                    .filter(|a| {
-                        let i = a.get_info();
-                        name.as_ref().is_none_or(|w| i.name.to_lowercase().contains(w))
-                            && backend.as_ref().is_none_or(|w| format!("{:?}", i.backend).to_lowercase().contains(w))
-                    })
-                    .collect();
-                if let Some(index) = selector.index {
-                    matching.retain(|a| a.get_info().device_type != wgpu::DeviceType::Cpu);
-                    if index >= matching.len() {
-                        return Err(format!("no adapter matches {selector:?} ({} non-CPU adapters match the name/backend filters)", matching.len()));
-                    }
-                    matching.swap_remove(index)
-                } else {
-                    matching.into_iter().next().ok_or_else(|| format!("no adapter matches {selector:?}"))?
-                }
-            } else {
-                instance
-                    .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() })
-                    .await
-                    .map_err(|e| e.to_string())?
-            };
-            let info = adapter.get_info();
-            let has_subgroups = adapter.features().contains(wgpu::Features::SUBGROUP);
-            let mut features = wgpu::Features::empty();
-            if has_subgroups {
-                features |= wgpu::Features::SUBGROUP;
-            }
-            if adapter.features().contains(wgpu::Features::SHADER_INT64) {
-                features |= wgpu::Features::SHADER_INT64;
-            }
-            let (device, queue) = adapter
-                .request_device(&wgpu::DeviceDescriptor { required_features: features, ..Default::default() })
+        pollster::block_on(Gpu::open_async(selector))
+    }
+
+    /// [`Gpu::open`] without blocking: the form a browser needs. Natively it does the same work and
+    /// does not take the open lock (callers that open several devices at once should serialise).
+    ///
+    /// In a browser the adapter is the one the page's WebGPU gives out (the `selector` must be
+    /// empty: a page cannot enumerate adapters), and it needs a browser with WebGPU.
+    pub async fn open_async(selector: &AdapterSelector) -> Result<Gpu, String> {
+        let instance = shared_instance();
+        let adapter = Gpu::select_adapter(&instance, selector).await?;
+        let info = adapter.get_info();
+        let has_subgroups = adapter.features().contains(wgpu::Features::SUBGROUP);
+        let mut features = wgpu::Features::empty();
+        if has_subgroups {
+            features |= wgpu::Features::SUBGROUP;
+        }
+        if adapter.features().contains(wgpu::Features::SHADER_INT64) {
+            features |= wgpu::Features::SHADER_INT64;
+        }
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor { required_features: features, ..Default::default() })
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(Gpu::from_parts(info, has_subgroups, device, queue))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn select_adapter(instance: &wgpu::Instance, selector: &AdapterSelector) -> Result<wgpu::Adapter, String> {
+        let name = selector.name.as_ref().map(|s| s.to_lowercase());
+        let backend = selector.backend.as_ref().map(|s| s.to_lowercase());
+        if name.is_some() || backend.is_some() || selector.index.is_some() {
+            let mut matching: Vec<wgpu::Adapter> = instance
+                .enumerate_adapters(wgpu::Backends::all())
                 .await
-                .map_err(|e| e.to_string())?;
-            Ok(Gpu::from_parts(info, has_subgroups, device, queue))
-        })
+                .into_iter()
+                .filter(|a| {
+                    let i = a.get_info();
+                    name.as_ref().is_none_or(|w| i.name.to_lowercase().contains(w))
+                        && backend.as_ref().is_none_or(|w| format!("{:?}", i.backend).to_lowercase().contains(w))
+                })
+                .collect();
+            if let Some(index) = selector.index {
+                matching.retain(|a| a.get_info().device_type != wgpu::DeviceType::Cpu);
+                if index >= matching.len() {
+                    return Err(format!("no adapter matches {selector:?} ({} non-CPU adapters match the name/backend filters)", matching.len()));
+                }
+                Ok(matching.swap_remove(index))
+            } else {
+                matching.into_iter().next().ok_or_else(|| format!("no adapter matches {selector:?}"))
+            }
+        } else {
+            instance
+                .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() })
+                .await
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn select_adapter(instance: &wgpu::Instance, selector: &AdapterSelector) -> Result<wgpu::Adapter, String> {
+        if *selector != AdapterSelector::default() {
+            return Err(format!("{selector:?}: choosing an adapter by name, backend or index is not possible in a browser"));
+        }
+        instance
+            .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() })
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Wraps an already created device: installs the device-lost callback and the uncaptured-error
@@ -396,6 +450,7 @@ impl Gpu {
     /// The poll runs on a helper thread so that a poll that does not honour its timeout (the
     /// driver hangs inside it) cannot hang the caller: after the timeout plus a 2 s grace the wait
     /// gives up, poisons the `Gpu` and leaves the helper thread behind.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn wait(&self) -> Result<(), String> {
         if self.health.inject_poll_panic.swap(false, Ordering::SeqCst) {
             // Test hook (`inject_poll_panic`): what wgpu 30 does when the driver reports the device
@@ -409,6 +464,7 @@ impl Gpu {
     /// wgpu 30 does on a real driver-side device loss (an NVIDIA Xid). Unlike `device.destroy()`,
     /// this takes the `catch_unwind` path of the wait. The real submitted work still runs.
     #[doc(hidden)]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn inject_poll_panic(&self) {
         self.health.inject_poll_panic.store(true, Ordering::SeqCst);
     }
@@ -423,6 +479,7 @@ impl Gpu {
     /// the helper thread exactly where `wait` runs `Device::poll`. Public for tests that need a poll
     /// which panics or never returns; everything else uses `wait`.
     #[doc(hidden)]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn wait_with(&self, poll: impl FnOnce(&wgpu::Device, Duration) -> Result<wgpu::PollStatus, wgpu::PollError> + Send + 'static) -> Result<(), String> {
         self.check_health()?;
         let timeout = self.poll_timeout;
@@ -457,9 +514,38 @@ impl Gpu {
         self.check_health()
     }
 
+    /// [`Gpu::wait`] as a future: resolves when the work submitted so far has finished.
+    ///
+    /// Natively this is `wait` (it blocks the calling thread while it runs, with the same timeout
+    /// and device-loss handling). In a browser it awaits the queue's work-done callback, which fires
+    /// from the JS event loop; there is no timer there, so a device that hangs without being lost
+    /// keeps the future pending, but a device-lost report resolves it with an `Err`.
+    pub async fn wait_async(&self) -> Result<(), String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.wait()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.check_health()?;
+            let (tx, rx) = crate::signal::channel();
+            self.queue.on_submitted_work_done(move || tx.send(()));
+            rx.recv_or(|waker| self.unhealthy_waker(waker)).await?;
+            self.check_health()
+        }
+    }
+
+    /// For [`crate::signal`] futures: registers `waker` to be woken on a loss and reports one.
+    #[cfg(target_arch = "wasm32")]
+    fn unhealthy_waker(&self, waker: &std::task::Waker) -> Option<String> {
+        self.health.register(waker);
+        self.health.problem()
+    }
+
     /// Copies the first `bytes` of `staging` (a `MAP_READ` buffer whose copy has been submitted)
     /// back to the host. The mapping goes through [`Gpu::wait`] and a channel, so a lost device or a
     /// hung wait is an `Err`, never a panic or a hang.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn read_back(&self, staging: &wgpu::Buffer, bytes: u64) -> Result<Vec<u32>, String> {
         let slice = staging.slice(..bytes);
         let (tx, rx) = mpsc::channel();
@@ -479,6 +565,32 @@ impl Gpu {
                 return Err(self.explain(why));
             }
         }
+        self.copy_mapped(staging, bytes)
+    }
+
+    /// [`Gpu::read_back`] as a future (see [`Gpu::wait_async`] for how waiting differs in a browser).
+    pub async fn read_back_async(&self, staging: &wgpu::Buffer, bytes: u64) -> Result<Vec<u32>, String> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.read_back(staging, bytes)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let slice = staging.slice(..bytes);
+            let (tx, rx) = crate::signal::channel();
+            slice.map_async(wgpu::MapMode::Read, move |r| tx.send(r));
+            match rx.recv_or(|waker| self.unhealthy_waker(waker)).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(self.explain(format!("mapping readback buffer failed: {e}"))),
+                Err(why) => return Err(self.explain(why)),
+            }
+            self.copy_mapped(staging, bytes)
+        }
+    }
+
+    /// Reads the mapped `staging` range into a vector and unmaps it.
+    fn copy_mapped(&self, staging: &wgpu::Buffer, bytes: u64) -> Result<Vec<u32>, String> {
+        let slice = staging.slice(..bytes);
         let x = {
             let view = slice.get_mapped_range().map_err(|e| self.explain(format!("readback buffer not mapped: {e}")))?;
             bytemuck::cast_slice::<u8, u32>(&view).to_vec()
@@ -487,6 +599,7 @@ impl Gpu {
         Ok(x)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn list_adapters() -> Vec<String> {
         pollster::block_on(async {
             let instance = shared_instance();
@@ -582,12 +695,12 @@ pub struct Run {
 /// Runs `f` with Validation, Internal and OutOfMemory error scopes active, so that errors raised
 /// while creating shader modules, pipelines, buffers or bind groups come back as `Err` instead of
 /// reaching wgpu's uncaptured-error handler (which panics).
-pub(crate) fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Result<T, String> {
+pub(crate) async fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Result<T, String> {
     let scopes = [wgpu::ErrorFilter::OutOfMemory, wgpu::ErrorFilter::Internal, wgpu::ErrorFilter::Validation].map(|filter| device.push_error_scope(filter));
     let out = f();
     let mut first = None;
     for scope in scopes.into_iter().rev() {
-        let popped = pollster::block_on(scope.pop());
+        let popped = scope.pop().await;
         first = first.or(popped);
     }
     match first {
@@ -602,7 +715,13 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> 
 ///
 /// `batch` must have been packed for `cfg`'s limb scheme (see the warning on [`Batch`]): only the
 /// limb count is checked.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
+    pollster::block_on(run_async(gpu, cfg, batch, squarings, repeats))
+}
+
+/// [`run`] as a future: the form a browser needs (see [`Gpu::wait_async`]).
+pub async fn run_async(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
     cfg.validate()?;
     cfg.check_caps(gpu.caps())?;
     let count = batch.count as usize;
@@ -631,12 +750,12 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
         gpu.check_subgroups(cfg.tpi)?;
     }
     gpu.check_health()?;
-    run_on_device(gpu, cfg, batch, squarings, repeats, groups).map_err(|e| gpu.explain(e))
+    run_on_device(gpu, cfg, batch, squarings, repeats, groups).await.map_err(|e| gpu.explain(e))
 }
 
 /// The device part of [`run`] (inputs already validated); any `Err` is passed through
 /// [`Gpu::explain`] by the caller.
-fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32, groups: u32) -> Result<Run, String> {
+async fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32, groups: u32) -> Result<Run, String> {
     let (count, limbs) = (batch.count as usize, cfg.limbs as usize);
     let (device, queue) = (&gpu.device, &gpu.queue);
     let words = (count * limbs) as u64;
@@ -669,12 +788,12 @@ fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, re
         queue.write_buffer(&ninv_buf, 0, bytemuck::cast_slice(&batch.ninv));
         queue.write_buffer(&x_buf, 0, bytemuck::cast_slice(&batch.x));
         (params, n_buf, ninv_buf, x_buf, staging)
-    })?;
+    }).await?;
 
-    let source = cfg.try_wgsl_for(crate::kernel::Target::Native)?;
+    let source = cfg.try_wgsl_for(crate::kernel::Target::host())?;
     let module = guarded(device, &format!("shader module for {cfg:?}"), || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mont"), source: wgpu::ShaderSource::Wgsl(source.into()) })
-    })?;
+    }).await?;
     let pipeline = guarded(device, &format!("compute pipeline for {cfg:?}"), || {
         device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("mont"),
@@ -684,7 +803,7 @@ fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, re
             compilation_options: Default::default(),
             cache: None,
         })
-    })?;
+    }).await?;
     let bind_group = guarded(device, "bind group creation", || {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -696,7 +815,7 @@ fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, re
                 wgpu::BindGroupEntry { binding: 3, resource: x_buf.as_entire_binding() },
             ],
         })
-    })?;
+    }).await?;
     let mut best = f64::MAX;
     for _ in 0..repeats.max(1) {
         let mut enc = device.create_command_encoder(&Default::default());
@@ -708,13 +827,13 @@ fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, re
         }
         let t = Instant::now();
         queue.submit([enc.finish()]);
-        gpu.wait()?;
+        gpu.wait_async().await?;
         best = best.min(t.elapsed().as_secs_f64());
     }
     let mut enc = device.create_command_encoder(&Default::default());
     enc.copy_buffer_to_buffer(&x_buf, 0, &staging, 0, words * 4);
     queue.submit([enc.finish()]);
-    let x = gpu.read_back(&staging, words * 4)?;
+    let x = gpu.read_back_async(&staging, words * 4).await?;
     Ok(Run { x, best_secs: best })
 }
 

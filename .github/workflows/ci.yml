@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  # The GPU tests are strict by default (a missing adapter or capability fails
+  # the test). Hosted runners have no GPU, so turn missing ones into loud skips.
+  BIGMONT_ALLOW_SKIP: "1"
+
+jobs:
+  # TODO: make blocking. At the time this workflow was added the tree was not
+  # yet rustfmt-clean (hundreds of hunks) and had a handful of clippy
+  # warnings; fixing them is a separate, mechanical PR so it stays reviewable.
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-features --locked
+      # Hosted runners have no usable GPU, so the GPU-dependent tests skip here
+      # (BIGMONT_ALLOW_SKIP=1) and the engine's GPU paths are not covered by this
+      # job. See https://github.com/joe-meyer/bigmont-wgpu/issues/23.
+      - run: cargo test --workspace --all-features --locked --no-fail-fast -- --test-threads=1
+
+  # Exercises the real wgpu code path using a software Vulkan device (lavapipe),
+  # since hosted runners have no GPU. Non-blocking until it proves stable.
+  # lavapipe reports subgroup size 8, so kernels needing tpi 16/32 skip (the first
+  # run showed those fail strictly); the rest run for real. Check the log for SKIP
+  # lines to see what was not covered.
+  gpu-software:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      BIGMONT_BACKEND: Vulkan
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install software Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
+          vulkaninfo --summary || true
+      - run: cargo test --workspace --all-features --locked --no-fail-fast -- --test-threads=1
+
+  # The engine must keep compiling for the browser (wasm32 + WebGPU). This only
+  # checks that it builds: running on a GPU in a browser needs a wgpu fix and a
+  # real browser, see web/README.md.
+  wasm-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p bigmont-oracle -p bigmont-cpu -p bigmont-core -p bigmont-wasm --target wasm32-unknown-unknown --locked
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --all-features --locked
+        env:
+          RUSTDOCFLAGS: -D warnings

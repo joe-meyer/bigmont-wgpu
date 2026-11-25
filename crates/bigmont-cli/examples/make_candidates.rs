@@ -1,4 +1,4 @@
-//! Writes a Beacon candidate file for smoke tests: `COUNT` random odd numbers of `--bits N` bits
+//! Writes a `G2C1` candidate file for smoke tests: `COUNT` random odd numbers of `--bits N` bits
 //! (default 2,029, in a 2,048-bit container; in general the next multiple of 32), then 3 probable
 //! primes (small-prime filter plus the CPU Fermat test).
 //!

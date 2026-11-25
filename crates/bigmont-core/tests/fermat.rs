@@ -86,7 +86,7 @@ fn mersenne_primes_and_composites_across_sizes() {
 }
 
 #[test]
-fn mixed_batch_at_the_beacon_size_class_spans_chunks() {
+fn mixed_batch_at_the_2029_bit_size_class_spans_chunks() {
     // 70 random + 3 probable primes, capacity 64 forces two chunks; segment 97 forces several dispatches.
     let Some(gpu) = open() else { return };
     for &scheme in LimbScheme::ALL {

@@ -1,0 +1,39 @@
+name: Tested-on check
+
+# Results vary by GPU vendor, so PRs that can change behaviour must say which
+# vendors they were (and were not) tested on. This only requires the "Tested on"
+# section when behaviour-affecting files change (engine/kernel/autotune source,
+# Cargo manifests, browser kernels); docs-only and CI-only PRs pass without it.
+# The rules live in .github/scripts/check_tested_on.py.
+#
+# The job always runs (and passes quickly when nothing is required), so it can
+# be made a required status check without blocking docs-only PRs.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  tested-on:
+    # Dependabot cannot fill in the template. Dependency bumps that touch wgpu
+    # still deserve a manual look on real hardware.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the Tested on section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/body.txt"
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+          python3 .github/scripts/check_tested_on.py "$RUNNER_TEMP/body.txt" "$RUNNER_TEMP/files.txt"
