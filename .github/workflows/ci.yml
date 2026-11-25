@@ -73,21 +73,18 @@ jobs:
           vulkaninfo --summary || true
       - run: cargo test --workspace --all-features --locked --no-fail-fast -- --test-threads=1
 
-  # The engine must be able to run in a browser (13-bit scheme on WebGPU). This
-  # is a known failure today: bigmont-core spawns a thread holding a wgpu Device
-  # (not Send on the web backend) and blocks with pollster/channels, which a
-  # browser cannot do. Keep it non-blocking until that is reworked, then make it
-  # blocking so the browser target cannot regress.
+  # The engine must keep compiling for the browser (wasm32 + WebGPU). This only
+  # checks that it builds: running on a GPU in a browser needs a wgpu fix and a
+  # real browser, see web/README.md.
   wasm-check:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check -p bigmont-oracle -p bigmont-cpu -p bigmont-core --target wasm32-unknown-unknown --locked
+      - run: cargo check -p bigmont-oracle -p bigmont-cpu -p bigmont-core -p bigmont-wasm --target wasm32-unknown-unknown --locked
 
   docs:
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bigmont-oracle", "crates/bigmont-core", "crates/bigmont-cpu", "crates/bigmont-cli"]
+members = ["crates/bigmont-oracle", "crates/bigmont-core", "crates/bigmont-cpu", "crates/bigmont-cli", "crates/bigmont-wasm"]
 
 [workspace.package]
 edition = "2024"
