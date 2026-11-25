@@ -133,7 +133,7 @@ fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutpu
     let work_secs = (secs - r.tune_secs).max(1e-9);
     let prps = verdicts.iter().filter(|&&v| v == 1).count();
     eprintln!(
-        "bigmont: {} | tests {tests} (gpu {}, cpu {}) | {secs:.2} s ({:.2} s tuning) | {:.1} tests/s excluding tuning | PRP {prps} | disagreements: prp {}, composite {} | rechecks {} | gpu errors {}",
+        "bigmont: {} | tests {tests} (gpu {}, cpu {}) | {secs:.2} s ({:.2} s tuning) | {:.1} tests/s excluding tuning | PRP {prps} | disagreements: prp {}, composite {} | rechecks {} | gpu errors {} | device losses {} (recovered {}, poll timeouts {})",
         engine.describe(),
         r.gpu_tests,
         r.cpu_tests,
@@ -143,6 +143,9 @@ fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutpu
         r.composite_disagreements,
         r.rechecks,
         r.gpu_errors,
+        r.device_losses,
+        r.device_recoveries,
+        r.poll_timeouts,
     );
     Ok(RunOutput { verdicts, report: r, gpu_active: engine.gpu_active() })
 }
@@ -199,7 +202,12 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
                     best = Some((rate, cfg));
                 }
             }
-            Err(e) => println!("{:>4} {:>5} {:>16}  FAILED: {e}", cfg.tpi, cfg.wg, "-"),
+            Err(e) => {
+                println!("{:>4} {:>5} {:>16}  FAILED: {e}", cfg.tpi, cfg.wg, "-");
+                if let Err(problem) = gpu.check_health() {
+                    return Err(format!("bigmont: the GPU failed during tuning ({problem}); nothing cached, rerun `bigmont tune`"));
+                }
+            }
         }
     }
     match best {

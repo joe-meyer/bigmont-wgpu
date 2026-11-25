@@ -1,0 +1,367 @@
+# command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-cli --test devloss -- --test-threads=1 2>&1
+# host: test-laptop
+# adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
+# commit: 25b02e4
+# date: 2026-11-25T04:31:25Z
+# Xid lines in kernel log before: 98
+    Finished `release` profile [optimized] target(s) in 0.03s
+     Running tests/devloss.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-cli/7178146366baafa5/out/devloss-7178146366baafa5)
+
+running 4 tests
+test a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu ... FAILED
+test a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu ... FAILED
+test more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process ... FAILED
+test the_default_allows_two_device_retries ... ok
+
+failures:
+
+---- a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu stdout ----
+GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: 457241369 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: 467482376 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: 479373922 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: 346394501 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: 369272804 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: 383987825 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: 216041347 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: 230697806 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: 243812727 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: 112571198 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: 120050304 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: 130077989 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: 314225084 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: 321683758 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: 322584451 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: 241403078 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: 254485432 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: 265161178 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: 164201873 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: 173918910 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: 183987800 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: 78492607 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: 85205103 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: 91435903 squarings/s
+before: EngineReport { gpu_tests: 21, cpu_tests: 1, rechecks: 2, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 12.073459248999999, tuned_classes: 2, device_losses: 0, device_recoveries: 0, poll_timeouts: 0 }
+bigmont: GPU error on a 777-bit bucket of 9 candidates, using the CPU: mapping readback buffer failed: Error occurred when trying to async map a buffer
+bigmont: GPU error on a 1019-bit bucket of 12 candidates, using the CPU: mapping readback buffer failed: Error occurred when trying to async map a buffer
+after: EngineReport { gpu_tests: 21, cpu_tests: 23, rechecks: 2, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 2, tune_secs: 12.073459248999999, tuned_classes: 2, device_losses: 0, device_recoveries: 0, poll_timeouts: 0 }
+
+thread 'a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu' (453799) panicked at crates/bigmont-cli/tests/devloss.rs:66:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu stdout ----
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: 454814132 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: 465299696 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: 480663892 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: 347122418 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: 369694706 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: 383812227 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: 216665521 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: 229527111 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: 245150644 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: 112762690 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: 120055052 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: 129090968 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: 314347097 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: 321206528 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: 321659625 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: 240738807 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: 254332237 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: 265740499 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: 164085436 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: 174101350 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: 184424315 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: 78829359 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: 85074391 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: 91428103 squarings/s
+timeout: EngineReport { gpu_tests: 21, cpu_tests: 1, rechecks: 2, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 9.84323754, tuned_classes: 2, device_losses: 0, device_recoveries: 0, poll_timeouts: 0 }
+
+thread 'a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu' (454310) panicked at crates/bigmont-cli/tests/devloss.rs:114:5:
+EngineReport { gpu_tests: 21, cpu_tests: 1, rechecks: 2, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 9.84323754, tuned_classes: 2, device_losses: 0, device_recoveries: 0, poll_timeouts: 0 }
+
+---- more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process stdout ----
+skip KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+bigmont: GPU unusable for 777-bit candidates, using the CPU: no kernel configuration passed the self-test on NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+skip KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+bigmont: GPU unusable for 1019-bit candidates, using the CPU: no kernel configuration passed the self-test on NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+; KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+first: EngineReport { gpu_tests: 0, cpu_tests: 22, rechecks: 0, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 2, tune_secs: 0.00078567, tuned_classes: 2, device_losses: 0, device_recoveries: 0, poll_timeouts: 0 }
+
+thread 'more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process' (454774) panicked at crates/bigmont-cli/tests/devloss.rs:87:5:
+assertion failed: first.device_losses >= 1
+
+
+failures:
+    a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu
+    a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu
+    more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.69s
+
+error: test failed, to rerun pass `-p bigmont-cli --test devloss`
+# exit code: 101
+# Xid lines in kernel log after: 98

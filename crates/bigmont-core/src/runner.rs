@@ -78,6 +78,11 @@ impl Runner {
             return Err("capacity must be at least 1".into());
         }
         gpu.check_subgroups(cfg.tpi)?;
+        gpu.check_health()?;
+        Self::build(gpu, cfg, bits, capacity).map_err(|e| gpu.explain(e))
+    }
+
+    fn build(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<Runner, String> {
         let words = bits.div_ceil(32);
         let limits = gpu.device.limits();
         let max_groups = u64::from(limits.max_compute_workgroups_per_dimension.min(65535));
@@ -180,11 +185,14 @@ impl Runner {
     }
 
     /// Base-2 Fermat verdicts for `ns` (each odd with exactly `bits` bits), in order. Any number of
-    /// candidates; they are processed in chunks of `capacity()`.
+    /// candidates; they are processed in chunks of `capacity()`. A lost device, a timed-out wait
+    /// or an uncaptured wgpu error is an `Err` (see `Gpu::check_health`); the runner's buffers are
+    /// then in an unknown state and it should be dropped.
     pub fn fermat(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<bool>, String> {
+        gpu.check_health()?;
         let mut out = Vec::with_capacity(ns.len());
         for (k, chunk) in ns.chunks(self.cap as usize).enumerate() {
-            out.extend(self.fermat_chunk(gpu, chunk, k * self.cap as usize)?);
+            out.extend(self.fermat_chunk(gpu, chunk, k * self.cap as usize).map_err(|e| gpu.explain(e))?);
         }
         Ok(out)
     }
@@ -242,7 +250,7 @@ impl Runner {
             }
             let t = Instant::now();
             queue.submit([enc.finish()]);
-            device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| format!("GPU poll failed: {e}"))?;
+            gpu.wait()?;
             let dt = t.elapsed().as_secs_f64();
             self.stats.gpu_secs += dt;
             done += this;
@@ -257,18 +265,7 @@ impl Runner {
         let mut enc = device.create_command_encoder(&Default::default());
         enc.copy_buffer_to_buffer(&self.x_buf, 0, &self.staging, 0, bytes);
         queue.submit([enc.finish()]);
-        let slice = self.staging.slice(..bytes);
-        let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| {
-            let _ = tx.send(r);
-        });
-        device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| format!("GPU poll failed: {e}"))?;
-        rx.recv().map_err(|_| "readback mapping was dropped".to_string())?.map_err(|e| format!("mapping readback buffer failed: {e}"))?;
-        let x: Vec<u32> = {
-            let view = slice.get_mapped_range().map_err(|e| format!("readback buffer not mapped: {e}"))?;
-            bytemuck::cast_slice::<u8, u32>(&view).to_vec()
-        };
-        self.staging.unmap();
+        let x = gpu.read_back(&self.staging, bytes)?;
 
         if x.iter().any(|&l| l > LIMB_MASK) {
             return Err("kernel returned an unnormalised limb".into());

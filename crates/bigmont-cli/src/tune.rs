@@ -113,6 +113,7 @@ pub fn self_test(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String> 
 
 fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String> {
     cfg.validate()?;
+    gpu.check_health()?;
     if bits < MIN_SELF_TEST_BITS {
         return Err(format!("the self-test needs at least {MIN_SELF_TEST_BITS}-bit numbers, got {bits} (tune a limb class at tune::class_bits)"));
     }
@@ -164,6 +165,7 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
 /// watchdog.
 pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     cfg.validate()?;
+    gpu.check_health()?;
     let limbs = cfg.limbs as usize;
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;
     let count = cfg.instances_per_workgroup() * if on_cpu { CPU_MEASURE_GROUPS } else { MEASURE_GROUPS };
@@ -314,7 +316,12 @@ pub fn resolve_cache(explicit: Option<PathBuf>, disabled: bool, env: &CacheEnv, 
 /// class. The returned configuration is the one `KernelConfig::for_bits` gives for `bits` too (same
 /// limb count across the class). This keeps tiny sizes testable (a 2-bit modulus has only the value
 /// 3) and means two bit lengths in one class cost one tuning, not two.
+///
+/// A device-level failure (lost device, timed-out wait, uncaptured wgpu error: see
+/// `Gpu::check_health`) stops tuning at once and returns that error, and nothing is written to the
+/// cache: it says nothing about the configurations.
 pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Result<Tuned, String> {
+    gpu.check_health()?;
     let bits = class_bits(limb_class(bits));
     let cands = candidates(gpu, bits);
     if cands.is_empty() {
@@ -331,6 +338,7 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
         if let Some((cfg, rate)) = hit {
             match self_test(gpu, cfg, bits) {
                 Ok(()) => return Ok(Tuned { cfg, squarings_per_sec: rate, from_cache: true }),
+                Err(e) if gpu.check_health().is_err() => return Err(e),
                 Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
             }
         }
@@ -345,6 +353,7 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
                     best = Some(Tuned { cfg, squarings_per_sec: rate, from_cache: false });
                 }
             }
+            Err(e) if gpu.check_health().is_err() => return Err(e),
             Err(e) => {
                 eprintln!("skip {e}");
                 reasons.push(e);

@@ -3,8 +3,10 @@
 use crate::kernel::KernelConfig;
 use bigmont_oracle::{LIMBS, XorShift64, neg_inv_limb, pack_limbs_n, random_below, random_odd_modulus};
 use num_bigint::BigUint;
-use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 /// Serialises instance/adapter/device creation. Mitigation; root cause not investigated: creating
 /// several wgpu instances at once from parallel test threads intermittently made
@@ -31,12 +33,122 @@ impl AdapterSelector {
     }
 }
 
+/// The longest one GPU wait ([`Gpu::wait`]) may take before it counts as a hang, unless
+/// `BIGMONT_POLL_TIMEOUT_MS` says otherwise. Our dispatches are kept short (the Fermat runner aims
+/// at about 0.1 s per dispatch), so 30 s is far beyond any healthy wait.
+pub const DEFAULT_POLL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Extra time [`Gpu::wait`] gives a poll that ignores its own timeout before it gives up on it.
+const WAIT_GRACE: Duration = Duration::from_secs(2);
+
+/// At most this many uncaptured error messages are kept per device.
+const MAX_RECORDED_ERRORS: usize = 16;
+
+/// Parses a `BIGMONT_POLL_TIMEOUT_MS` value: a positive number of milliseconds. Anything else
+/// (unset, empty, zero, not a number) gives [`DEFAULT_POLL_TIMEOUT`].
+pub fn parse_poll_timeout_ms(value: Option<&str>) -> Duration {
+    value.and_then(|v| v.trim().parse::<u64>().ok()).filter(|&ms| ms > 0).map_or(DEFAULT_POLL_TIMEOUT, Duration::from_millis)
+}
+
+/// The poll timeout new `Gpu`s get: `BIGMONT_POLL_TIMEOUT_MS`, else [`DEFAULT_POLL_TIMEOUT`].
+pub fn poll_timeout_from_env() -> Duration {
+    parse_poll_timeout_ms(std::env::var("BIGMONT_POLL_TIMEOUT_MS").ok().as_deref())
+}
+
+/// Whether an error message from this crate describes a device-level failure (a lost device, a
+/// GPU wait that timed out, or an uncaptured wgpu error) rather than an ordinary rejection of one
+/// kernel or configuration. A device-level failure means the device must be re-opened; an ordinary
+/// one does not.
+pub fn is_device_error(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("device lost") || m.contains("device is lost") || m.contains("timed out") || m.contains("uncaptured wgpu error")
+}
+
+/// What the device-lost callback, the uncaptured-error handler and [`Gpu::wait`] have recorded.
+/// Shared (`Arc`) with the callbacks, which wgpu may run on any thread.
+#[derive(Default)]
+struct Health {
+    lost: AtomicBool,
+    /// Lost through `Device::destroy` (reason `Destroyed`): the device is idle and safe to drop.
+    destroyed: AtomicBool,
+    /// A wait timed out: the device may never finish its work. Every later check fails.
+    poisoned: AtomicBool,
+    /// The first loss: reason and message.
+    lost_reason: Mutex<Option<String>>,
+    poison_reason: Mutex<Option<String>>,
+    /// Uncaptured error messages, oldest first (at most `MAX_RECORDED_ERRORS`).
+    errors: Mutex<Vec<String>>,
+}
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+impl Health {
+    fn mark_lost(&self, why: String, destroyed: bool) {
+        lock(&self.lost_reason).get_or_insert(why);
+        if destroyed {
+            self.destroyed.store(true, Ordering::SeqCst);
+        }
+        self.lost.store(true, Ordering::SeqCst);
+    }
+
+    fn poison(&self, why: String) {
+        lock(&self.poison_reason).get_or_insert(why);
+        self.poisoned.store(true, Ordering::SeqCst);
+    }
+
+    /// The recorded problem, most serious first: a timeout, a loss, then the first uncaptured error.
+    fn problem(&self) -> Option<String> {
+        if self.poisoned.load(Ordering::SeqCst) {
+            return Some(lock(&self.poison_reason).clone().unwrap_or_else(|| "GPU wait timed out".into()));
+        }
+        if self.lost.load(Ordering::SeqCst) {
+            return Some(format!("device lost: {}", lock(&self.lost_reason).clone().unwrap_or_default()));
+        }
+        lock(&self.errors).first().map(|e| format!("uncaptured wgpu error: {e}"))
+    }
+}
+
+fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
+    p.downcast_ref::<String>().cloned().or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "unknown panic".into())
+}
+
+/// An open wgpu device with health tracking.
+///
+/// `Gpu::open` (and [`Gpu::from_parts`]) install a device-lost callback and an uncaptured-error
+/// handler that record what happened instead of panicking (wgpu's default uncaptured-error handler
+/// panics). Every GPU entry point of this crate checks [`Gpu::check_health`] and waits through
+/// [`Gpu::wait`], so a lost device, a hung wait or an uncaptured error comes back as an `Err` whose
+/// text contains "device lost", "timed out" or "uncaptured wgpu error" (see [`is_device_error`]).
+///
+/// Once unhealthy, a `Gpu` stays unhealthy: open a new one. Dropping a `Gpu` whose wait timed out
+/// (poisoned) or whose device was lost by the driver leaks the wgpu device and queue on purpose:
+/// dropping the last wgpu `Queue` runs `vkQueueWaitIdle` (it would block for as long as the stuck
+/// work does, possibly forever) and then asserts the queue is empty (a panic in a destructor).
+/// A device lost through `Device::destroy` (the test hooks) is idle and is dropped normally.
 pub struct Gpu {
     pub info: wgpu::AdapterInfo,
     pub has_subgroups: bool,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    pub poll_timeout: std::time::Duration,
+    /// The longest one [`Gpu::wait`] may take; a longer wait is an `Err` and poisons the `Gpu`.
+    /// Defaults to [`poll_timeout_from_env`]. Tests set tiny values to force a timeout.
+    pub poll_timeout: Duration,
+    health: Arc<Health>,
+}
+
+impl Drop for Gpu {
+    fn drop(&mut self) {
+        let h = &self.health;
+        let lost_by_driver = h.lost.load(Ordering::SeqCst) && !h.destroyed.load(Ordering::SeqCst);
+        if h.poisoned.load(Ordering::SeqCst) || lost_by_driver {
+            // Keep one reference to the device and queue alive forever, so wgpu never runs the
+            // queue's blocking wait-for-idle teardown (see the type docs).
+            std::mem::forget(self.device.clone());
+            std::mem::forget(self.queue.clone());
+        }
+    }
 }
 
 /// Parses a `BIGMONT_INSTANCE_BACKENDS` value: a comma list of `vulkan`, `dx12`, `metal`, `gl`,
@@ -159,30 +271,146 @@ impl Gpu {
         })
     }
 
-    // RED-phase stubs: no health tracking yet.
+    /// Wraps an already created device: installs the device-lost callback and the uncaptured-error
+    /// handler (both record into this `Gpu`'s health state instead of panicking) and sets the poll
+    /// timeout from the environment. `Gpu::open` uses this; diagnostics that build their own device
+    /// should too. (A device has one lost callback and one handler: wrapping the same device twice
+    /// moves both to the newest `Gpu`.)
     pub fn from_parts(info: wgpu::AdapterInfo, has_subgroups: bool, device: wgpu::Device, queue: wgpu::Queue) -> Gpu {
-        Gpu { info, has_subgroups, device, queue, poll_timeout: std::time::Duration::from_secs(30) }
-    }
-    pub fn set_poll_timeout(&mut self, t: std::time::Duration) {
-        self.poll_timeout = t;
-    }
-    pub fn is_lost(&self) -> bool {
-        false
-    }
-    pub fn is_poisoned(&self) -> bool {
-        false
-    }
-    pub fn uncaptured_errors(&self) -> Vec<String> {
-        Vec::new()
-    }
-    pub fn check_health(&self) -> Result<(), String> {
-        Ok(())
-    }
-    pub fn wait(&self) -> Result<(), String> {
-        self.device.poll(wgpu::PollType::wait_indefinitely()).map(|_| ()).map_err(|e| e.to_string())
+        let health = Arc::new(Health::default());
+        let h = health.clone();
+        device.set_device_lost_callback(move |reason, message| {
+            let why = if message.is_empty() { format!("{reason:?}") } else { format!("{reason:?}: {message}") };
+            h.mark_lost(why, reason == wgpu::DeviceLostReason::Destroyed);
+        });
+        let h = health.clone();
+        device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
+            let mut errors = lock(&h.errors);
+            if errors.len() < MAX_RECORDED_ERRORS {
+                errors.push(e.to_string());
+            }
+        }));
+        Gpu { info, has_subgroups, device, queue, poll_timeout: poll_timeout_from_env(), health }
     }
 
-    pub fn list_adapters() -> Vec<String> {        pollster::block_on(async {
+    /// Sets [`Gpu::poll_timeout`].
+    pub fn set_poll_timeout(&mut self, timeout: Duration) {
+        self.poll_timeout = timeout;
+    }
+
+    /// Whether wgpu reported the device lost (or a poll on it panicked, which wgpu does when the
+    /// driver reports the device lost during a wait).
+    pub fn is_lost(&self) -> bool {
+        self.health.lost.load(Ordering::SeqCst)
+    }
+
+    /// Whether a wait timed out. A poisoned `Gpu` refuses all further work.
+    pub fn is_poisoned(&self) -> bool {
+        self.health.poisoned.load(Ordering::SeqCst)
+    }
+
+    /// The uncaptured wgpu error messages recorded so far (oldest first, at most 16).
+    pub fn uncaptured_errors(&self) -> Vec<String> {
+        lock(&self.health.errors).clone()
+    }
+
+    /// `Err` describing the first problem recorded on this device: a timed-out wait ("GPU wait
+    /// timed out ..."), a loss ("device lost: ...") or an uncaptured wgpu error ("uncaptured wgpu
+    /// error: ..."). Problems are sticky. Unless already unhealthy, this first runs a non-blocking
+    /// poll, which is where wgpu delivers a pending device-lost callback (after `destroy`, for one).
+    pub fn check_health(&self) -> Result<(), String> {
+        if let Some(problem) = self.health.problem() {
+            return Err(problem);
+        }
+        if let Err(p) = catch_unwind(AssertUnwindSafe(|| self.device.poll(wgpu::PollType::Poll))) {
+            self.health.mark_lost(format!("poll panicked: {}", panic_text(&*p)), false);
+        }
+        self.health.problem().map_or(Ok(()), Err)
+    }
+
+    /// `e`, prefixed by the device's health problem if it has one: an operation that failed on an
+    /// unhealthy device reports the device-level cause ("device lost: ...") first.
+    pub fn explain(&self, e: String) -> String {
+        match self.check_health() {
+            Err(problem) if !e.contains(&problem) => format!("{problem} ({e})"),
+            _ => e,
+        }
+    }
+
+    /// Waits for all submitted work, at most [`Gpu::poll_timeout`]. The single wait primitive of
+    /// this crate: every submit is followed by it.
+    ///
+    /// - A wait longer than the timeout is `Err("GPU wait timed out ...")` and poisons the `Gpu`
+    ///   (the device may never finish; all later calls fail).
+    /// - A lost device is `Err("device lost: ...")`. wgpu panics inside `Device::poll` when the
+    ///   driver reports the device lost during the wait; that panic is caught here. (The default
+    ///   panic hook still prints its message to stderr.)
+    /// - After a successful wait the device's health is checked, so an uncaptured error raised by
+    ///   the submitted work is reported too.
+    ///
+    /// The poll runs on a helper thread so that a poll that does not honour its timeout (the
+    /// driver hangs inside it) cannot hang the caller: after the timeout plus a 2 s grace the wait
+    /// gives up, poisons the `Gpu` and leaves the helper thread behind.
+    pub fn wait(&self) -> Result<(), String> {
+        self.check_health()?;
+        let timeout = self.poll_timeout;
+        let device = self.device.clone();
+        let (tx, rx) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("bigmont-gpu-wait".into())
+            .spawn(move || {
+                let result = catch_unwind(AssertUnwindSafe(|| device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(timeout) })));
+                let _ = tx.send(result.map_err(|p| panic_text(&*p)));
+            })
+            .map_err(|e| format!("cannot start the GPU wait thread: {e}"))?;
+        let ms = timeout.as_secs_f64() * 1e3;
+        match rx.recv_timeout(timeout + WAIT_GRACE) {
+            Ok(Ok(Ok(_status))) => {}
+            Ok(Ok(Err(wgpu::PollError::Timeout))) => {
+                let why = format!("GPU wait timed out after {ms:.3} ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work");
+                self.health.poison(why.clone());
+                return Err(why);
+            }
+            Ok(Ok(Err(e))) => return Err(self.explain(format!("GPU poll failed: {e}"))),
+            Ok(Err(panic)) => {
+                self.health.mark_lost(format!("poll panicked: {panic}"), false);
+                return Err(self.health.problem().unwrap_or(panic));
+            }
+            Err(_) => {
+                let why = format!("GPU wait timed out: the poll did not return within {ms:.3} ms plus a {} s grace", WAIT_GRACE.as_secs());
+                self.health.poison(why.clone());
+                return Err(why);
+            }
+        }
+        self.check_health()
+    }
+
+    /// Copies the first `bytes` of `staging` (a `MAP_READ` buffer whose copy has been submitted)
+    /// back to the host. The mapping goes through [`Gpu::wait`] and a channel, so a lost device or a
+    /// hung wait is an `Err`, never a panic or a hang.
+    pub fn read_back(&self, staging: &wgpu::Buffer, bytes: u64) -> Result<Vec<u32>, String> {
+        let slice = staging.slice(..bytes);
+        let (tx, rx) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |r| {
+            let _ = tx.send(r);
+        });
+        self.wait()?;
+        // The callback runs inside the poll that completed the copy; waiting longer is only a guard.
+        match rx.recv_timeout(self.poll_timeout.max(Duration::from_millis(100))) {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return Err(self.explain(format!("mapping readback buffer failed: {e}"))),
+            Err(_) => return Err(self.explain("the readback mapping did not complete (GPU wait timed out)".into())),
+        }
+        let x = {
+            let view = slice.get_mapped_range().map_err(|e| self.explain(format!("readback buffer not mapped: {e}")))?;
+            bytemuck::cast_slice::<u8, u32>(&view).to_vec()
+        };
+        staging.unmap();
+        Ok(x)
+    }
+
+    pub fn list_adapters() -> Vec<String> {
+        pollster::block_on(async {
             let instance = shared_instance();
             instance
                 .enumerate_adapters(wgpu::Backends::all())
@@ -277,7 +505,8 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> 
 }
 
 /// Uploads `batch`, runs `repeats` dispatches of `squarings` Montgomery squarings each (every
-/// dispatch continues from the previous one's output), and reads the result back.
+/// dispatch continues from the previous one's output), and reads the result back. A lost device, a
+/// timed-out wait or an uncaptured wgpu error is an `Err` (see [`Gpu::check_health`]).
 pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
     cfg.validate()?;
     let count = batch.count as usize;
@@ -305,6 +534,14 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
     if cfg.needs_subgroups() {
         gpu.check_subgroups(cfg.tpi)?;
     }
+    gpu.check_health()?;
+    run_on_device(gpu, cfg, batch, squarings, repeats, groups).map_err(|e| gpu.explain(e))
+}
+
+/// The device part of [`run`] (inputs already validated); any `Err` is passed through
+/// [`Gpu::explain`] by the caller.
+fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32, groups: u32) -> Result<Run, String> {
+    let (count, limbs) = (batch.count as usize, cfg.limbs as usize);
     let (device, queue) = (&gpu.device, &gpu.queue);
     let words = (count * limbs) as u64;
     let (params, n_buf, ninv_buf, x_buf, staging) = guarded(device, "buffer creation", || {
@@ -374,20 +611,13 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
         }
         let t = Instant::now();
         queue.submit([enc.finish()]);
-        device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| format!("GPU poll failed: {e}"))?;
+        gpu.wait()?;
         best = best.min(t.elapsed().as_secs_f64());
     }
     let mut enc = device.create_command_encoder(&Default::default());
     enc.copy_buffer_to_buffer(&x_buf, 0, &staging, 0, words * 4);
     queue.submit([enc.finish()]);
-    let slice = staging.slice(..);
-    slice.map_async(wgpu::MapMode::Read, |r| r.expect("mapping readback buffer failed"));
-    device.poll(wgpu::PollType::wait_indefinitely()).map_err(|e| format!("GPU poll failed: {e}"))?;
-    let x = {
-        let view = slice.get_mapped_range().expect("readback buffer not mapped");
-        bytemuck::cast_slice::<u8, u32>(&view).to_vec()
-    };
-    staging.unmap();
+    let x = gpu.read_back(&staging, words * 4)?;
     Ok(Run { x, best_secs: best })
 }
 
@@ -403,6 +633,39 @@ mod tests {
         assert_eq!(parse_instance_backends("primary,gl").unwrap(), wgpu::Backends::PRIMARY | wgpu::Backends::GL);
         assert_eq!(parse_instance_backends("all").unwrap(), wgpu::Backends::all());
         assert_eq!(parse_instance_backends("vulkan,,").unwrap(), wgpu::Backends::VULKAN);
+    }
+
+    #[test]
+    fn parses_poll_timeouts() {
+        assert_eq!(parse_poll_timeout_ms(None), DEFAULT_POLL_TIMEOUT);
+        assert_eq!(parse_poll_timeout_ms(Some("250")), Duration::from_millis(250));
+        assert_eq!(parse_poll_timeout_ms(Some(" 1 ")), Duration::from_millis(1));
+        for bad in ["", "0", "-5", "1.5", "soon"] {
+            assert_eq!(parse_poll_timeout_ms(Some(bad)), DEFAULT_POLL_TIMEOUT, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn classifies_device_level_errors() {
+        assert!(is_device_error("device lost: Destroyed"));
+        assert!(is_device_error("buffer creation rejected: Parent device is lost"));
+        assert!(is_device_error("GPU wait timed out after 1.000 ms"));
+        assert!(is_device_error("uncaptured wgpu error: Validation Error"));
+        assert!(!is_device_error("compute pipeline for KernelConfig { .. } rejected: Validation Error"));
+        assert!(!is_device_error("subgroup size 32..32 is not a multiple of tpi 64"));
+    }
+
+    #[test]
+    fn health_reports_the_most_serious_problem_first() {
+        let h = Health::default();
+        assert_eq!(h.problem(), None);
+        lock(&h.errors).push("bad usage".into());
+        assert_eq!(h.problem().unwrap(), "uncaptured wgpu error: bad usage");
+        h.mark_lost("Unknown: driver".into(), false);
+        h.mark_lost("second loss is ignored".into(), true);
+        assert_eq!(h.problem().unwrap(), "device lost: Unknown: driver");
+        h.poison("GPU wait timed out after 1 ms".into());
+        assert_eq!(h.problem().unwrap(), "GPU wait timed out after 1 ms");
     }
 
     #[test]

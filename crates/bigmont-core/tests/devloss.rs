@@ -5,6 +5,8 @@
 //! which stands in for the rare NVIDIA Xid 32 losses (see
 //! docs/superpowers/results/2026-11-24-device-loss-investigation.md).
 
+#![allow(clippy::err_expect)] // Run and Runner are not Debug
+
 mod common;
 use bigmont_core::gpu::{Batch, Gpu, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
@@ -61,7 +63,7 @@ fn a_destroyed_device_gives_device_lost_errors_not_panics() {
     let t = Instant::now();
     let e = no_panic("run on a destroyed device", || run(&gpu, cfg, &batch, 3, 1)).err().expect("run on a destroyed device must fail");
     assert!(e.contains("device lost"), "{e}");
-    let e = no_panic("Runner::fermat on a destroyed device", || runner.fermat(&gpu, &ns)).err().expect("fermat on a destroyed device must fail");
+    let e = no_panic("Runner::fermat on a destroyed device", || runner.fermat(&gpu, &ns)).expect_err("fermat on a destroyed device must fail");
     assert!(e.contains("device lost"), "{e}");
     let e = no_panic("Runner::new on a destroyed device", || Runner::new(&gpu, cfg, BITS, 16)).err().expect("Runner::new on a destroyed device must fail");
     assert!(e.contains("device lost"), "{e}");

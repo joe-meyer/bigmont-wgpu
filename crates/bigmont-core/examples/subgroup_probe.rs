@@ -55,10 +55,7 @@ fn main() {
     }
     enc.copy_buffer_to_buffer(&buf, 0, &staging, 0, size);
     queue.submit([enc.finish()]);
-    let slice = staging.slice(..);
-    slice.map_async(wgpu::MapMode::Read, |r| r.expect("map failed"));
-    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-    let data: Vec<u32> = bytemuck::cast_slice::<u8, u32>(&slice.get_mapped_range().unwrap()).to_vec();
+    let data: Vec<u32> = gpu.read_back(&staging, size).expect("readback");
     let mut sizes = std::collections::BTreeMap::<u32, u32>::new();
     let mut max_id = 0;
     for pair in data.chunks(2) {

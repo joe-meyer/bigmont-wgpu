@@ -3,8 +3,8 @@
 //! Comparing final verdicts alone is not enough: the engine already corrects every GPU probable
 //! prime and a sample of GPU composites with the CPU, and a bucket whose GPU run fails is redone on
 //! the CPU, so the final verdicts can all be right while the GPU was wrong or never used. The canary
-//! therefore also fails on any GPU disagreement or error, and on a GPU run that tested nothing on
-//! the GPU.
+//! therefore also fails on any GPU disagreement or error, on any lost GPU device (even one the
+//! engine recovered from), and on a GPU run that tested nothing on the GPU.
 
 use crate::engine::EngineReport;
 
@@ -37,6 +37,11 @@ pub fn failures(got: &[u8], want: &[u8], report: &EngineReport, gpu_active: bool
     }
     if report.gpu_errors > 0 {
         out.push(format!("{} buckets hit a GPU error and fell back to the CPU (gpu errors)", report.gpu_errors));
+    }
+    if report.device_losses > 0 {
+        // The verdicts survive a recovered loss, but a canary run must show a healthy device.
+        let timeouts = if report.poll_timeouts > 0 { format!(" ({} poll timeouts)", report.poll_timeouts) } else { String::new() };
+        out.push(format!("GPU device lost {} times, recovered {}{timeouts}", report.device_losses, report.device_recoveries));
     }
     if gpu_active && report.gpu_tests == 0 {
         out.push("the GPU backend was selected but no candidate was tested on the GPU (gpu tests 0)".to_string());

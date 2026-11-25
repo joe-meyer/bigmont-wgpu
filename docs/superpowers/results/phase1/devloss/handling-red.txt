@@ -1,0 +1,185 @@
+# command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-core --test devloss -- --test-threads=1 2>&1; cargo test --release -p bigmont-cli --test devloss --test canary -- --test-threads=1 2>&1
+# host: test-laptop
+# adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
+# commit: 25b02e4
+# date: 2026-11-25T04:30:46Z
+# Xid lines in kernel log before: 98
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling cfg-if v1.0.5
+   Compiling cfg_aliases v0.2.2
+   Compiling autocfg v1.5.1
+   Compiling libm v0.2.16
+   Compiling foldhash v0.2.0
+   Compiling thiserror v2.0.21
+   Compiling equivalent v1.0.3
+   Compiling libc v0.2.191
+   Compiling log v0.4.35
+   Compiling zerocopy v0.8.64
+   Compiling bitflags v2.13.2
+   Compiling rustc-hash v1.1.0
+   Compiling once_cell v1.21.4
+   Compiling libloading v0.8.9
+   Compiling naga v30.0.2
+   Compiling unicode-width v0.2.3
+   Compiling pkg-config v0.3.34
+   Compiling ash v0.38.0+1.3.281
+   Compiling parking_lot_core v0.9.12
+   Compiling hashbrown v0.17.2
+   Compiling bit-vec v0.9.1
+   Compiling codespan-reporting v0.13.1
+   Compiling spirv v0.4.0+sdk-1.4.341.0
+   Compiling arrayvec v0.7.8
+   Compiling static_assertions v1.1.0
+   Compiling khronos-egl v6.0.0
+   Compiling scopeguard v1.2.0
+   Compiling smallvec v1.16.6
+   Compiling allocator-api2 v0.2.21
+   Compiling raw-window-handle v0.6.2
+   Compiling lock_api v0.4.14
+   Compiling num-traits v0.2.19
+   Compiling bit-set v0.10.0
+   Compiling dlib v0.5.3
+   Compiling wgpu-hal v30.0.2
+   Compiling presser v0.3.1
+   Compiling glow v0.17.0
+   Compiling renderdoc-sys v1.1.0
+   Compiling profiling v1.0.18
+   Compiling wayland-sys v0.31.11
+   Compiling wgpu-core v30.0.2
+   Compiling litrs v1.0.1
+   Compiling wgpu v30.0.2
+   Compiling pollster v1.0.3
+   Compiling hashbrown v0.16.1
+   Compiling syn v3.0.10
+   Compiling syn v2.0.119
+   Compiling document-features v0.2.12
+   Compiling indexmap v2.14.2
+   Compiling parking_lot v0.12.5
+   Compiling ordered-float v5.5.1
+   Compiling num-integer v0.1.47
+   Compiling num-bigint v0.4.8
+   Compiling thiserror-impl v2.0.21
+   Compiling bytemuck_derive v1.12.1
+   Compiling bytemuck v1.25.2
+   Compiling naga-types v30.0.2
+   Compiling zerocopy-derive v0.8.64
+   Compiling wgpu-types v30.0.2
+   Compiling bigmont-oracle v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-oracle)
+   Compiling half v2.7.1
+   Compiling gpu-allocator v0.28.0
+   Compiling wgpu-naga-bridge v30.0.2
+   Compiling wgpu-core-deps-windows-linux-android v30.0.2
+   Compiling bigmont-core v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-core)
+    Finished `release` profile [optimized] target(s) in 18.32s
+     Running tests/devloss.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-core/ad32b640dbf84c8f/out/devloss-ad32b640dbf84c8f)
+
+running 4 tests
+test a_destroyed_device_gives_device_lost_errors_not_panics ... FAILED
+test a_wait_longer_than_the_poll_timeout_is_a_timed_out_error ... FAILED
+test an_uncaptured_wgpu_error_is_recorded_instead_of_panicking ... FAILED
+test the_device_lost_callback_and_handlers_survive_from_parts ... FAILED
+
+failures:
+
+---- a_destroyed_device_gives_device_lost_errors_not_panics stdout ----
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 24 }
+
+thread 'a_destroyed_device_gives_device_lost_errors_not_panics' (453305) panicked at crates/bigmont-core/tests/devloss.rs:63:5:
+buffer creation rejected: Validation Error
+
+Caused by:
+  In Queue::write_buffer
+    Buffer with 'params' label is invalid
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- a_wait_longer_than_the_poll_timeout_is_a_timed_out_error stdout ----
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }
+
+thread 'a_wait_longer_than_the_poll_timeout_is_a_timed_out_error' (453357) panicked at crates/bigmont-core/tests/devloss.rs:87:17:
+a 0.822 s dispatch (16384 squarings) finished without a timeout under a 1 ms poll timeout
+
+---- an_uncaptured_wgpu_error_is_recorded_instead_of_panicking stdout ----
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 24 }
+
+thread 'an_uncaptured_wgpu_error_is_recorded_instead_of_panicking' (453365) panicked at /home/<user>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wgpu-30.0.2/src/backend/wgpu_core.rs:1619:18:
+wgpu error: Validation Error
+
+Caused by:
+  In Device::create_buffer, label = 'invalid on purpose'
+    `MAP` usage can only be combined with the opposite `COPY`, requested BufferUsages(MAP_READ | STORAGE)
+
+
+
+thread 'an_uncaptured_wgpu_error_is_recorded_instead_of_panicking' (453365) panicked at crates/bigmont-core/tests/devloss.rs:40:13:
+an invalid create_buffer panicked instead of returning Err: wgpu error: Validation Error
+
+Caused by:
+  In Device::create_buffer, label = 'invalid on purpose'
+    `MAP` usage can only be combined with the opposite `COPY`, requested BufferUsages(MAP_READ | STORAGE)
+
+
+
+---- the_device_lost_callback_and_handlers_survive_from_parts stdout ----
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 24 }
+
+thread 'the_device_lost_callback_and_handlers_survive_from_parts' (453373) panicked at crates/bigmont-core/tests/devloss.rs:139:32:
+called `Result::unwrap_err()` on an `Ok` value: ()
+
+
+failures:
+    a_destroyed_device_gives_device_lost_errors_not_panics
+    a_wait_longer_than_the_poll_timeout_is_a_timed_out_error
+    an_uncaptured_wgpu_error_is_recorded_instead_of_panicking
+    the_device_lost_callback_and_handlers_survive_from_parts
+
+test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.36s
+
+error: test failed, to rerun pass `-p bigmont-core --test devloss`
+   Compiling bigmont-cpu v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-cpu)
+   Compiling bigmont-cli v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-cli)
+    Finished `release` profile [optimized] target(s) in 0.79s
+     Running tests/canary.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
+
+running 11 tests
+test a_cpu_run_passes_without_gpu_tests ... ok
+test a_differing_verdict_fails_and_names_the_index ... ok
+test a_gpu_run_that_tested_nothing_on_the_gpu_fails ... ok
+test a_length_mismatch_fails ... ok
+test a_lost_device_fails_the_canary_even_when_it_recovered ... FAILED
+test all_failing_conditions_are_reported_together ... FAILED
+test canary_exits_0_for_a_matching_verdict_file ... ok
+test canary_exits_1_on_a_length_mismatch ... ok
+test canary_exits_1_when_one_verdict_byte_is_flipped ... ok
+test every_gpu_disagreement_or_error_fails_even_when_the_final_verdicts_match ... ok
+test matching_verdicts_and_a_healthy_gpu_pass ... ok
+
+failures:
+
+---- a_lost_device_fails_the_canary_even_when_it_recovered stdout ----
+
+thread 'a_lost_device_fails_the_canary_even_when_it_recovered' (453519) panicked at crates/bigmont-cli/tests/canary.rs:65:5:
+assertion `left == right` failed: []
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- all_failing_conditions_are_reported_together stdout ----
+
+thread 'all_failing_conditions_are_reported_together' (453520) panicked at crates/bigmont-cli/tests/canary.rs:87:5:
+assertion `left == right` failed: mismatch, prp, composite, gpu errors, device lost, no gpu tests: ["1 of 2 verdicts differ; first mismatching indices: 0", "the GPU called 2 composite candidates probable primes (PRP disagreements)", "the GPU called 3 probable primes composite (composite disagreements)", "1 buckets hit a GPU error and fell back to the CPU (gpu errors)", "the GPU backend was selected but no candidate was tested on the GPU (gpu tests 0)"]
+  left: 5
+ right: 6
+
+
+failures:
+    a_lost_device_fails_the_canary_even_when_it_recovered
+    all_failing_conditions_are_reported_together
+
+test result: FAILED. 9 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p bigmont-cli --test canary`
+# exit code: 101
+# Xid lines in kernel log after: 98
