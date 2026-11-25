@@ -73,8 +73,11 @@ jobs:
           vulkaninfo --summary || true
       - run: cargo test --workspace --all-features --locked --no-fail-fast -- --test-threads=1
 
-  # The 13-bit variant targets WebGPU; make sure the library crates still
-  # compile for wasm (the CLI is native-only).
+  # The engine must be able to run in a browser (13-bit scheme on WebGPU). This
+  # is a known failure today: bigmont-core spawns a thread holding a wgpu Device
+  # (not Send on the web backend) and blocks with pollster/channels, which a
+  # browser cannot do. Keep it non-blocking until that is reworked, then make it
+  # blocking so the browser target cannot regress.
   wasm-check:
     runs-on: ubuntu-latest
     continue-on-error: true
