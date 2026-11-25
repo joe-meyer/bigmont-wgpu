@@ -8,6 +8,14 @@
 Results vary by GPU vendor, architecture and driver. For every PR, list what you
 actually ran the tests on, and what you did not, so others can help fill the gaps.
 Describe hardware by model only (no hostnames or usernames). "Untested" is fine.
+
+Required (checked by CI) when the PR touches crates/*/src, Cargo manifests or
+browser kernels in web/. Docs-only and CI-only PRs can skip it. If a PR touches
+those paths but cannot change behaviour (a pure refactor, a doc comment), instead
+add one line anywhere in the description: "No hardware impact: <reason>".
+
+Mark every row: tested / not tested / n/a. Rows marked "tested" need the GPU
+model, driver and OS/backend, and at least one row must be "tested".
 -->
 
 | Vendor | GPU model, driver, OS / backend | Result |

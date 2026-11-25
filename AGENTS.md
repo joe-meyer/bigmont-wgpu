@@ -57,7 +57,11 @@ device. Always run the suite with `--test-threads=1`.
   and drivers (and between native backends and WebGPU), so a change that is
   right on one device may be wrong or slower on another. Don't assume your
   hardware is representative.
-- **Every PR states what it was tested on and what it was not.** List the
+- **PRs that can change behaviour state what they were tested on and what they
+  were not.** CI (`tested-on.yml`) requires this when a PR touches
+  `crates/*/src`, Cargo manifests or non-markdown files in `web/`; docs-only and
+  CI-only PRs are exempt, and a PR in those paths that cannot change behaviour
+  can say `No hardware impact: <reason>` instead. List the
   GPUs/vendors, drivers and OS/backends you ran the tests (and benchmarks, if
   any) on, and say plainly which vendors (NVIDIA, AMD, Intel, Apple, software
   rasterisers, browsers) were *not* tested. This lets other contributors pick up

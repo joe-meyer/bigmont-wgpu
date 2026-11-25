@@ -36,10 +36,15 @@ personal details.
 
 GPU vendors, architectures and drivers can give different results, both in
 correctness and in speed, so what works on your hardware may not elsewhere.
-Changes to the limb scheme, TPI or autotuner are welcome. In every PR, fill in
-the "Tested on" section: which GPUs, drivers and backends you ran on, and which
-vendors you did not test. Say so if you can't cover one; other contributors can
-then pick it up. Please don't claim coverage you didn't run.
+Changes to the limb scheme, TPI or autotuner are welcome. When a PR can change
+behaviour, fill in the "Tested on" section: which GPUs, drivers and backends you
+ran on, and which vendors you did not test. Say so if you can't cover one; other
+contributors can then pick it up. Please don't claim coverage you didn't run.
+
+CI enforces this for PRs that touch `crates/*/src`, Cargo manifests, or
+non-markdown files under `web/`. Docs-only and CI-only PRs don't need it. If a PR
+touches those paths but cannot change behaviour (a refactor, a doc comment),
+add the line `No hardware impact: <reason>` to the description instead.
 
 ## AI-assisted contributions
 
