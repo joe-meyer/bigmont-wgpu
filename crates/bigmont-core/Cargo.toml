@@ -3,6 +3,7 @@ name = "bigmont-core"
 description = "Portable (wgpu) 2048-bit Montgomery arithmetic kernels"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

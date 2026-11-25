@@ -1,8 +1,16 @@
 //! `bigmont`: tests candidate files and writes verdict files, a drop-in for an existing CUDA-based Fermat driver.
 //!
 //!   bigmont CAND VERDICT [engine flags]
+//!   bigmont CAND|LIST VERDICT --ee SIZES [--bins] [--chunk N] [--growth F] [--marker N] [engine flags]
 //!   bigmont canary CAND EXPECTED [engine flags]
 //!   bigmont tune [--bits N] [--limbs auto|13|32] [--adapter S] [--vk-backend S] [--device N] [--cache PATH | --no-cache]
+//!
+//! Early exit (`--ee SIZES`): the candidates are grouped into "k"s by a `G2S1` sizes file and tested in
+//! waves; a k that yields a probable prime is retired and its remaining candidates are skipped (their
+//! verdict byte is `--marker`, 3 to 255, default 3). With `--bins`, the first argument is a text file listing
+//! candidate files (one path per line) that are concatenated. `--lock FILE` serialises the GPU phase
+//! between processes (an exclusive lock taken after the inputs are read, released before the output is
+//! written; in plain mode it surrounds the engine run).
 //!
 //! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
 //! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
@@ -14,11 +22,13 @@
 //! tunes every run and writes nothing. With no usable cache location the engine runs without a cache.
 
 use bigmont_cli::canary;
+use bigmont_cli::early_exit::{run_waves, schedule};
 use bigmont_cli::engine::{Backend, Engine, EngineReport, Options};
 use bigmont_cli::{formats, tune};
 use bigmont_core::gpu::{AdapterSelector, Gpu};
 use bigmont_core::kernel::KernelConfig;
-use std::path::PathBuf;
+use std::fs::{File, OpenOptions, TryLockError};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
@@ -26,18 +36,30 @@ use std::time::Instant;
 const CHUNK: usize = 1 << 15;
 
 const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N]
-                    [--limbs auto|13|32] [--retune] [--cache PATH | --no-cache] [--verify-rate N] [--repeat N] [--lock PATH]
+                    [--limbs auto|13|32] [--retune] [--cache PATH | --no-cache] [--verify-rate N] [--repeat N] [--lock FILE]
+                    [--ee SIZES [--bins] [--chunk N] [--growth F] [--marker N]]
        bigmont canary CAND EXPECTED [same engine flags]
        bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
+early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
+              prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
+              candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
+              --chunk positions per k (default 6), each later wave --growth times more (default 1.15; 1.0 = constant;
+              a --chunk of 0 or less steps one position at a time whatever the growth).
+lock:        --lock FILE takes an exclusive lock (created if missing) before any GPU work and holds it until the last
+              wave (early-exit mode) or the end of the engine run; other bigmont processes using FILE wait their turn.
+              The gpu-phase time of the g1_fermat[EE] line includes engine setup and any first-run tuning.
+              Input and usage errors exit with status 2; a failure while testing (the engine gave up) exits with 3.
 limb scheme: --limbs auto (default) measures every scheme the adapter can run and uses the fastest; 13 or 32 forces one
               (tuning caches from before the limb schemes are re-measured once)
 tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPPDATA%\\bigmont\\tune.cache on Windows,
               $XDG_CACHE_HOME/bigmont/tune.cache or ~/.cache/bigmont/tune.cache elsewhere); --no-cache disables it";
 
-/// Flags of the driver this one replaces that are not implemented yet.
-const UNSUPPORTED: [&str; 6] = [
-    "--inject", "--ee", "--bins", "--chunk", "--growth", "--marker",
-];
+/// Beacon flags this driver does not implement yet.
+const UNSUPPORTED: [&str; 1] = ["--inject"];
+
+/// A schedule with more boundaries than this is refused before it is built (`--chunk 1 --growth 1.0`
+/// on a k of billions of candidates would otherwise allocate gigabytes).
+const MAX_BOUNDARIES: u64 = 1_000_000;
 
 struct Args {
     positional: Vec<String>,
@@ -46,6 +68,15 @@ struct Args {
     /// `--cache PATH` / `--no-cache`, resolved against the environment after parsing.
     cache_flag: Option<PathBuf>,
     no_cache: bool,
+    /// `--ee SIZES`: early-exit mode.
+    ee: Option<PathBuf>,
+    /// `--bins`: CAND is a text file listing candidate files.
+    bins: bool,
+    chunk: i32,
+    growth: f64,
+    marker: u8,
+    /// `--lock FILE`.
+    lock: Option<PathBuf>,
 }
 
 fn usage_err(msg: impl std::fmt::Display) -> String {
@@ -67,6 +98,12 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
         bits: 2029,
         cache_flag: None,
         no_cache: false,
+        ee: None,
+        bins: false,
+        chunk: 6,
+        growth: 1.15,
+        marker: 3,
+        lock: None,
     };
     let mut it = raw.iter();
     while let Some(arg) = it.next() {
@@ -89,6 +126,13 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             a.no_cache = true;
             continue;
         }
+        if flag == "--bins" {
+            if inline.is_some() {
+                return Err(usage_err("--bins takes no value"));
+            }
+            a.bins = true;
+            continue;
+        }
         if !matches!(
             flag,
             "--backend"
@@ -101,6 +145,10 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
                 | "--lock"
                 | "--bits"
                 | "--limbs"
+                | "--ee"
+                | "--chunk"
+                | "--growth"
+                | "--marker"
         ) {
             return Err(usage_err(format!("unknown flag {flag}")));
         }
@@ -134,7 +182,32 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
                 a.opts.scheme = tune::SchemeChoice::parse(&value)
                     .map_err(|e| usage_err(format!("--limbs: {e}")))?
             }
-            _ => eprintln!("bigmont: note: {flag} is accepted and ignored"), // --repeat, --lock
+            "--ee" => a.ee = Some(PathBuf::from(value)),
+            "--lock" => a.lock = Some(PathBuf::from(value)),
+            "--chunk" => a.chunk = parse(flag, &value)?,
+            "--growth" => {
+                a.growth = parse(flag, &value)?;
+                if !a.growth.is_finite() {
+                    return Err(usage_err(format!(
+                        "--growth must be a finite number, not {value:?}"
+                    )));
+                }
+            }
+            "--marker" => {
+                a.marker = value.parse().map_err(|_| {
+                    usage_err(format!(
+                        "--marker must be a whole number from 3 to 255, not {value:?}"
+                    ))
+                })?;
+                // 0, 1 and 2 are verdict bytes (composite, probable prime, Gerbicz alarm): a skipped
+                // position carrying one would read as a real verdict. The CUDA driver refuses them too.
+                if a.marker < 3 {
+                    return Err(usage_err(format!(
+                        "--marker must be at least 3 (0, 1 and 2 are verdict bytes), not {value:?}"
+                    )));
+                }
+            }
+            _ => eprintln!("bigmont: note: {flag} is accepted and ignored"), // --repeat
         }
     }
     if a.no_cache && a.cache_flag.is_some() {
@@ -156,23 +229,69 @@ struct RunOutput {
     gpu_active: bool,
 }
 
+/// Exit status for a failure while testing (the engine could not produce verdicts), as opposed to a
+/// problem with the command line or the input files (2). The CUDA driver likewise ends a run that
+/// cannot obtain a verdict with its own status (3), apart from its input errors (2).
+const EXIT_RUN_FAILED: u8 = 3;
+
+/// Why a test run did not produce verdicts.
+#[derive(Debug, PartialEq, Eq)]
+enum RunError {
+    /// The request cannot be served as given (for example `--backend gpu` without a usable GPU).
+    Config(String),
+    /// The engine failed while testing (device failure it could not recover from, a malformed reply).
+    Failed(String),
+}
+
+impl RunError {
+    /// The process exit status for this error.
+    fn status(&self) -> u8 {
+        match self {
+            RunError::Config(_) => 2,
+            RunError::Failed(_) => EXIT_RUN_FAILED,
+        }
+    }
+
+    /// Prints the message and returns the exit status.
+    fn report(self) -> ExitCode {
+        let status = self.status();
+        match self {
+            RunError::Config(m) => eprintln!("{m}"),
+            RunError::Failed(m) => eprintln!("bigmont: run failed: {m}"),
+        }
+        ExitCode::from(status)
+    }
+}
+
 /// Runs the engine over `numbers` in chunks and prints the summary.
-fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutput, String> {
+fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutput, RunError> {
     let mut engine = Engine::open(opts);
     eprintln!("bigmont: {}", engine.describe());
+    // An empty input never reaches `verdicts`, so a demanded-but-missing GPU is reported here.
+    engine.require_backend().map_err(RunError::Config)?;
     let t = Instant::now();
     let mut verdicts = Vec::with_capacity(numbers.len());
     for chunk in numbers.chunks(CHUNK) {
-        verdicts.extend(engine.verdicts(chunk)?);
+        verdicts.extend(engine.verdicts(chunk).map_err(RunError::Failed)?);
         if numbers.len() > CHUNK {
             eprintln!("bigmont: {}/{} candidates", verdicts.len(), numbers.len());
         }
     }
     let secs = t.elapsed().as_secs_f64();
+    let prps = verdicts.iter().filter(|&&v| v == 1).count() as u64;
+    let report = print_engine_summary(&engine, secs, prps);
+    Ok(RunOutput {
+        verdicts,
+        report,
+        gpu_active: engine.gpu_active(),
+    })
+}
+
+/// Prints the engine's one-line summary of a run that took `secs` and found `prps` probable primes.
+fn print_engine_summary(engine: &Engine, secs: f64, prps: u64) -> EngineReport {
     let r = engine.report();
     let tests = r.gpu_tests + r.cpu_tests;
     let work_secs = (secs - r.tune_secs).max(1e-9);
-    let prps = verdicts.iter().filter(|&&v| v == 1).count();
     eprintln!(
         "bigmont: {} | tests {tests} (gpu {}, cpu {}) | {secs:.2} s ({:.2} s tuning) | {:.1} tests/s excluding tuning | PRP {prps} | disagreements: prp {}, composite {} | rechecks {} | gpu errors {} | device losses {} (recovered {}, poll timeouts {})",
         engine.describe(),
@@ -188,24 +307,163 @@ fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutpu
         r.device_recoveries,
         r.poll_timeouts,
     );
-    Ok(RunOutput {
-        verdicts,
-        report: r,
-        gpu_active: engine.gpu_active(),
-    })
+    r
+}
+
+/// Takes the exclusive `--lock` file lock (creating the file), waiting for other holders. Returns the
+/// open file (the lock lasts until it is dropped) and the seconds spent waiting; `(None, 0.0)` without
+/// `--lock`.
+fn take_lock(path: Option<&Path>) -> Result<(Option<File>, f64), String> {
+    let Some(path) = path else {
+        return Ok((None, 0.0));
+    };
+    let t = Instant::now();
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .map_err(|e| format!("bigmont: cannot open lock file {}: {e}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => {}
+        Err(TryLockError::WouldBlock) => {
+            eprintln!("bigmont: waiting for the lock on {}", path.display());
+            file.lock()
+                .map_err(|e| format!("bigmont: cannot lock {}: {e}", path.display()))?;
+        }
+        Err(TryLockError::Error(e)) => {
+            return Err(format!("bigmont: cannot lock {}: {e}", path.display()));
+        }
+    }
+    Ok((Some(file), t.elapsed().as_secs_f64()))
+}
+
+/// Whether the schedule for `chunk`, `growth` and a largest k of `s_max` would have more than `limit`
+/// boundaries (`early_exit::schedule(..).len() > limit`). Walks the same steps as that function but only
+/// counts, and stops at the limit, so it never allocates.
+fn schedule_too_long(chunk: i32, growth: f64, s_max: u32, limit: u64) -> bool {
+    let s = i64::from(s_max);
+    let (mut at, mut c, mut n) = (0i64, f64::from(chunk), 1u64); // the schedule starts with boundary 0
+    if n > limit {
+        return true;
+    }
+    while at < s {
+        n += 1;
+        if n > limit {
+            return true;
+        }
+        at = at
+            .saturating_add((c.round_ties_even() as i64).max(1))
+            .min(s);
+        if growth > 1.0 {
+            c *= growth;
+        }
+    }
+    false
 }
 
 fn cmd_verdicts(a: Args) -> Result<ExitCode, String> {
+    if let Some(sizes) = a.ee.clone() {
+        return cmd_early_exit(a, &sizes);
+    }
+    if a.bins {
+        return Err(usage_err("--bins requires --ee SIZES"));
+    }
     let [cand, verdict] = a.positional.as_slice() else {
         return Err(usage_err("expected CAND and VERDICT"));
     };
     let file = formats::read_candidates(cand.as_ref())?;
-    let run = run_engine(a.opts, &file.numbers)?;
+    let (lock, _) = take_lock(a.lock.as_deref())?;
+    let run = match run_engine(a.opts, &file.numbers) {
+        Ok(run) => run,
+        Err(e) => return Ok(e.report()),
+    };
+    drop(lock);
     formats::write_verdicts(verdict.as_ref(), file.bits, &run.verdicts)?;
     Ok(ExitCode::SUCCESS)
 }
 
+/// `--ee SIZES`: the candidates (one file, or the files listed by `--bins`) are tested in waves and a
+/// k is retired at its first probable prime. Every input problem is reported before the lock is taken
+/// or the engine opened, and no verdict file is written on error.
+fn cmd_early_exit(a: Args, sizes_path: &Path) -> Result<ExitCode, String> {
+    let [input, verdict] = a.positional.as_slice() else {
+        return Err(usage_err("expected CAND and VERDICT"));
+    };
+    let inputs = if a.bins {
+        formats::read_bin_list(input.as_ref())?
+    } else {
+        vec![PathBuf::from(input)]
+    };
+    let sizes = formats::read_sizes(sizes_path)?;
+    // Judged from the sizes alone, before the schedule or the candidates are allocated.
+    let s_max = sizes.iter().copied().max().unwrap_or(0);
+    if schedule_too_long(a.chunk, a.growth, s_max, MAX_BOUNDARIES) {
+        return Err(format!(
+            "bigmont: the largest k has {s_max} candidates, which would take more than {MAX_BOUNDARIES} waves with --chunk {} --growth {}; raise --chunk or --growth",
+            a.chunk, a.growth
+        ));
+    }
+    let file = formats::read_candidate_files(&inputs)?;
+    let sum: u64 = sizes.iter().map(|&s| u64::from(s)).sum();
+    if sum != file.numbers.len() as u64 {
+        return Err(format!(
+            "bigmont: sizes sum {sum} != count {}",
+            file.numbers.len()
+        ));
+    }
+    let bounds = schedule(a.chunk, a.growth, s_max);
+
+    let (lock, lock_wait) = take_lock(a.lock.as_deref())?;
+    let t = Instant::now();
+    let mut engine = Engine::open(a.opts);
+    eprintln!("bigmont: {}", engine.describe());
+    // No candidates (or all ks empty) means `run_waves` never calls the engine; still honour `--backend gpu`.
+    if let Err(m) = engine.require_backend() {
+        return Ok(RunError::Config(m).report());
+    }
+    let out = match run_waves(&mut engine, &file.numbers, &sizes, &bounds, a.marker) {
+        Ok(out) => out,
+        Err(m) => return Ok(RunError::Failed(m).report()),
+    };
+    let secs = t.elapsed().as_secs_f64();
+    print_engine_summary(&engine, secs, out.prp);
+    // The GPU phase is over: free the engine's GPU memory, then let the next process start its waves.
+    drop(engine);
+    drop(lock);
+    formats::write_verdicts(verdict.as_ref(), file.bits, &out.verdicts)?;
+    let count = file.numbers.len() as u64;
+    let fraction = if count == 0 {
+        0.0
+    } else {
+        out.tested as f64 / count as f64
+    };
+    eprintln!(
+        "g1_fermat[EE]: bits={} count={count} ks={} tested={} ({fraction:.3}) waves={} | {secs:.3}s gpu-phase (lock wait {lock_wait:.2}s) | {:.1} tests/s | prp={} gec_alarm={}",
+        file.bits,
+        sizes.len(),
+        out.tested,
+        out.waves,
+        out.tested as f64 / secs.max(1e-9),
+        out.prp,
+        out.alarms,
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The early-exit flags only mean something to the verdict command.
+fn reject_ee_flags(a: &Args, sub: &str) -> Result<(), String> {
+    if a.ee.is_some() || a.bins {
+        return Err(usage_err(format!(
+            "--ee and --bins are not valid for `bigmont {sub}`"
+        )));
+    }
+    Ok(())
+}
+
 fn cmd_canary(a: Args) -> Result<ExitCode, String> {
+    reject_ee_flags(&a, "canary")?;
     let [cand, expected] = a.positional.as_slice() else {
         return Err(usage_err("expected CAND and EXPECTED"));
     };
@@ -215,7 +473,12 @@ fn cmd_canary(a: Args) -> Result<ExitCode, String> {
         eprintln!("bigmont: canary FAILED: {msg}");
         return Ok(ExitCode::from(1));
     }
-    let run = run_engine(a.opts, &file.numbers)?;
+    let (lock, _) = take_lock(a.lock.as_deref())?;
+    let run = match run_engine(a.opts, &file.numbers) {
+        Ok(run) => run,
+        Err(e) => return Ok(e.report()),
+    };
+    drop(lock);
     let failed = canary::failures(&run.verdicts, &want, &run.report, run.gpu_active);
     if failed.is_empty() {
         eprintln!(
@@ -240,9 +503,11 @@ fn choice_name(choice: tune::SchemeChoice) -> &'static str {
 }
 
 fn cmd_tune(a: Args) -> Result<ExitCode, String> {
+    reject_ee_flags(&a, "tune")?;
     if !a.positional.is_empty() {
         return Err(usage_err("tune takes no positional arguments"));
     }
+    let (_lock, _) = take_lock(a.lock.as_deref())?; // held until the tuning run ends
     let gpu = Gpu::open(&a.opts.selector).map_err(|e| format!("bigmont: no GPU: {e}"))?;
     println!("adapter: {}", gpu.describe());
     // Tuning is per limb class: test and time at the class's representative length.
@@ -345,5 +610,56 @@ fn main() -> ExitCode {
             eprintln!("{msg}");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Input and configuration problems exit 2, a failure while testing exits 3, so a caller can tell a
+    /// bad request from a device that gave up.
+    #[test]
+    fn run_errors_map_to_distinct_exit_statuses() {
+        assert_eq!(RunError::Config("x".into()).status(), 2);
+        assert_eq!(RunError::Failed("x".into()).status(), 3);
+    }
+
+    /// The length guard must agree with the real schedule, on both sides of the limit.
+    #[test]
+    fn schedule_too_long_agrees_with_the_schedule_it_guards() {
+        let (mut over, mut within) = (0u32, 0u32);
+        for chunk in [-3, 0, 1, 2, 6, 100] {
+            for growth in [0.5, 1.0, 1.15, 2.0] {
+                for s_max in [0u32, 1, 2, 7, 100, 5_000, 250_000] {
+                    let len = schedule(chunk, growth, s_max).len() as u64;
+                    for limit in (1..=60).chain([len - 1, len, len + 1, MAX_BOUNDARIES]) {
+                        let want = len > limit;
+                        assert_eq!(
+                            schedule_too_long(chunk, growth, s_max, limit),
+                            want,
+                            "chunk {chunk} growth {growth} s_max {s_max} limit {limit} ({len} boundaries)"
+                        );
+                        if want {
+                            over += 1;
+                        } else {
+                            within += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            over > 500 && within > 500,
+            "both outcomes are exercised ({over} over, {within} within)"
+        );
+        // The real limit: 999_999 steps of 1 make exactly 1_000_000 boundaries (allowed), one more is refused.
+        assert!(!schedule_too_long(1, 1.0, 999_999, MAX_BOUNDARIES));
+        assert!(schedule_too_long(1, 1.0, 1_000_000, MAX_BOUNDARIES));
+        assert!(schedule_too_long(1, 1.0, u32::MAX, MAX_BOUNDARIES));
+        assert!(
+            !schedule_too_long(1, 1.15, u32::MAX, MAX_BOUNDARIES),
+            "a growing schedule over a huge k is short"
+        );
     }
 }

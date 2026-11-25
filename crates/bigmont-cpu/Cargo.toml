@@ -3,6 +3,7 @@ name = "bigmont-cpu"
 description = "Pure-Rust 64-bit-limb Montgomery base-2 Fermat test (CPU fallback)"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

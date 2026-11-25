@@ -1,0 +1,22 @@
+== repetition 1
+cuda_inDriverEE              rc=0 0.39s
+bigmont_inDriverEE           rc=0 2.32s
+cuda_waves(ee_drive)         rc=0 0.53s
+bigmont_waves(ee_drive)      rc=0 2.96s
+in-driver EE: cuda == bigmont
+wave path:    cuda == bigmont
+cuda in-driver == cuda waves
+== repetition 2
+cuda_inDriverEE              rc=0 0.29s
+bigmont_inDriverEE           rc=0 2.15s
+cuda_waves(ee_drive)         rc=0 0.53s
+bigmont_waves(ee_drive)      rc=0 2.99s
+in-driver EE: cuda == bigmont
+wave path:    cuda == bigmont
+cuda in-driver == cuda waves
+g1_fermat[EE]: bits=2048 count=32000 ks=800 tested=5360 (0.168) waves=2 | 0.063s gpu-phase (lock wait 0.00s) | 85566.3 tests/s | prp=2560 gec_alarm=0
+g1_fermat[EE]: bits=2048 count=32000 ks=800 tested=5360 (0.168) waves=2 | 2.083s gpu-phase (lock wait 0.00s) | 2572.7 tests/s | prp=2560 gec_alarm=0
+ee_drive: ok ks=800 n=32000 tested=5360 (0.168 of legacy) waves=2 prp_ks=800 survivors=0 wall=2.955s driver=2.944s lock_wait=0.0s
+
+--- engine summary of the bigmont in-driver run:
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 5360 (gpu 5360, cpu 0) | 2.08 s (0.55 s tuning) | 3506.6 tests/s excluding tuning | PRP 2560 | disagreements: prp 0, composite 0 | rechecks 2560 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)

@@ -347,13 +347,20 @@ impl Engine {
         bigmont_cpu::fermat_batch(nums, self.opts.threads)
     }
 
-    /// Verdicts (0 composite, 1 probable prime) for `ns`, in input order.
-    pub fn verdicts(&mut self, ns: &[BigUint]) -> Result<Vec<u8>, String> {
+    /// Fails if the GPU backend was demanded (`--backend gpu`) but could not be opened. `verdicts`
+    /// checks this too; callers that may never call it (an empty input) check it up front.
+    pub fn require_backend(&self) -> Result<(), String> {
         if self.opts.backend == Backend::Gpu
             && let Some(why) = &self.gpu_err
         {
             return Err(format!("GPU backend requested but unavailable: {why}"));
         }
+        Ok(())
+    }
+
+    /// Verdicts (0 composite, 1 probable prime) for `ns`, in input order.
+    pub fn verdicts(&mut self, ns: &[BigUint]) -> Result<Vec<u8>, String> {
+        self.require_backend()?;
         self.reopens_left = self.opts.device_retries;
         let two = BigUint::from(2u32);
         let mut out = vec![0u8; ns.len()];

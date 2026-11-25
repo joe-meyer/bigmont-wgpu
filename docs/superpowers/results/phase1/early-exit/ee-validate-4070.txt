@@ -1,0 +1,24 @@
+canary: 400 candidates, 2048 bits; big: 32000 candidates, 2048 bits
+PASS canary_reg8_c6_g1.15_m3: cuda rc=0 (304, 2) 2.05s | bigmont rc=0 (304, 2) 0.91s | identical=True
+PASS canary_reg8_c2_g1.0_m7: cuda rc=0 (138, 4) 0.23s | bigmont rc=0 (138, 4) 0.85s | identical=True
+PASS canary_reg8_c1_g1.5_m3: cuda rc=0 (124, 4) 0.25s | bigmont rc=0 (124, 4) 0.30s | identical=True
+PASS canary_reg8_c50_g1.0_m3: cuda rc=0 (400, 1) 0.21s | bigmont rc=0 (400, 1) 0.91s | identical=True
+PASS canary_rand_c6_g1.15_m3: cuda rc=0 (103, 2) 0.23s | bigmont rc=0 (103, 2) 0.84s | identical=True
+PASS canary_rand_c2_g1.0_m7: cuda rc=0 (48, 5) 0.26s | bigmont rc=0 (48, 5) 0.25s | identical=True
+PASS canary_rand_c1_g1.5_m3: cuda rc=0 (42, 5) 0.25s | bigmont rc=0 (42, 5) 0.25s | identical=True
+PASS canary_rand_c50_g1.0_m3: cuda rc=0 (400, 1) 0.21s | bigmont rc=0 (400, 1) 0.93s | identical=True
+PASS big_reg40_c6_g1.15_m3: cuda rc=0 (5360, 2) 0.26s | bigmont rc=0 (5360, 2) 2.16s | identical=True
+PASS big_reg40_c2_g1.0_m7: cuda rc=0 (2720, 5) 0.27s | bigmont rc=0 (2720, 5) 1.57s | identical=True
+PASS big_reg40_c1_g1.5_m3: cuda rc=0 (2400, 5) 0.26s | bigmont rc=0 (2400, 5) 1.54s | identical=True
+PASS big_reg40_c50_g1.0_m3: cuda rc=0 (32000, 1) 0.48s | bigmont rc=0 (32000, 1) 9.00s | identical=True
+PASS big_rand_c6_g1.15_m3: cuda rc=0 (3212, 2) 0.36s | bigmont rc=0 (3212, 2) 1.69s | identical=True
+PASS big_rand_c2_g1.0_m7: cuda rc=0 (1471, 5) 0.27s | bigmont rc=0 (1471, 5) 1.24s | identical=True
+PASS big_rand_c1_g1.5_m3: cuda rc=0 (1347, 5) 0.25s | bigmont rc=0 (1347, 5) 1.24s | identical=True
+PASS big_rand_c50_g1.0_m3: cuda rc=0 (21125, 1) 0.37s | bigmont rc=0 (21125, 1) 6.22s | identical=True
+PASS big_one_k_c6_g1.15_m3: cuda rc=0 (13, 2) 0.31s | bigmont rc=0 (13, 2) 0.24s | identical=True
+SKIP big_one_k_c2_g1.0: the CUDA driver overflows its 512-boundary schedule array here
+PASS big_one_k_c1_g1.5_m3: cuda rc=0 (13, 5) 0.26s | bigmont rc=0 (13, 5) 0.25s | identical=True
+SKIP big_one_k_c50_g1.0: the CUDA driver overflows its 512-boundary schedule array here
+PASS big_bins: cuda rc=0 (3185, 2) 0.25s | bigmont rc=0 (3185, 2) 1.67s | identical=True
+
+19/19 comparisons passed

@@ -4,6 +4,8 @@ members = ["crates/bigmont-oracle", "crates/bigmont-core", "crates/bigmont-cpu",
 
 [workspace.package]
 edition = "2024"
+# The highest minimum among the dependencies (ordered-float, via the pinned wgpu-hal) is 1.90; our own code needs 1.89 (File::lock).
+rust-version = "1.90"
 license = "MIT"
 version = "0.1.0-alpha.1"
 
