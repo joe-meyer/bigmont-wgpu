@@ -95,7 +95,7 @@ device. Always run the suite with `--test-threads=1`.
 - SemVer. While `0.y.z`, anything may change; bump `y` for breaking changes,
   `z` for fixes. Planned line: `0.1.0-alpha.N`.
 - The version lives once, in `[workspace.package]` in the root `Cargo.toml`, and
-  all four crates inherit it.
+  every crate inherits it.
 - Do **not** bump versions, edit `CHANGELOG.md` release sections, or create tags
   unless asked. Releases are cut by maintainers by pushing a `vX.Y.Z[-pre]` tag;
   `.github/workflows/release.yml` does the rest.

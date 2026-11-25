@@ -538,19 +538,19 @@ pub fn autotune(
         ));
     }
     let key = cache_key(gpu, bits, choice);
-    if let (Some(path), false) = (cache, retune) {
-        if let Some((cfg, rate)) = cache_lookup(&read_cache(path), &key, &cands) {
-            match self_test(gpu, cfg, bits) {
-                Ok(()) => {
-                    return Ok(Tuned {
-                        cfg,
-                        squarings_per_sec: rate,
-                        from_cache: true,
-                    });
-                }
-                Err(e) if gpu.check_health().is_err() => return Err(e),
-                Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
+    if let (Some(path), false) = (cache, retune)
+        && let Some((cfg, rate)) = cache_lookup(&read_cache(path), &key, &cands)
+    {
+        match self_test(gpu, cfg, bits) {
+            Ok(()) => {
+                return Ok(Tuned {
+                    cfg,
+                    squarings_per_sec: rate,
+                    from_cache: true,
+                });
             }
+            Err(e) if gpu.check_health().is_err() => return Err(e),
+            Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
         }
     }
     let mut best: Option<Tuned> = None;

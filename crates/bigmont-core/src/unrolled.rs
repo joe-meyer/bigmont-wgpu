@@ -100,7 +100,7 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target, mode: Mode) -> String {
         iteration(&mut g, lpl, w);
         // LPL > PERIOD: a pass every PERIOD steps inside the body, plus an extra end-of-owner pass
         // after the last step when LPL % PERIOD != 0 (otherwise the first rule already covers it).
-        if in_body && ((w + 1) % PERIOD == 0 || (w + 1 == lpl && lpl % PERIOD != 0)) {
+        if in_body && ((w + 1) % PERIOD == 0 || (w + 1 == lpl && !lpl.is_multiple_of(PERIOD))) {
             light_pass(&mut g, lpl);
         }
     }
@@ -171,7 +171,7 @@ fn header(
     g.line("const B: u32 = 13u;");
     g.line("const MASK: u32 = 0x1fffu;");
     if in_body {
-        let tail = if lpl % PERIOD != 0 {
+        let tail = if !lpl.is_multiple_of(PERIOD) {
             format!(
                 ", plus an extra one at the end of each owner (LPL % {PERIOD} = {})",
                 lpl % PERIOD

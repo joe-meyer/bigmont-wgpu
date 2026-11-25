@@ -267,8 +267,8 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
         cands.len()
     );
     println!(
-        "{:>6} {:>4} {:>5} {:>16}  {}",
-        "scheme", "tpi", "wg", "squarings/s", "status"
+        "{:>6} {:>4} {:>5} {:>16}  status",
+        "scheme", "tpi", "wg", "squarings/s"
     );
     let mut best: Option<(f64, KernelConfig)> = None;
     for cfg in cands {

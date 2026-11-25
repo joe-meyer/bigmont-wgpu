@@ -348,11 +348,11 @@ fn main() {
                 );
                 continue;
             }
-            if cfg.needs_subgroups() {
-                if let Err(e) = gpu.check_subgroups(tpi) {
-                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {e}");
-                    continue;
-                }
+            if cfg.needs_subgroups()
+                && let Err(e) = gpu.check_subgroups(tpi)
+            {
+                println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {e}");
+                continue;
             }
             match validate(&gpu, cfg) {
                 Ok(()) => {}
