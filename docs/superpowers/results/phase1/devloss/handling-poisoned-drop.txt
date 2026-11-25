@@ -1,0 +1,45 @@
+# command: poison_drop 16384 (throwaway example, source below), with and without BIGMONT_TEST_NO_LEAK=1; a one-line sed made the leak in Gpu::drop switchable in the shipped copy only (not committed)
+# host: test-laptop
+# adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
+# commit: 8fa2188 + probe
+# date: 2026-11-25T04:37:55Z
+# probe source:
+#   use bigmont_core::gpu::{Batch, Gpu, run};
+#   use bigmont_core::kernel::{KernelConfig, Variant};
+#   use std::time::{Duration, Instant};
+#   fn main() {
+#       let squarings: u32 = std::env::args().nth(1).map_or(16384, |s| s.parse().unwrap());
+#       let cfg = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled);
+#       let mut gpu = Gpu::new().unwrap();
+#       let batch = Batch::from_values_n(&Batch::random_values(4096, cfg.limbs * 13 - 3, 3), cfg.limbs as usize);
+#       let t = Instant::now();
+#       let r = run(&gpu, cfg, &batch, squarings, 1).unwrap();
+#       eprintln!("healthy run of {squarings} squarings: {:.3} s dispatch, {:?} total", r.best_secs, t.elapsed());
+#       gpu.set_poll_timeout(Duration::from_millis(1));
+#       let t = Instant::now();
+#       let e = run(&gpu, cfg, &batch, squarings, 1).err().unwrap();
+#       eprintln!("error after {:?}: {e}", t.elapsed());
+#       let t = Instant::now();
+#       drop(gpu);
+#       eprintln!("drop took {:?} (leak {})", t.elapsed(), if std::env::var_os("BIGMONT_TEST_NO_LEAK").is_some() { "disabled" } else { "enabled" });
+#   }
+--- leak enabled (committed behaviour), run 1
+healthy run of 16384 squarings: 0.840 s dispatch, 977.705388ms total
+error after 11.911258ms: GPU wait timed out after 1.000 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+drop took 1.814µs (leak enabled)
+exit 0
+--- BIGMONT_TEST_NO_LEAK=1 (normal drop), run 1
+healthy run of 16384 squarings: 0.822 s dispatch, 843.578693ms total
+error after 11.692648ms: GPU wait timed out after 1.000 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+drop took 854.187877ms (leak disabled)
+exit 0
+--- leak enabled (committed behaviour), run 2
+healthy run of 16384 squarings: 0.822 s dispatch, 848.184416ms total
+error after 11.552906ms: GPU wait timed out after 1.000 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+drop took 1.673µs (leak enabled)
+exit 0
+--- BIGMONT_TEST_NO_LEAK=1 (normal drop), run 2
+healthy run of 16384 squarings: 0.822 s dispatch, 844.636096ms total
+error after 11.679203ms: GPU wait timed out after 1.000 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+drop took 853.307733ms (leak disabled)
+exit 0
