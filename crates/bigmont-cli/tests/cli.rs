@@ -619,10 +619,9 @@ fn lock_works_in_plain_mode_too_and_is_no_longer_ignored() {
     let (cand, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("o.bin")).to_string());
     let args = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--lock", s(&lock)];
 
-    let started = Instant::now();
+    // `run_while_locked` itself proves the child waited: it fails unless the child reports waiting.
     let o = run_while_locked(&args, &lock, Duration::from_millis(500));
     ok(&o);
-    assert!(started.elapsed() >= Duration::from_millis(500));
     assert_eq!(verdicts_of(&dir.join("o.bin")), d.plain);
     assert!(!String::from_utf8_lossy(&o.stderr).contains("accepted and ignored"), "--lock is real now");
 

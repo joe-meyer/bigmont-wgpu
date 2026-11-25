@@ -46,6 +46,7 @@ early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips th
               --chunk positions per k (default 6), each later wave --growth times more (default 1.15; 1.0 = constant).
 lock:        --lock FILE takes an exclusive lock (created if missing) before any GPU work and holds it until the last
               wave (early-exit mode) or the end of the engine run; other bigmont processes using FILE wait their turn.
+              The gpu-phase time of the g1_fermat[EE] line includes engine setup and any first-run tuning.
               Input errors exit with status 2.
 limb scheme: --limbs auto (default) measures every scheme the adapter can run and uses the fastest; 13 or 32 forces one
               (tuning caches from before the limb schemes are re-measured once)
@@ -245,15 +246,18 @@ fn take_lock(path: Option<&Path>) -> Result<(Option<File>, f64), String> {
     Ok((Some(file), t.elapsed().as_secs_f64()))
 }
 
-/// Whether the schedule for `chunk`, `growth` and a largest k of `s_max` would have more than
-/// [`MAX_BOUNDARIES`] boundaries. Walks the same steps as `early_exit::schedule` but only counts, and
-/// stops at the limit, so it never allocates.
-fn schedule_too_long(chunk: i32, growth: f64, s_max: u32) -> bool {
+/// Whether the schedule for `chunk`, `growth` and a largest k of `s_max` would have more than `limit`
+/// boundaries (`early_exit::schedule(..).len() > limit`). Walks the same steps as that function but only
+/// counts, and stops at the limit, so it never allocates.
+fn schedule_too_long(chunk: i32, growth: f64, s_max: u32, limit: u64) -> bool {
     let s = i64::from(s_max);
-    let (mut at, mut c, mut n) = (0i64, f64::from(chunk), 1u64);
+    let (mut at, mut c, mut n) = (0i64, f64::from(chunk), 1u64); // the schedule starts with boundary 0
+    if n > limit {
+        return true;
+    }
     while at < s {
         n += 1;
-        if n > MAX_BOUNDARIES {
+        if n > limit {
             return true;
         }
         at = at.saturating_add((c.round_ties_even() as i64).max(1)).min(s);
@@ -289,7 +293,7 @@ fn cmd_early_exit(a: Args, sizes_path: &Path) -> Result<ExitCode, String> {
     let sizes = formats::read_sizes(sizes_path)?;
     // Judged from the sizes alone, before the schedule or the candidates are allocated.
     let s_max = sizes.iter().copied().max().unwrap_or(0);
-    if schedule_too_long(a.chunk, a.growth, s_max) {
+    if schedule_too_long(a.chunk, a.growth, s_max, MAX_BOUNDARIES) {
         return Err(format!(
             "bigmont: the largest k has {s_max} candidates, which would take more than {MAX_BOUNDARIES} waves with --chunk {} --growth {}; raise --chunk or --growth",
             a.chunk, a.growth
@@ -308,8 +312,10 @@ fn cmd_early_exit(a: Args, sizes_path: &Path) -> Result<ExitCode, String> {
     eprintln!("bigmont: {}", engine.describe());
     let out = run_waves(&mut engine, &file.numbers, &sizes, &bounds, a.marker)?;
     let secs = t.elapsed().as_secs_f64();
-    drop(lock); // the GPU phase is over: the next process may start its waves
     print_engine_summary(&engine, secs, out.prp);
+    // The GPU phase is over: free the engine's GPU memory, then let the next process start its waves.
+    drop(engine);
+    drop(lock);
     formats::write_verdicts(verdict.as_ref(), file.bits, &out.verdicts)?;
     let count = file.numbers.len() as u64;
     let fraction = if count == 0 { 0.0 } else { out.tested as f64 / count as f64 };
@@ -451,21 +457,31 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    /// The length guard must agree with the real schedule wherever the real schedule is small enough to build.
+    /// The length guard must agree with the real schedule, on both sides of the limit.
     #[test]
     fn schedule_too_long_agrees_with_the_schedule_it_guards() {
+        let (mut over, mut within) = (0u32, 0u32);
         for chunk in [-3, 0, 1, 2, 6, 100] {
             for growth in [0.5, 1.0, 1.15, 2.0] {
                 for s_max in [0u32, 1, 2, 7, 100, 5_000, 250_000] {
                     let len = schedule(chunk, growth, s_max).len() as u64;
-                    assert_eq!(schedule_too_long(chunk, growth, s_max), len > MAX_BOUNDARIES, "chunk {chunk} growth {growth} s_max {s_max} ({len} boundaries)");
+                    for limit in (1..=60).chain([len - 1, len, len + 1, MAX_BOUNDARIES]) {
+                        let want = len > limit;
+                        assert_eq!(schedule_too_long(chunk, growth, s_max, limit), want, "chunk {chunk} growth {growth} s_max {s_max} limit {limit} ({len} boundaries)");
+                        if want {
+                            over += 1;
+                        } else {
+                            within += 1;
+                        }
+                    }
                 }
             }
         }
-        // Right at the limit: 999_999 steps of 1 make 1_000_000 boundaries (allowed), one more is refused.
-        assert!(!schedule_too_long(1, 1.0, 999_999));
-        assert!(schedule_too_long(1, 1.0, 1_000_000));
-        assert!(schedule_too_long(1, 1.0, u32::MAX));
-        assert!(!schedule_too_long(1, 1.15, u32::MAX), "a growing schedule over a huge k is short");
+        assert!(over > 500 && within > 500, "both outcomes are exercised ({over} over, {within} within)");
+        // The real limit: 999_999 steps of 1 make exactly 1_000_000 boundaries (allowed), one more is refused.
+        assert!(!schedule_too_long(1, 1.0, 999_999, MAX_BOUNDARIES));
+        assert!(schedule_too_long(1, 1.0, 1_000_000, MAX_BOUNDARIES));
+        assert!(schedule_too_long(1, 1.0, u32::MAX, MAX_BOUNDARIES));
+        assert!(!schedule_too_long(1, 1.15, u32::MAX, MAX_BOUNDARIES), "a growing schedule over a huge k is short");
     }
 }
