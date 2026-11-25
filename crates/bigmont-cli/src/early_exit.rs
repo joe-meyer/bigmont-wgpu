@@ -57,7 +57,6 @@ struct KState {
     size: u32,
     /// Positions `[0, tested)` have been tested.
     tested: u32,
-    alive: bool,
 }
 
 impl KState {
@@ -87,9 +86,11 @@ pub fn run_waves(
     let mut ks = Vec::with_capacity(sizes.len());
     let mut off = 0usize;
     for &size in sizes {
-        ks.push(KState { off, size, tested: 0, alive: true });
+        ks.push(KState { off, size, tested: 0 });
         off += size as usize;
     }
+    // Indices of the ks still alive, in k order; shrinks after each wave.
+    let mut alive: Vec<usize> = (0..ks.len()).collect();
     let mut verdicts = vec![marker; numbers.len()];
     let mut tested_total = 0u64;
     let mut waves = 0u32;
@@ -97,9 +98,9 @@ pub fn run_waves(
     let mut batch: Vec<BigUint> = Vec::new();
     for &bound in boundaries.iter().skip(1) {
         idx.clear();
-        for k in ks.iter().filter(|k| k.alive) {
-            let hi = k.wave_end(bound);
-            idx.extend((k.tested..hi).map(|p| k.off + p as usize));
+        for &ki in &alive {
+            let k = &ks[ki];
+            idx.extend((k.tested..k.wave_end(bound)).map(|p| k.off + p as usize));
         }
         if idx.is_empty() {
             break;
@@ -119,16 +120,15 @@ pub fn run_waves(
         }
         waves += 1;
         tested_total += idx.len() as u64;
-        for k in ks.iter_mut().filter(|k| k.alive) {
+        alive.retain(|&ki| {
+            let k = &mut ks[ki];
             let hi = k.wave_end(bound);
             let hit = verdicts[k.off + k.tested as usize..k.off + hi as usize]
                 .iter()
                 .any(|&v| v == 1 || v == 2);
             k.tested = hi;
-            if hit || k.tested >= k.size {
-                k.alive = false;
-            }
-        }
+            !(hit || k.tested >= k.size)
+        });
     }
     let prp = verdicts.iter().filter(|&&v| v == 1).count() as u64;
     Ok(EeOutcome { verdicts, tested: tested_total, waves, prp })

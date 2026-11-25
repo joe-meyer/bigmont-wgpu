@@ -7,7 +7,8 @@ use num_traits::ToPrimitive;
 use std::collections::HashSet;
 
 /// Candidate number `i` is `BigUint::from(i)`, so the fake can tell which global index it was asked
-/// about. It answers 1 for indices in `prime`, `answer_for_prime` aside, and records every call.
+/// about. It answers `answer_for_prime` (1 unless a test says otherwise) for indices in `prime`,
+/// 0 for the rest, and records every call.
 struct FakeSource {
     prime: HashSet<u64>,
     answer_for_prime: u8,
@@ -187,10 +188,30 @@ fn empty_inputs_and_zero_sized_ks() {
 fn sizes_that_do_not_sum_to_the_candidate_count_are_an_error() {
     let mut src = FakeSource::new(&[]);
     let err = run_waves(&mut src, &numbers(4), &[3, 4], &schedule(2, 1.0, 4), 3).unwrap_err();
-    assert!(err.contains('7') && err.contains('4'), "{err}");
+    assert_eq!(err, "sizes sum 7 != count 4");
     let err = run_waves(&mut src, &numbers(9), &[3, 4], &schedule(2, 1.0, 4), 3).unwrap_err();
-    assert!(err.contains('7') && err.contains('9'), "{err}");
+    assert_eq!(err, "sizes sum 7 != count 9");
     assert!(src.calls.is_empty(), "nothing may reach the source before the check");
+}
+
+#[test]
+fn non_increasing_boundaries_end_the_run_without_retesting_anything() {
+    // Boundaries from schedule() always increase; hand-made ones may not. A wave whose boundary
+    // is at or below what every live k has already tested is empty, so the run stops there:
+    // no panic, no position tested twice, later boundaries unused. (The empty-wave stop is what
+    // ends the run; `wave_end`'s clamp is defence in depth behind it.)
+    for bounds in [[0u32, 3, 2, 5], [0, 3, 3, 5]] {
+        let mut src = FakeSource::new(&[]);
+        let out = run_waves(&mut src, &numbers(8), &[6, 2], &bounds, 3).unwrap();
+        assert_eq!(src.calls, vec![vec![0, 1, 2, 6, 7]], "{bounds:?}");
+        assert_eq!(out.verdicts, vec![0, 0, 0, 3, 3, 3, 0, 0], "{bounds:?}");
+        assert_eq!((out.tested, out.waves, out.prp), (5, 1, 0), "{bounds:?}");
+    }
+    // A dip after progress: k1 is still alive but already past the dipped boundary.
+    let mut src = FakeSource::new(&[]);
+    let out = run_waves(&mut src, &numbers(6), &[3, 3], &[0, 2, 1, 3], 3).unwrap();
+    assert_eq!(src.calls, vec![vec![0, 1, 3, 4]]);
+    assert_eq!((out.tested, out.waves), (4, 1));
 }
 
 #[test]
@@ -223,6 +244,12 @@ fn the_marker_is_used_as_given_and_prp_counts_only_ones() {
         assert_eq!(out.verdicts, vec![1, marker, marker, 0, 0, 0], "marker {marker}");
         assert_eq!(out.prp, 1, "marker {marker}");
     }
+    // prp counts every byte equal to 1 in the output, so a marker of 1 is counted at each
+    // skipped position too (one real prime plus two marker bytes).
+    let mut src = FakeSource::new(&[0]);
+    let out = run(&mut src, &[3, 3], 1, 1.0, 1).unwrap();
+    assert_eq!(out.verdicts, vec![1, 1, 1, 0, 0, 0]);
+    assert_eq!(out.prp, 3);
     // A verdict byte of 2 (the Gerbicz alarm) retires a k like a hit but is not counted as prp.
     let mut src = FakeSource::new(&[0]);
     src.answer_for_prime = 2;
