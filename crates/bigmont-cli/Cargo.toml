@@ -1,6 +1,6 @@
 [package]
 name = "bigmont-cli"
-description = "Beacon-compatible candidate/verdict driver and autotuned engine for bigmont"
+description = "Candidate/verdict file driver and autotuned engine for bigmont"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

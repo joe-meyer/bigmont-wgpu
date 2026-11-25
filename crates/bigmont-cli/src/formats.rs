@@ -1,4 +1,4 @@
-//! Beacon's `G2C1` candidate files and `G2V1` verdict files (file IO only).
+//! `G2C1` candidate files and `G2V1` verdict files, the binary format of an existing CUDA-based search pipeline (file IO only).
 //!
 //! Both start with a 16-byte little-endian header: magic `u32`, container bits `u32`, count `u64`.
 //! A candidate body is `count` numbers of `ceil(bits / 32)` little-endian `u32` limbs; a verdict

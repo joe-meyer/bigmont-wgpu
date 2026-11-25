@@ -7,7 +7,7 @@ fn tmp(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn candidate_file_round_trips_and_has_the_beacon_layout() {
+fn candidate_file_round_trips_and_has_the_g2c1_layout() {
     let mut rng = XorShift64::new(1);
     let ns: Vec<BigUint> = (0..5).map(|_| random_odd_modulus(&mut rng, 2029)).collect();
     let p = tmp("cand.bin");

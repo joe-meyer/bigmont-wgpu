@@ -23,7 +23,7 @@ pub struct AdapterSelector {
     /// Case-insensitive substring of the backend name ("Vulkan", "Dx12", "Gl", ...).
     pub backend: Option<String>,
     /// Index among the non-CPU adapters (after the name/backend filters), in `enumerate_adapters`
-    /// order: Beacon's `--device N`.
+    /// order: what a `--device N` flag selects.
     pub index: Option<usize>,
 }
 
