@@ -35,12 +35,11 @@ use crate::kernel::{KernelConfig, SUBGROUP_HELPERS};
 use crate::unrolled::Mode;
 
 /// Emits the complete native WGSL source for `cfg` (an unrolled 32-bit configuration with
-/// `tpi` 4, 8, 16 or 32). Same bindings as the 13-bit unrolled squaring kernel: `params`,
-/// `n_limbs`, `ninv_buf`, `x_limbs`. Only [`Mode::Squarings`] exists so far.
+/// `tpi` 4, 8, 16 or 32). Same bindings as the 13-bit unrolled kernel: `params`, `n_limbs`,
+/// `ninv_buf`, `x_limbs`, plus in [`Mode::Fermat`] `e_words` and `fp` (see
+/// `KernelConfig::fermat_wgsl_for`), where every squaring is followed by the conditional doubling
+/// selected by the exponent bit (see [`conditional_double`]).
 pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
-    if mode == Mode::Fermat {
-        return Err("the 32-bit Fermat ladder is added in the next task".to_string());
-    }
     if !matches!(cfg.tpi, 4 | 8 | 16 | 32) {
         return Err(format!("the 32-bit generator supports tpi 4, 8, 16, 32 only (got {})", cfg.tpi));
     }
@@ -52,10 +51,18 @@ pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
     g.line("const L: u32 = TPI * LPL;");
     g.line(format!("const WG: u32 = {}u;", cfg.wg));
     g.line("");
-    g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
+    if mode == Mode::Fermat {
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch");
+    } else {
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
+    }
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");
     g.line("@group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;   // -n^-1 mod 2^32");
     g.line("@group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;");
+    if mode == Mode::Fermat {
+        g.line("@group(0) @binding(4) var<storage, read> e_words: array<u32>;   // n - 1, words per instance = fp.z");
+        g.line("@group(0) @binding(5) var<uniform> fp: vec4<u32>;               // x = first iteration, y = nbits, z = words per instance");
+    }
     g.raw(SUBGROUP_HELPERS);
     g.line("@compute @workgroup_size(WG)");
     g.line("fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) li: u32, @builtin(subgroup_invocation_id) sg_in: u32) {");
@@ -98,6 +105,9 @@ pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
     for c in 0..lpl {
         g.line(format!("x{c} = t{c};"));
     }
+    if mode == Mode::Fermat {
+        conditional_double(&mut g, lpl);
+    }
     g.depth -= 1;
     g.line("}");
     g.line("if (live) {");
@@ -127,7 +137,36 @@ impl Gen {
     }
 }
 
+/// Fermat mode: `x <- 2x` when exponent bit `fp.y - 2 - (fp.x + s)` of `e_words` (`n - 1`, `fp.z`
+/// words per instance) is set. After the squaring every limb is canonical (below 2^32), so no carry
+/// ripple is needed: limb `c` of `2x` is `(x_c << 1) | (x_{c-1} >> 31)`, and a lane's limb 0 takes
+/// its low bit from the previous lane's last limb (`up1`; 0 for lane 0). R > 16n gives `2x < 4n < R`,
+/// so nothing leaves the top limb of the top lane. Every lane runs the shuffle (uniform control
+/// flow); the bit only selects the result.
+fn conditional_double(g: &mut Gen, lpl: usize) {
+    g.line("let gi = fp.y - 2u - (fp.x + s);");
+    g.line("let ebit = (e_words[ic * fp.z + (gi >> 5u)] >> (gi & 31u)) & 1u;");
+    g.line(format!("var prev = up1(x{} >> 31u, lane);                 // bit shifted in from the lane below (0 for lane 0)", lpl - 1));
+    for c in 0..lpl {
+        g.line(format!("let d{c} = (x{c} << 1u) | prev;"));
+        g.line(format!("prev = x{c} >> 31u;"));
+    }
+    for c in 0..lpl {
+        g.line(format!("x{c} = select(x{c}, d{c}, ebit == 1u);"));
+    }
+}
+
 /// One multiplier limb (`x{w}` of lane `owner`): `t <- (t + x b + n m) / 2^32` over this lane's limbs.
+///
+/// Why the `wrap` branch of the last element is exact. Every chain input is a u32, so the carries
+/// `c1`, `c2` are at most 2^32 - 1, and `a` and `q` (each a product of two u32 plus two u32 terms)
+/// are at most (2^32-1)^2 + 2 (2^32-1) = 2^64 - 1: no u64 overflow inside the chains. The deferred
+/// carry `pend` is below 2^34, so `s2 = q + pend` wraps at most once. A wrap loses 2^64, which is
+/// 2^32 in units of the next limb (the limb above the element `s2` belongs to), and that is exactly
+/// the `wrap` term (2^32) added to the new `pend`. After a wrap `s2 < pend < 2^34`, so
+/// `s2 >> 32 < 4` and the new `pend = (s2 >> 32) + wrap + (a >> 32)` is below 4 + 2^32 + 2^32 =
+/// 2^33 + 4; without a wrap it is below 2^32 + 2^32 = 2^33. Either way `pend` stays below 2^34, the
+/// bound the next step relies on.
 fn step(g: &mut Gen, lpl: usize, w: usize) {
     g.line("{");
     g.depth += 1;
@@ -160,7 +199,7 @@ fn step(g: &mut Gen, lpl: usize, w: usize) {
     g.line("let s2 = q + pend;                               // pend below 2^34: wraps at most once");
     g.line("let wrap = select(0lu, 4294967296lu, s2 < q);");
     g.line(format!("t{top} = u32(s2);"));
-    g.line("pend = (s2 >> 32u) + wrap + (a >> 32u);         // below 3 * 2^32");
+    g.line("pend = (s2 >> 32u) + wrap + (a >> 32u);         // below 2^33 + 4 (see the note on `step`)");
     g.depth -= 1;
     g.line("}");
     g.depth -= 1;

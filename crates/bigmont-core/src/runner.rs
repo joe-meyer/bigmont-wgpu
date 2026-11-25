@@ -84,6 +84,8 @@ impl Runner {
     }
 
     fn build(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<Runner, String> {
+        // Generate the source first: a configuration with no Fermat source is an `Err`, never a panic.
+        let source = cfg.try_fermat_wgsl_for(Target::Native)?;
         let words = bits.div_ceil(32);
         let limits = gpu.device.limits();
         let max_groups = u64::from(limits.max_compute_workgroups_per_dimension.min(65535));
@@ -133,7 +135,7 @@ impl Runner {
         let module = guarded(device, &format!("Fermat shader module for {cfg:?}"), || {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("fermat"),
-                source: wgpu::ShaderSource::Wgsl(cfg.fermat_wgsl_for(Target::Native).into()),
+                source: wgpu::ShaderSource::Wgsl(source.into()),
             })
         })?;
         let pipeline = guarded(device, &format!("Fermat compute pipeline for {cfg:?}"), || {

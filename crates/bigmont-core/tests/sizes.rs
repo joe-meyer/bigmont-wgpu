@@ -1,6 +1,7 @@
 mod common;
 use bigmont_core::gpu::{Batch, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
@@ -24,6 +25,51 @@ fn check_size(cfg: KernelConfig, squarings: u32) {
         let got = unpack_limbs(got_limbs);
         assert!(got < n * 2u32, "{cfg:?} instance {i}: result not below 2n");
         assert_eq!(&got % n, mont_square_chain_n(n, x0, squarings, limbs), "{cfg:?} instance {i}: wrong value");
+    }
+}
+
+/// The 32-bit scheme's variant of [`check_size`]: moduli of `32 * limbs - 3` bits (R > 4n), plus
+/// all-ones and sparse moduli, compared with the oracle chain at the same limb count.
+fn check_size32(tpi: u32, limbs: u32, squarings: u32) {
+    let mut cfg = KernelConfig::new(tpi, 64, Variant::Unrolled);
+    cfg.scheme = LimbScheme::Limb32;
+    cfg.limbs = limbs;
+    let Some(gpu) = common::open_gpu(cfg) else { return };
+    if !gpu.caps().satisfies(cfg.requires()) {
+        common::skip(format!("{cfg:?}: the adapter lacks {}", gpu.caps().missing(cfg.requires()).join(" and ")));
+        return;
+    }
+    let bits = limbs * 32 - 3;
+    let mut values = Batch::random_values(70, bits, 9);
+    let all_ones = (BigUint::one() << bits) - 1u32;
+    values.push((all_ones.clone(), &all_ones - 1u32));
+    let sparse = (BigUint::one() << (bits - 1)) + 1u32;
+    values.push((sparse.clone(), &sparse - 1u32));
+    let batch = Batch::from_values_cfg(&values, &cfg);
+    let result = run(&gpu, cfg, &batch, squarings, 1).expect("run failed");
+    let l = limbs as usize;
+    for (i, (n, x0)) in values.iter().enumerate() {
+        let got = cfg.scheme.unpack(&result.x[i * l..(i + 1) * l]);
+        assert!(got < n * 2u32, "{cfg:?} instance {i}: result not below 2n");
+        assert_eq!(&got % n, cfg.scheme.chain(n, x0, squarings, l), "{cfg:?} instance {i}: wrong value");
+    }
+}
+
+/// (tpi, limbs) for 32-bit limbs: 1, 2, 3, 4, 5, 9 and 16 limbs per lane at TPI 4, and 1, 2, 3, 8 at
+/// TPI 8 (every count a multiple of its TPI).
+const SIZES32: &[(u32, u32)] = &[(4, 4), (4, 8), (4, 12), (4, 16), (4, 20), (4, 36), (4, 64), (8, 8), (8, 16), (8, 24), (8, 64)];
+
+#[test]
+fn limb32_size_classes_match_oracle() {
+    for &(tpi, limbs) in SIZES32 {
+        check_size32(tpi, limbs, 3);
+    }
+}
+
+#[test]
+fn limb32_size_classes_long_chain_match_oracle() {
+    for &(tpi, limbs) in &[(4, 36), (8, 24), (4, 64)] {
+        check_size32(tpi, limbs, 128);
     }
 }
 

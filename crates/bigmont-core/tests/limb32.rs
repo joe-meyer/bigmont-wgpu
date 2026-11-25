@@ -25,7 +25,7 @@ fn open() -> Option<Gpu> {
 }
 
 /// `count` instances: random moduli of exactly `bits` bits, plus the all-ones modulus 2^bits - 1 and
-/// the sparse modulus 2^(bits-1) + 1 (each with x = n - 1 and with a random x).
+/// the sparse modulus 2^(bits-1) + 1 (each with x = n - 1, x = 0, x = 1 and with a random x).
 fn values(bits: u32, count: usize, seed: u64) -> Vec<(BigUint, BigUint)> {
     let mut rng = XorShift64::new(seed);
     let all_ones = (BigUint::one() << bits) - 1u32;
@@ -33,6 +33,10 @@ fn values(bits: u32, count: usize, seed: u64) -> Vec<(BigUint, BigUint)> {
     let mut v = vec![
         (all_ones.clone(), &all_ones - 1u32),
         (sparse.clone(), &sparse - 1u32),
+        (all_ones.clone(), BigUint::from(0u32)),
+        (all_ones.clone(), BigUint::one()),
+        (sparse.clone(), BigUint::from(0u32)),
+        (sparse.clone(), BigUint::one()),
         (all_ones.clone(), random_below(&mut rng, &all_ones)),
         (sparse.clone(), random_below(&mut rng, &sparse)),
     ];
