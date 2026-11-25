@@ -1,4 +1,4 @@
-# cmd: BIGMONT_ADAPTER=780M BIGMONT_BACKEND=Vulkan target/release/examples/spike --variant unrolled --tpi 4 --max-count 131072 | host: test-laptop | adapter: Radeon 780M | date: 2026-11-24T17:52:47-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=780M BIGMONT_BACKEND=Vulkan target/release/examples/spike --variant unrolled --tpi 4 --max-count 131072 | host: test-laptop | adapter: Radeon 780M | date: 2026-11-24T17:52:47-05:00 | commit 60b671a
 adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
 variant: unrolled
 subgroups feature: true

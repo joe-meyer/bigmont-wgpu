@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont canary big_2048.bin big_expected.bin --backend gpu --adapter 6700 --vk-backend Vulkan | host: desktop | date: 2026-11-24T17:46:55-05:00 | commit b7f6a34
+# cmd: target/release/bigmont canary big_2048.bin big_expected.bin --backend gpu --adapter 6700 --vk-backend Vulkan | host: desktop | date: 2026-11-24T17:46:55-05:00 | commit 60b671a
 bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
 bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 32000 (gpu 32000, cpu 0) | 20.88 s (11.28 s tuning) | 3333.4 tests/s excluding tuning | PRP 16000 | disagreements: prp 0, composite 0 | rechecks 16003 | gpu errors 0
 bigmont: canary ok: all 32000 verdicts match

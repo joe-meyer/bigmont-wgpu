@@ -1,4 +1,4 @@
-commit 4f4f3f8; desktop Vulkan; 2026-11-24T16:08:07Z
+commit 0ca00ef; desktop Vulkan; 2026-11-24T16:08:07Z
 adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
 subgroups feature: true
 max batch (instances): 131070

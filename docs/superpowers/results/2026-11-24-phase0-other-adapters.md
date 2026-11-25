@@ -34,7 +34,7 @@ Not covered anywhere: any Intel GPU, wave64, browsers, OpenGL on the laptop and 
 | same | AMD Radeon 780M iGPU (RADV, Mesa) | Vulkan | 32..64 | same files |
 | same | llvmpipe (Mesa software Vulkan, LLVM 21.1.8: a CPU adapter) | Vulkan | 8..8 | same files |
 | Windows desktop | Microsoft Basic Render Driver (WARP, CPU) | Dx12 | no SUBGROUP feature | `raw-tests-warp-dx12.txt` (tests only) |
-| `host2` (Proxmox), new container CT 104 `bigmont-test` (Ubuntu 26.04, unprivileged LXC) | Quadro P4000 (Pascal, 8 GB, shared with three other containers; driver 580.178.04) | Vulkan | 32..32 | `raw-tests-host2-ct104-p4000-vulkan.txt`, `raw-sweep-host2-ct104-p4000-vulkan.txt` (commit `04b2049`) |
+| `host2` (Proxmox), new container CT 104 `bigmont-test` (Ubuntu 26.04, unprivileged LXC) | Quadro P4000 (Pascal, 8 GB, shared with three other containers; driver 580.178.04) | Vulkan | 32..32 | `raw-tests-host2-ct104-p4000-vulkan.txt`, `raw-sweep-host2-ct104-p4000-vulkan.txt` (commit `7ad9a4c`) |
 
 Rust 1.100.0 was installed user-level on the laptop with rustup (no sudo) to build there, and as root inside the new container on host2. CT 104 was created for this test at the owner's request with the same `/dev/nvidia*` device entries as the existing plex, frigate and llm containers. Getting the NVIDIA Vulkan driver to initialise there needed `libnvidia-gl-580` (same version as the host driver), `libvulkan1` and `libegl1` (without libegl1 the driver fails at init). `vulkaninfo` itself exits with a segfault at teardown in that container; the wgpu test and sweep binaries exited with status 0.
 
@@ -68,7 +68,7 @@ Each run is the `bigmont-core` suite: 133 instances of random 2029-bit moduli pl
 
 Full tables are in `other-adapters/raw-sweep-laptop-vulkan.txt`.
 
-## 3a. Re-timed with long dispatches (commits `4f4f3f8` and `92d8b5d`); supersedes section 3 and the main doc's tables for speed
+## 3a. Re-timed with long dispatches (commits `0ca00ef` and `071f396`); supersedes section 3 and the main doc's tables for speed
 
 Each configuration is now also timed at progressively longer dispatches (2 up to 256 squarings, stopping once one dispatch takes 0.2 s, and never planned beyond 0.4 s). "sq/s @long" is total squarings divided by the long dispatch's time; "sq/s slope" is the marginal rate between the 2-squaring and the long dispatch, which removes any fixed per-dispatch cost. Raw files: `other-adapters/amortised/` (`raw-laptop-vulkan.txt`, `raw-host2-ct104.txt`, `raw-desktop-vulkan.txt`, `raw-desktop-dx12-dxc.txt`, and the same-batch comparison `raw-laptop-fixed-count.txt`). Every row validated against the oracle first.
 

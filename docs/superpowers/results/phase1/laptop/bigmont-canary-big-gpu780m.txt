@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont canary /home/<user>/beacon-test/p3/big_2048.bin /home/<user>/beacon-test/p3/big_expected.bin --backend gpu --adapter 780M --vk-backend Vulkan | host: test-laptop | date: 2026-11-24T17:47:38-05:00 | commit b7f6a34
+# cmd: target/release/bigmont canary /home/<user>/beacon-test/p3/big_2048.bin /home/<user>/beacon-test/p3/big_expected.bin --backend gpu --adapter 780M --vk-backend Vulkan | host: test-laptop | date: 2026-11-24T17:47:38-05:00 | commit 60b671a
 bigmont: GPU: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan]
 bigmont: GPU: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan] | tests 32000 (gpu 32000, cpu 0) | 19.42 s (8.25 s tuning) | 2863.9 tests/s excluding tuning | PRP 16000 | disagreements: prp 0, composite 0 | rechecks 16003 | gpu errors 0
 bigmont: canary ok: all 32000 verdicts match

@@ -1,4 +1,4 @@
-commit 64367eb; host2 CT104; 2026-11-24T16:50:00Z
+commit 84b4f1c; host2 CT104; 2026-11-24T16:50:00Z
 other GPU users at start: 1 %, 4607 MiB, 1202 MHz
 
 ######## STRICT TESTS adapter=P4000 backend=vulkan

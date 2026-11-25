@@ -1,4 +1,4 @@
-desktop (Windows), commit ba8e963; 2026-11-24T15:41:10Z
+desktop (Windows), commit f9eb09d; 2026-11-24T15:41:10Z
 ######## strict tests, adapter=6700 backend=gl allow_skip=1
 running 5 tests
 test tpi16_matches_oracle ... SKIP KernelConfig { tpi: 16, wg: 64 }: adapter lacks wgpu::Features::SUBGROUP

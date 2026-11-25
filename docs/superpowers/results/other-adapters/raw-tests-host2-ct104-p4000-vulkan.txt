@@ -1,4 +1,4 @@
-commit 04b2049; CT104 on host2; 2026-11-24T15:35:38Z
+commit 7ad9a4c; CT104 on host2; 2026-11-24T15:35:38Z
 ######## adapters seen by wgpu:
 Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32 subgroups=true
 llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8 subgroups=true

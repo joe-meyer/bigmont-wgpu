@@ -1,6 +1,6 @@
 Test B raw terminal output (copied from this session's terminal; RTX 4070 Laptop, driver 580.178.04, laptop test-laptop, 2026-11-24)
 Beacon commit ad414e4 (kit o1_kit_v8.57 g1_fermat_v3.cu, FERMAT_GEC default 0); CGBN commit 114601b; nvcc 13.0.48 (user-directory install, glibc rsqrt noexcept patch to a private header copy); built with: nvcc -O3 -arch=sm_89 -I ../CGBN/include -I <gmp.h dir> -o ../g1_fermat_v3 g1_fermat_v3.cu -L/usr/lib/x86_64-linux-gnu -l:libgmp.so.10
-bigmont-wgpu commit ae14ce1 (spike example, unrolled variant)
+bigmont-wgpu commit 713cf93 (spike example, unrolled variant)
 
 == Beacon canary (400 candidates, 200 prime) on device 0:
 g1_fermat[GPU]: bits=2048 count=400 repeat=1 | 0.015s | 26380.5 tests/s | prp=200 gec_alarm=0

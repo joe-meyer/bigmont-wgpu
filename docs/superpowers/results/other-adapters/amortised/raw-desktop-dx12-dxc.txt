@@ -1,4 +1,4 @@
-commit 4f4f3f8; desktop Dx12 with dxcompiler.dll on PATH; 2026-11-24T16:08:50Z
+commit 0ca00ef; desktop Dx12 with dxcompiler.dll on PATH; 2026-11-24T16:08:50Z
 adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
 subgroups feature: true
 max batch (instances): 131070

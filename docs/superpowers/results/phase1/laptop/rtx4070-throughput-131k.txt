@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont out/cand_131072.bin out/rtx4070-gpu131k.verdict --backend gpu --adapter 4070 --vk-backend Vulkan --cache out/rtx4070.cache | host: test-laptop | date: 2026-11-24T17:49:30-05:00 | commit b7f6a34
+# cmd: target/release/bigmont out/cand_131072.bin out/rtx4070-gpu131k.verdict --backend gpu --adapter 4070 --vk-backend Vulkan --cache out/rtx4070.cache | host: test-laptop | date: 2026-11-24T17:49:30-05:00 | commit 60b671a
 bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
 bigmont: 32768/131075 candidates
 bigmont: 65536/131075 candidates

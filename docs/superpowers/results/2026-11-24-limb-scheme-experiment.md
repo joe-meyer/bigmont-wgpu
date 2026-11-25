@@ -134,7 +134,7 @@ below R > n. That is about 81/64 = 1.27x more limb products than a tight 8-limb 
   exploits symmetry (in either scheme), was not tried.
 - The full workspace test suite on the 4070 had 13 failures, all "no adapter matches 4070" at
   `Gpu::new` after several devices had been created in the same test process (chain.rs, fermat.rs and
-  sizes.rs). The base commit `b53acef` fails the same 4 chain.rs tests the same way, and those tests pass
+  sizes.rs). The base commit `7d69749` fails the same 4 chain.rs tests the same way, and those tests pass
   when run on their own. Raw: `phase1/schemes/workspace-tests-4070.txt`. One Xid 31 occurred during an
   onethread test run (device creation, passed on rerun), and one Xid 69 occurred during a
   `pipeline_stats` (raw `ash`) run.

@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont canary big_2048.bin big_expected.bin --backend gpu --adapter P4000 --vk-backend Vulkan --cache out/p4000.cache | host: bigmont-test (CT 104 on host2, 4 vCPU shared) | date: 2026-11-24T22:49:05+00:00 | commit b7f6a34
+# cmd: target/release/bigmont canary big_2048.bin big_expected.bin --backend gpu --adapter P4000 --vk-backend Vulkan --cache out/p4000.cache | host: bigmont-test (CT 104 on host2, 4 vCPU shared) | date: 2026-11-24T22:49:05+00:00 | commit 60b671a
 bigmont: GPU: Quadro P4000 [Vulkan]
 bigmont: GPU: Quadro P4000 [Vulkan] | tests 32000 (gpu 32000, cpu 0) | 39.25 s (3.04 s tuning) | 883.6 tests/s excluding tuning | PRP 16000 | disagreements: prp 0, composite 0 | rechecks 16003 | gpu errors 0
 bigmont: canary ok: all 32000 verdicts match

@@ -1,4 +1,4 @@
-# cmd: BIGMONT_ADAPTER=P4000 BIGMONT_BACKEND=Vulkan cargo test --release --workspace --no-fail-fast -- --test-threads=1 | host: bigmont-test | adapter: P4000 | date: 2026-11-24T22:42:43+00:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=P4000 BIGMONT_BACKEND=Vulkan cargo test --release --workspace --no-fail-fast -- --test-threads=1 | host: bigmont-test | adapter: P4000 | date: 2026-11-24T22:42:43+00:00 | commit 60b671a
     Finished `release` profile [optimized] target(s) in 0.25s
      Running unittests src/lib.rs (target/release/build/bigmont-cli/3b435291acf84588/out/bigmont_cli-3b435291acf84588)
 

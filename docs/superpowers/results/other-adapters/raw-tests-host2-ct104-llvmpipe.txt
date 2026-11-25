@@ -1,4 +1,4 @@
-commit ba8e963 (code unchanged since 63ae502); CT104 on host2; 2026-11-24T15:40:59Z
+commit f9eb09d (code unchanged since 63ae502); CT104 on host2; 2026-11-24T15:40:59Z
 ######## strict tests, adapter=llvmpipe backend=vulkan allow_skip=1 (host2 CPU)
 Model name:                              Intel(R) Xeon(R) CPU E5-2690 v2 @ 3.00GHz
 running 5 tests

@@ -1,4 +1,4 @@
-commit 37c987a; host2 CT104; 2026-11-24T18:55:41Z
+commit d2b1bab; host2 CT104; 2026-11-24T18:55:41Z
 other GPU users at start: 1 %, 4607 MiB, 1202 MHz
 
 ######## STRICT TESTS adapter=P4000 vulkan

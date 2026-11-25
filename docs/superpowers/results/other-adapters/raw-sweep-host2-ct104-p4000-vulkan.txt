@@ -1,4 +1,4 @@
-commit 04b2049; CT104 on host2; 2026-11-24T15:35:49Z
+commit 7ad9a4c; CT104 on host2; 2026-11-24T15:35:49Z
 ######## other GPU users at start (host nvidia-smi):
 1 %, 4607 MiB, 8192 MiB, 1202 MHz, 29.34 W
 12762, 172 MiB

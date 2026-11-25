@@ -1,4 +1,4 @@
-commit 64367eb; laptop; 2026-11-24T16:50:00Z
+commit 84b4f1c; laptop; 2026-11-24T16:50:00Z
 
 ######## STRICT TESTS adapter=4070 backend=vulkan allow_skip=0
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

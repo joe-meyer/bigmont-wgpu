@@ -1,6 +1,6 @@
 # Instruction-throughput probe: which arithmetic could beat 13-bit multiply-adds? (2026-11-24)
 
-Tool: `crates/bigmont-core/examples/mul_probe.rs` (8 independent dependent chains per lane, best of 5 dispatches, wall-clock; adapted from gapsieve's `mul_bench`). Measured at commit `dfe2e7e` plus the new example. Each "step" includes the small extra operations written in the probe kernel (masks, an add, for the u64 step a shift and two adds), so **only ratios between rows on the same GPU mean anything; absolute rates are lower bounds** (our real unrolled kernel already runs 1.6x above the probe's own 13-bit "ceiling" on the 4070, because its multiply-adds need fewer extra instructions than the probe's step).
+Tool: `crates/bigmont-core/examples/mul_probe.rs` (8 independent dependent chains per lane, best of 5 dispatches, wall-clock; adapted from gapsieve's `mul_bench`). Measured at commit `cc56b72` plus the new example. Each "step" includes the small extra operations written in the probe kernel (masks, an add, for the u64 step a shift and two adds), so **only ratios between rows on the same GPU mean anything; absolute rates are lower bounds** (our real unrolled kernel already runs 1.6x above the probe's own 13-bit "ceiling" on the 4070, because its multiply-adds need fewer extra instructions than the probe's step).
 
 ## Measured (G chain-steps per second)
 

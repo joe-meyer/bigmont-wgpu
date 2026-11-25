@@ -1,16 +1,16 @@
-# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 4096 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:02-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 4096 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:02-05:00 | commit 60b671a
 adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
 config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (83551040 squarings/s measured by autotune)
 131075 tests, 2029 bits, capacity 4096: wall 6.171 s (21241.8 tests/s) | gpu 5.655 s (23177.4 tests/s) | host prep 0.104 s (1.7% of wall) | PRP 197
-# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 16384 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:21-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 16384 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:21-05:00 | commit 60b671a
 adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
 config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (84179192 squarings/s measured by autotune)
 131075 tests, 2029 bits, capacity 16384: wall 4.178 s (31373.6 tests/s) | gpu 3.818 s (34331.8 tests/s) | host prep 0.093 s (2.2% of wall) | PRP 197
-# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 65536 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:37-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 65536 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:37-05:00 | commit 60b671a
 adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
 config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (85746785 squarings/s measured by autotune)
 131075 tests, 2029 bits, capacity 65536: wall 3.561 s (36803.7 tests/s) | gpu 3.219 s (40718.8 tests/s) | host prep 0.089 s (2.5% of wall) | PRP 197
-# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 131072 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:53-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=Vulkan fermat_stats cand_131072.bin 131072 | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:54:53-05:00 | commit 60b671a
 adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
 config: KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160 } (84219420 squarings/s measured by autotune)
 131075 tests, 2029 bits, capacity 131072: wall 3.552 s (36897.8 tests/s) | gpu 3.194 s (41043.7 tests/s) | host prep 0.086 s (2.4% of wall) | PRP 197

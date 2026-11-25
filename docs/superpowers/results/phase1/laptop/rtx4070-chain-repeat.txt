@@ -1,4 +1,4 @@
-# cmd: run 1/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:35-05:00 | commit b7f6a34
+# cmd: run 1/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:35-05:00 | commit 60b671a
 test tpi16_matches_oracle ... ok
 test tpi16_unrolled_matches_oracle ... ok
 test tpi1_matches_oracle ... ok
@@ -15,7 +15,7 @@ test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.87s
 exit code: 0
 2026-11-24T17:43:39-05:00
-# cmd: run 2/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:39-05:00 | commit b7f6a34
+# cmd: run 2/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:39-05:00 | commit 60b671a
 test tpi16_matches_oracle ... ok
 test tpi16_unrolled_matches_oracle ... ok
 test tpi1_matches_oracle ... ok
@@ -32,7 +32,7 @@ test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.91s
 exit code: 0
 2026-11-24T17:43:43-05:00
-# cmd: run 3/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:43-05:00 | commit b7f6a34
+# cmd: run 3/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:43-05:00 | commit 60b671a
 test tpi16_matches_oracle ... ok
 test tpi16_unrolled_matches_oracle ... ok
 test tpi1_matches_oracle ... ok
@@ -49,7 +49,7 @@ test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.91s
 exit code: 0
 2026-11-24T17:43:47-05:00
-# cmd: run 4/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:47-05:00 | commit b7f6a34
+# cmd: run 4/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:47-05:00 | commit 60b671a
 test tpi16_matches_oracle ... ok
 test tpi16_unrolled_matches_oracle ... ok
 test tpi1_matches_oracle ... ok
@@ -66,7 +66,7 @@ test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.86s
 exit code: 0
 2026-11-24T17:43:51-05:00
-# cmd: run 5/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:51-05:00 | commit b7f6a34
+# cmd: run 5/5: BIGMONT_ADAPTER=4070 cargo test --release -p bigmont-core --test chain -- --test-threads=1 | host: test-laptop | date: 2026-11-24T17:43:51-05:00 | commit 60b671a
 test tpi16_matches_oracle ... ok
 test tpi16_unrolled_matches_oracle ... ok
 test tpi1_matches_oracle ... ok

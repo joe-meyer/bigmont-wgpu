@@ -1,4 +1,4 @@
-# cmd: same with --tpi 8 | host: test-laptop | adapter: Radeon 780M | date: 2026-11-24T17:53:04-05:00 | commit b7f6a34
+# cmd: same with --tpi 8 | host: test-laptop | adapter: Radeon 780M | date: 2026-11-24T17:53:04-05:00 | commit 60b671a
 adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
 variant: unrolled
 subgroups feature: true

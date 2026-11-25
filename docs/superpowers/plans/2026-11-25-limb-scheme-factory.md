@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Work on branch `limb-factory` (cut from `phase1` at 481f4b7). Do not push. Do not touch `N:\Programming\gapsieve`. Nothing under `.superpowers/` or `.claude/` is ever committed.
+- Work on branch `limb-factory` (cut from `phase1` at d7aeb10). Do not push. Do not touch `N:\Programming\gapsieve`. Nothing under `.superpowers/` or `.claude/` is ever committed.
 - Commit messages end with the line `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - The 13-bit path must keep behaving exactly as before: same generated WGSL for `LimbScheme::Limb13` (the existing `browser_source` tests compare generated source), same cache lines for 13-bit winners (`unrolled <tpi> <wg>|<rate>`), same CLI behaviour when `--limbs` is not given.
 - The browser target offers no `SHADER_INT64`. A 32-bit kernel must never be generated for `Target::Browser`; asking for one is an `Err`, and the autotuner only offers schemes whose `requires()` the device satisfies.

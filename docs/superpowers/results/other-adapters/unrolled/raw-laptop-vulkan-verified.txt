@@ -1,4 +1,4 @@
-commit ae14ce1 (verified build); laptop; 2026-11-24T17:55:01Z
+commit 713cf93 (verified build); laptop; 2026-11-24T17:55:01Z
 
 ######## SWEEP unrolled VERIFIED adapter=4070 vulkan --max-count 131070
 adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32

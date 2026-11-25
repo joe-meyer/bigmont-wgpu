@@ -1,4 +1,4 @@
-# cmd: bigmont cand_131072.bin (seed 102) gpu.verdict --backend gpu --adapter 6700 --vk-backend Vulkan --cache vk.cache | host: desktop (Windows 11, 16 threads) | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:41:39-05:00 | commit b7f6a34
+# cmd: bigmont cand_131072.bin (seed 102) gpu.verdict --backend gpu --adapter 6700 --vk-backend Vulkan --cache vk.cache | host: desktop (Windows 11, 16 threads) | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:41:39-05:00 | commit 60b671a
 bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
 bigmont: 32768/131075 candidates
 bigmont: 65536/131075 candidates

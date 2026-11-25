@@ -1,4 +1,4 @@
-commit 4f4f3f8; laptop; 2026-11-24T16:08:00Z; load: 0.02 0.04 0.06
+commit 0ca00ef; laptop; 2026-11-24T16:08:00Z; load: 0.02 0.04 0.06
 
 ######## 4070 (vulkan) --max-count 131070 
 adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32

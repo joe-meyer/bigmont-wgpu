@@ -1,4 +1,4 @@
-commit 92d8b5d; laptop fixed-count sweep; 2026-11-24T16:10:17Z; load: 0.74 0.38 0.19
+commit 071f396; laptop fixed-count sweep; 2026-11-24T16:10:17Z; load: 0.74 0.38 0.19
 
 ######## 4070 vulkan --quick --tpi 8,16,32 --fixed-count 16384
 adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32

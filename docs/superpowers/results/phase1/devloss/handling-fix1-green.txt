@@ -2,7 +2,7 @@
 # command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-core --lib --test devloss -- --test-threads=1 2>&1; cargo test --release -p bigmont-cli --no-fail-fast --lib --test devloss --test canary -- --test-threads=1 --nocapture 2>&1
 # host: test-laptop
 # adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
-# commit: db7b8e7
+# commit: b2f5961
 # date: 2026-11-25T04:52:38Z
 # Xid lines in kernel log before: 98
    Compiling bigmont-oracle v0.1.0 (~/bigmont-devloss/crates/bigmont-oracle)

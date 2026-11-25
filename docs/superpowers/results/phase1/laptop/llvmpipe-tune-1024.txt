@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont tune --bits 1024 --adapter llvmpipe --vk-backend Vulkan | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:37:53-05:00 | commit b7f6a34
+# cmd: target/release/bigmont tune --bits 1024 --adapter llvmpipe --vk-backend Vulkan | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:37:53-05:00 | commit 60b671a
 adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
 1024 bits: 6 candidate configurations
  tpi    wg      squarings/s  status

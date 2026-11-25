@@ -1,4 +1,4 @@
-# cmd: BIGMONT_ADAPTER=4070 target/release/examples/fermat_stats out/cand_16384.bin | host: test-laptop | adapter: 4070 | date: 2026-11-24T17:35:05-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=4070 target/release/examples/fermat_stats out/cand_16384.bin | host: test-laptop | adapter: 4070 | date: 2026-11-24T17:35:05-05:00 | commit 60b671a
 adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
 tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 81161850 squarings/s
 tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 79647085 squarings/s

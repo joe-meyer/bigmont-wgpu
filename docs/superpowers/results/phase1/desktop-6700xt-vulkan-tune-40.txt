@@ -1,6 +1,6 @@
 # 40-bit tuning table: bigmont tune --bits 40 --no-cache
 # host J-DESK (Windows 11 desktop), adapter AMD Radeon RX 6700 XT [Vulkan], driver 'AMD proprietary driver 26.10.1'
-# commit header: eed9a1e GPU for every bit length down to 2 bits; tune per limb class (binary built from that commit; run 2026-11-24 after the measurement loop finished)
+# commit header: 2da0058 GPU for every bit length down to 2 bits; tune per limb class (binary built from that commit; run 2026-11-24 after the measurement loop finished)
 # command: bigmont.exe tune --bits 40 --no-cache
 # note: 40 bits is limb class 4 (4 limbs = 52 bits), tuned at the representative 48 bits. Every configuration passed the
 #       self-test; the tuner's winner is tpi 4 wg 256 (4 limbs), the narrowest kernel, not a padded 32-limb one.

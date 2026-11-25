@@ -1,6 +1,6 @@
 # Unrolled cooperative kernel versus the rolled kernel: RX 6700 XT results
 
-Date: 2026-11-24. Machine: the desktop with the AMD Radeon RX 6700 XT (adapter reports subgroup size 32..64). Code: commit 7654c98 (unrolled generator and variant plumbing) plus the Task 2 example changes (the `--variant` flag in `spike`, the optional `unrolled` argument in `pipeline_stats`), commit 64367eb. Task 3 (review follow-up, section 6) adds oracle verification of the timed output to `spike`, makes `pipeline_stats` mirror wgpu's compilation mode, and corrects the interpretation in sections 3 and 4; measured numbers in the tables are unchanged. Raw outputs are in `docs/superpowers/results/other-adapters/unrolled/`; the rolled baseline figures come from the earlier amortised sweeps in `docs/superpowers/results/other-adapters/amortised/` (commit 4f4f3f8, same machine, taken earlier today).
+Date: 2026-11-24. Machine: the desktop with the AMD Radeon RX 6700 XT (adapter reports subgroup size 32..64). Code: commit aa6fcdb (unrolled generator and variant plumbing) plus the Task 2 example changes (the `--variant` flag in `spike`, the optional `unrolled` argument in `pipeline_stats`), commit 84b4f1c. Task 3 (review follow-up, section 6) adds oracle verification of the timed output to `spike`, makes `pipeline_stats` mirror wgpu's compilation mode, and corrects the interpretation in sections 3 and 4; measured numbers in the tables are unchanged. Raw outputs are in `docs/superpowers/results/other-adapters/unrolled/`; the rolled baseline figures come from the earlier amortised sweeps in `docs/superpowers/results/other-adapters/amortised/` (commit 0ca00ef, same machine, taken earlier today).
 
 This document reports numbers and says what they do and do not show. It gives no go/no-go verdict.
 
@@ -136,7 +136,7 @@ BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=vulkan ./target/release/examples/spike.exe 
 
 Raw files: `other-adapters/unrolled/raw-desktop-vulkan.txt`, `raw-desktop-dx12-dxc.txt`, `raw-desktop-vulkan-fixed-count-65536-rolled.txt`, `raw-desktop-vulkan-fixed-count-65536-unrolled.txt`. Each starts with a line giving the commit, backend, variant, time and command; rows now carry a leading `variant` column, and the header block has a `variant:` line, so the files are self-describing.
 
-The Task 3 sweeps were run on example code that was uncommitted at the time (their header lines say so, naming base commit 918a8b5); that code was committed afterwards in ae14ce1.
+The Task 3 sweeps were run on example code that was uncommitted at the time (their header lines say so, naming base commit a155f5b); that code was committed afterwards in 713cf93.
 
 Task 3 raw files (timed output verified against the oracle, section 6): `other-adapters/unrolled/raw-desktop-vulkan-verified.txt`, `raw-desktop-dx12-dxc-verified.txt` (unrolled), `raw-desktop-vulkan-rolled-verified.txt` (rolled); ISA text in `other-adapters/unrolled/isa/`.
 

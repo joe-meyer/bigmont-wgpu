@@ -1,4 +1,4 @@
-# cmd: PATH+=dxcompiler dir; BIGMONT_BACKEND=dx12 cargo test --release --workspace --no-fail-fast -- --test-threads=1 | host: desktop (Windows 11) | adapter: AMD Radeon RX 6700 XT, Dx12 + dxcompiler | date: 2026-11-24T17:37:45-05:00 | commit b7f6a34
+# cmd: PATH+=dxcompiler dir; BIGMONT_BACKEND=dx12 cargo test --release --workspace --no-fail-fast -- --test-threads=1 | host: desktop (Windows 11) | adapter: AMD Radeon RX 6700 XT, Dx12 + dxcompiler | date: 2026-11-24T17:37:45-05:00 | commit 60b671a
     Finished `release` profile [optimized] target(s) in 0.17s
      Running unittests src\lib.rs (target\release\build\bigmont-cli/e9e73d2b1195b56b\out\bigmont_cli-e9e73d2b1195b56b.exe)
 

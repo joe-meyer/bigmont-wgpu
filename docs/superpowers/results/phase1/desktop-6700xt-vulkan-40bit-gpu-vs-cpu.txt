@@ -1,12 +1,12 @@
 # 20,000 random 40-bit candidates (+3 planted PRPs): engine on the GPU against --backend cpu
-# host J-DESK, adapter AMD Radeon RX 6700 XT [Vulkan], 16-thread CPU; commit header: eed9a1e GPU for every bit length down to 2 bits; tune per limb class
+# host J-DESK, adapter AMD Radeon RX 6700 XT [Vulkan], 16-thread CPU; commit header: 2da0058 GPU for every bit length down to 2 bits; tune per limb class
 # generate: cargo run --release -p bigmont-cli --example make_candidates -- --bits 40 20000 7 c40.bin
 # Section 1: engine runs as committed (run1 includes autotuning; runs 2-4 use the warm cache). The 'tests/s excluding tuning'
 #   figure subtracts the whole tune_secs, which on a cache hit is the self-test + Runner build (0.03-0.04 s of a 0.04-0.06 s run),
 #   so the end-to-end rate is tests / total seconds: roughly 0.35-0.5 M/s warm. CPU runs print 0.00 s; 4.3-4.6 M tests/s.
 
 # host: J-DESK ; 2026-11-24T19:03:50
-# commit: eed9a1e ; binary <scratch>/bigmont-eed9a1e.exe ; as committed (autotuned)
+# commit: 2da0058 ; binary <scratch>/bigmont-2da0058.exe ; as committed (autotuned)
 # candidates: make_candidates --bits 40 20000 7 c40.bin (20003 candidates, 64-bit container)
 --- GPU run 1 (empty cache): bigmont c40.bin v40-gpu.bin --backend gpu --cache c40.cache
 bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
@@ -56,7 +56,7 @@ AMD Radeon RX 6700 XT|Vulkan|AMD proprietary driver 26.10.1 (AMD proprietary sha
 #     if let Ok(v) = std::env::var("BIGMONT_FORCE_CFG") { let mut it = v.split(',').map(|x| x.parse::<u32>().unwrap()); tpi = it.next().unwrap(); wg = it.next().unwrap(); }
 #     let cfg = KernelConfig::for_bits(bits, tpi, wg, Variant::Unrolled);
 
-# throwaway BIGMONT_FORCE_CFG patch (not committed) on eed9a1e; cache warm (tpi 4 wg 256); engine --backend gpu, 20003 40-bit candidates
+# throwaway BIGMONT_FORCE_CFG patch (not committed) on 2da0058; cache warm (tpi 4 wg 256); engine --backend gpu, 20003 40-bit candidates
 --- forced tpi,wg=4,64 run 1
 bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1054015.5 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
 --- forced tpi,wg=4,64 run 2

@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont out/cand_16384.bin out/rtx4070-gpu.verdict --backend gpu --adapter 4070 --vk-backend Vulkan --cache out/rtx4070.cache | host: test-laptop | adapter: 4070 | date: 2026-11-24T17:34:56-05:00 | commit b7f6a34
+# cmd: target/release/bigmont out/cand_16384.bin out/rtx4070-gpu.verdict --backend gpu --adapter 4070 --vk-backend Vulkan --cache out/rtx4070.cache | host: test-laptop | adapter: 4070 | date: 2026-11-24T17:34:56-05:00 | commit 60b671a
 bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
 tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 81642867 squarings/s
 tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 82566169 squarings/s

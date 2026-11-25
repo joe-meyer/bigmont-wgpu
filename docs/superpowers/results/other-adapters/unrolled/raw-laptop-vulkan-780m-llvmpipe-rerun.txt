@@ -1,4 +1,4 @@
-commit 64367eb; laptop (rerun of the 780M and llvmpipe sweeps, which an earlier pipe through head had truncated); 2026-11-24T16:51:43Z
+commit 84b4f1c; laptop (rerun of the 780M and llvmpipe sweeps, which an earlier pipe through head had truncated); 2026-11-24T16:51:43Z
 
 ######## SWEEP unrolled adapter=780M vulkan --max-count 131070
 adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64

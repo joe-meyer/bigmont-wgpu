@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont out/cand_131072.bin (CPU only; whole file) out/cpu131k.verdict --backend cpu | host: test-laptop | date: 2026-11-24T17:50:03-05:00 | commit b7f6a34
+# cmd: target/release/bigmont out/cand_131072.bin (CPU only; whole file) out/cpu131k.verdict --backend cpu | host: test-laptop | date: 2026-11-24T17:50:03-05:00 | commit 60b671a
 bigmont: CPU: 16 threads
 bigmont: 32768/131075 candidates
 bigmont: 65536/131075 candidates

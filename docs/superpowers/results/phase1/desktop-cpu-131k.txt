@@ -1,4 +1,4 @@
-# cmd: bigmont cand_131072.bin (seed 102) cpu131k.verdict --backend cpu; then cmp with the Vulkan GPU run's verdicts | host: desktop (Windows 11, 16 threads) | adapter: CPU | date: 2026-11-24T17:49:22-05:00 | commit b7f6a34
+# cmd: bigmont cand_131072.bin (seed 102) cpu131k.verdict --backend cpu; then cmp with the Vulkan GPU run's verdicts | host: desktop (Windows 11, 16 threads) | adapter: CPU | date: 2026-11-24T17:49:22-05:00 | commit 60b671a
 bigmont: CPU: 16 threads
 bigmont: CPU: 16 threads | tests 131075 (gpu 0, cpu 131075) | 71.44 s (0.00 s tuning) | 1834.8 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
 6700 XT Vulkan GPU == CPU on all 131075 verdicts (byte for byte)

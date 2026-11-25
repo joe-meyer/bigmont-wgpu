@@ -2,7 +2,7 @@
 # command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-cli --test devloss -- --test-threads=1 2>&1
 # host: test-laptop
 # adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
-# commit: 25b02e4
+# commit: 2950fb0
 # date: 2026-11-25T04:31:25Z
 # Xid lines in kernel log before: 98
     Finished `release` profile [optimized] target(s) in 0.03s

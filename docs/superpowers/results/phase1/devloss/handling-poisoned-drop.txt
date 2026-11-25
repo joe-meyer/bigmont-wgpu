@@ -1,7 +1,7 @@
 # command: poison_drop 16384 (throwaway example, source below), with and without BIGMONT_TEST_NO_LEAK=1; a one-line sed made the leak in Gpu::drop switchable in the shipped copy only (not committed)
 # host: test-laptop
 # adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
-# commit: 8fa2188 + probe
+# commit: 04cecc7 + probe
 # date: 2026-11-25T04:37:55Z
 # probe source:
 #   use bigmont_core::gpu::{Batch, Gpu, run};

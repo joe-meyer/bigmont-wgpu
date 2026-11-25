@@ -1,4 +1,4 @@
-commit 37c987a; laptop; 2026-11-24T18:55:40Z
+commit d2b1bab; laptop; 2026-11-24T18:55:40Z
 
 ######## STRICT TESTS adapter=4070 vulkan
 test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.46s

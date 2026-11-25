@@ -1,6 +1,6 @@
 # command: cd ~/bigmont-scheme && BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=~/bigmont-scheme-target cargo test --release --workspace --no-fail-fast -- --test-threads=1
 # host: test-laptop; adapter: BIGMONT_ADAPTER=4070 (RTX 4070 Laptop, NVIDIA 580.178.04); commit: bbab9d1; date: 2026-11-24T20:51:34-05:00
-# note: a first run without --no-fail-fast stopped at tests/chain.rs with the same 4 failures (no adapter matches 4070); the base commit b53acef fails the same 4 tests the same way (checked twice), and they pass when run on their own.
+# note: a first run without --no-fail-fast stopped at tests/chain.rs with the same 4 failures (no adapter matches 4070); the base commit 7d69749 fails the same 4 tests the same way (checked twice), and they pass when run on their own.
     Finished `release` profile [optimized] target(s) in 0.05s
      Running unittests src/lib.rs (<target>/release/build/bigmont-cli/3b435291acf84588/out/bigmont_cli-3b435291acf84588)
 

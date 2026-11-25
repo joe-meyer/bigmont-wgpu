@@ -1,4 +1,4 @@
-commit ae14ce1 (verified build); host2 CT104; 2026-11-24T17:55:02Z
+commit 713cf93 (verified build); host2 CT104; 2026-11-24T17:55:02Z
 other GPU users at start: 1 %, 4607 MiB, 1202 MHz
 
 ######## SWEEP unrolled VERIFIED P4000 vulkan --max-count 131070

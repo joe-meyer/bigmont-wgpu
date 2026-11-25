@@ -1,4 +1,4 @@
-# cmd: PATH+=dxcompiler dir; bigmont tune --bits 2029 --adapter 6700 --vk-backend dx12 | host: desktop | adapter: RX 6700 XT Dx12+DXC | date: 2026-11-24T17:40:16-05:00 | commit b7f6a34
+# cmd: PATH+=dxcompiler dir; bigmont tune --bits 2029 --adapter 6700 --vk-backend dx12 | host: desktop | adapter: RX 6700 XT Dx12+DXC | date: 2026-11-24T17:40:16-05:00 | commit 60b671a
 adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
 2029 bits: 12 candidate configurations
  tpi    wg      squarings/s  status

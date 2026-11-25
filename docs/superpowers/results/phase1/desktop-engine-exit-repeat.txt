@@ -1,4 +1,4 @@
-# cmd: 6 repeats of the engine test binary run directly (target/release/build/bigmont-cli/bfb83bdca75695aa/out/engine-bfb83bdca75695aa.exe --test-threads=1), looking for the intermittent STATUS_STACK_BUFFER_OVERRUN (0xc0000409) seen once at process exit | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:43:09-05:00 | commit b7f6a34
+# cmd: 6 repeats of the engine test binary run directly (target/release/build/bigmont-cli/bfb83bdca75695aa/out/engine-bfb83bdca75695aa.exe --test-threads=1), looking for the intermittent STATUS_STACK_BUFFER_OVERRUN (0xc0000409) seen once at process exit | host: desktop | adapter: RX 6700 XT Vulkan | date: 2026-11-24T17:43:09-05:00 | commit 60b671a
 run 1 exit code 0 : test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.88s
 run 2 exit code 0 : test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.96s
 run 3 exit code 0 : test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.08s

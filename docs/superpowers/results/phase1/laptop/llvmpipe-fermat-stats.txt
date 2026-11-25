@@ -1,4 +1,4 @@
-# cmd: BIGMONT_ADAPTER=llvmpipe target/release/examples/fermat_stats out/cand_4096.bin | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:38:10-05:00 | commit b7f6a34
+# cmd: BIGMONT_ADAPTER=llvmpipe target/release/examples/fermat_stats out/cand_4096.bin | host: test-laptop | adapter: llvmpipe | date: 2026-11-24T17:38:10-05:00 | commit 60b671a
 adapter: llvmpipe (LLVM 21.1.8, 256 bits) [Vulkan, Cpu] subgroup 8..8
 tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: 1364393 squarings/s
 tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160 }: 1539677 squarings/s

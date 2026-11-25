@@ -1,4 +1,4 @@
-# cmd: cargo test --release --workspace -- --test-threads=1 (run 1), then cargo test --release --workspace --no-fail-fast -- --test-threads=1 (run 2); summary lines only (Running / test result / error lines) | host: desktop (Windows 11) | adapter: AMD Radeon RX 6700 XT, default (Vulkan, auto) | date: 2026-11-24T18:20:21-05:00 | commit 558f1ab (fix-wave code)
+# cmd: cargo test --release --workspace -- --test-threads=1 (run 1), then cargo test --release --workspace --no-fail-fast -- --test-threads=1 (run 2); summary lines only (Running / test result / error lines) | host: desktop (Windows 11) | adapter: AMD Radeon RX 6700 XT, default (Vulkan, auto) | date: 2026-11-24T18:20:21-05:00 | commit ccde975 (fix-wave code)
 ## run 1 (exit code 127 in Git Bash = 0xC0000409; cargo stopped at the first failing binary)
      Running unittests src\lib.rs
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

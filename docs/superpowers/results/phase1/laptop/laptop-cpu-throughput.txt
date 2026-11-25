@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont out/cand_2048.bin out/cpu.verdict --backend cpu (laptop CPU, Ryzen 7 7840HS) | host: test-laptop | date: 2026-11-24T17:49:15-05:00 | commit b7f6a34
+# cmd: target/release/bigmont out/cand_2048.bin out/cpu.verdict --backend cpu (laptop CPU, Ryzen 7 7840HS) | host: test-laptop | date: 2026-11-24T17:49:15-05:00 | commit 60b671a
 bigmont: CPU: 16 threads
 bigmont: CPU: 16 threads | tests 2048 (gpu 0, cpu 2048) | 1.12 s (0.00 s tuning) | 1823.8 tests/s excluding tuning | PRP 7 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
 exit code: 0

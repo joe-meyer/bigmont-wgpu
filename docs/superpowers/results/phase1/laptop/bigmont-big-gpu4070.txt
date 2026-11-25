@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont /home/<user>/beacon-test/p3/big_2048.bin out/beacon/big.gpu4070.verdict --backend gpu --adapter 4070 --vk-backend Vulkan --cache out/rtx4070.cache | host: test-laptop | date: 2026-11-24T17:46:36-05:00 | commit b7f6a34
+# cmd: target/release/bigmont /home/<user>/beacon-test/p3/big_2048.bin out/beacon/big.gpu4070.verdict --backend gpu --adapter 4070 --vk-backend Vulkan --cache out/rtx4070.cache | host: test-laptop | date: 2026-11-24T17:46:36-05:00 | commit 60b671a
 bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
 bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 32000 (gpu 32000, cpu 0) | 10.21 s (1.71 s tuning) | 3767.6 tests/s excluding tuning | PRP 16000 | disagreements: prp 0, composite 0 | rechecks 16003 | gpu errors 0
 exit code: 0

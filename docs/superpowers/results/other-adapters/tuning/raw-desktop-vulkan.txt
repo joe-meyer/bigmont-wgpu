@@ -1,4 +1,4 @@
-commit 0f1cebe + tuning-pass Task 1 changes (uncommitted at run time); desktop Vulkan; variant unrolled; verified timed output; 2026-11-24T18:54Z; cmd: spike --variant unrolled --tpi 4,8,16,32 --max-count 131070 (BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=vulkan); final kernel: ((p & MASK) * ninv) & MASK with ninv masked at load
+commit 4202168 + tuning-pass Task 1 changes (uncommitted at run time); desktop Vulkan; variant unrolled; verified timed output; 2026-11-24T18:54Z; cmd: spike --variant unrolled --tpi 4,8,16,32 --max-count 131070 (BIGMONT_ADAPTER=6700 BIGMONT_BACKEND=vulkan); final kernel: ((p & MASK) * ninv) & MASK with ninv masked at load
 adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
 variant: unrolled
 subgroups feature: true

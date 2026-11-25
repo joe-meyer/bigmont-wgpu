@@ -1,4 +1,4 @@
-# cmd: target/release/bigmont tune --bits 2029 --adapter 780M --vk-backend Vulkan | host: test-laptop | adapter: 780M | date: 2026-11-24T17:36:24-05:00 | commit b7f6a34
+# cmd: target/release/bigmont tune --bits 2029 --adapter 780M --vk-backend Vulkan | host: test-laptop | adapter: 780M | date: 2026-11-24T17:36:24-05:00 | commit 60b671a
 adapter: AMD Radeon 780M Graphics (RADV PHOENIX) [Vulkan, IntegratedGpu] subgroup 32..64
 2029 bits: 12 candidate configurations
  tpi    wg      squarings/s  status

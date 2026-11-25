@@ -1,4 +1,4 @@
-commit 7654c98 + Task 2 example changes (uncommitted at run time); desktop Dx12 with dxcompiler.dll on PATH; variant unrolled; 2026-11-24T16:44:48Z; cmd: spike --variant unrolled --max-count 131070
+commit aa6fcdb + Task 2 example changes (uncommitted at run time); desktop Dx12 with dxcompiler.dll on PATH; variant unrolled; 2026-11-24T16:44:48Z; cmd: spike --variant unrolled --max-count 131070
 adapter: AMD Radeon RX 6700 XT [Dx12, DiscreteGpu] subgroup 32..64
 variant: unrolled
 subgroups feature: true

@@ -1,6 +1,6 @@
 # Limb-scheme factory: validation (2026-11-25)
 
-Branch `limb-factory` (cut from `phase1` at 481f4b7), head `cc95a8d`, not pushed. Plan:
+Branch `limb-factory` (cut from `phase1` at d7aeb10), head `bc10df3`, not pushed. Plan:
 `docs/superpowers/plans/2026-11-25-limb-scheme-factory.md`. Raw logs: `results/phase1/factory/` and, for the
 experiments that led here, `results/phase1/schemes/` and `results/2026-11-24-limb-scheme-experiment.md`.
 
@@ -27,7 +27,7 @@ experiments that led here, `results/phase1/schemes/` and `results/2026-11-24-lim
 
 ## 2. Correctness
 
-| Machine | Backend | Workspace suite at `cc95a8d` |
+| Machine | Backend | Workspace suite at `bc10df3` |
 |---|---|---|
 | RTX 4070 Laptop (Linux, NVIDIA 580.178.04) | Vulkan | 163 passed, 0 failed |
 | RX 6700 XT (Windows) | Vulkan | 163 passed, 0 failed |
@@ -80,8 +80,8 @@ and 6700 XT used a 131,075-candidate file, the P4000 a 16,387-candidate file (co
 - One to three runs per cell, no variance estimates. The 6700 XT is the desktop the user also uses: its 13-bit
   figures varied from 27.5 k to 32.9 k and its first Auto run gave 24.3 k. The P4000 shares its card with three other
   guests (plex, frigate, llm), so its speeds are noisy; its correctness results are clean. GPU clocks were not locked.
-- The engine speeds were measured at `81ff0a0` for all three machines; the 4070 Auto run was repeated at the final
-  commit (`cc95a8d`, same results). The two later commits change the cache key and add the retarget self-test, which
+- The engine speeds were measured at `4dce4ec` for all three machines; the 4070 Auto run was repeated at the final
+  commit (`bc10df3`, same results). The two later commits change the cache key and add the retarget self-test, which
   does not trigger at 2,029 bits (the retargeted kernel has the same limb count), so they do not change these
   speeds. The 6700 XT and P4000 engine rows were not repeated.
 - The 13-bit TPI 8 kernel at workgroup 64 runs at 3.9 M squarings/s on the 6700 XT, against 84 M for TPI 4. That
