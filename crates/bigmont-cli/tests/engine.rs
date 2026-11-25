@@ -109,6 +109,26 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
 
 // ---- small bit lengths run on the GPU; bucket size is the only reason to skip it ----
 
+/// The limb-class field of every line of a tuning cache file, sorted (the line format is
+/// `name|backend|driver|class|unrolled tpi wg|rate`). Read from the file, independent of the engine's
+/// own counters.
+fn cache_classes(path: &std::path::Path) -> Vec<String> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut classes: Vec<String> = text
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.rsplitn(3, '|').nth(2).and_then(|key| key.rsplit('|').next()).unwrap_or_else(|| panic!("malformed cache line {l:?}")).to_string())
+        .collect();
+    classes.sort();
+    classes
+}
+
+fn temp_cache(tag: &str) -> (std::path::PathBuf, RemoveOnDrop) {
+    let path = std::env::temp_dir().join(format!("bigmont-engine-test-{tag}-{}.cache", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    (path.clone(), RemoveOnDrop(path))
+}
+
 /// `random` random odd numbers and `prps` probable primes of exactly `bits` bits.
 fn bucket(bits: u32, random: usize, prps: usize, seed: u64) -> Vec<BigUint> {
     let mut rng = XorShift64::new(seed);
@@ -135,7 +155,8 @@ fn buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size() {
     let gpu_prps = big.iter().filter(|n| fermat_base2(n)).count() as u64;
     assert!(gpu_prps >= 12, "at least the 3 planted PRPs per bucket: {gpu_prps}");
 
-    let mut e = Engine::open(Options { backend: Backend::Gpu, capacity: 64, verify_rate: 0, ..defaults });
+    let (cache, _cleanup) = temp_cache("buckets");
+    let mut e = Engine::open(Options { backend: Backend::Gpu, capacity: 64, verify_rate: 0, cache: Some(cache.clone()), ..defaults });
     eprintln!("{}", e.describe());
     assert_eq!(e.verdicts(&ns).unwrap(), want);
     let r = e.report();
@@ -146,6 +167,9 @@ fn buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size() {
     assert_eq!(r.rechecks, gpu_prps, "every GPU PRP is re-run on the CPU (verify_rate 0: no composite samples)");
     // 20 and 40 bits share limb class 4 and 63 and 64 bits share class 6 (see tune::limb_class).
     assert_eq!(r.tuned_classes, 2, "four bit lengths in two limb classes tune twice");
+    // Independent of the counter: the cache file holds exactly one line per class (4 and 6), not one
+    // per bit length. (The 30-bit bucket ran on the CPU and tuned nothing.)
+    assert_eq!(cache_classes(&cache), ["4", "6"], "one cache line per limb class");
 }
 
 #[test]
@@ -158,7 +182,8 @@ fn every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_on
     assert_eq!(bit_lengths.len(), 10);
     let prps = want.iter().filter(|&&w| w == 1).count() as u64;
 
-    let mut e = Engine::open(Options { backend: Backend::Gpu, min_gpu_batch: 4, capacity: 256, verify_rate: 0, ..Options::default() });
+    let (cache, _cleanup) = temp_cache("tiny");
+    let mut e = Engine::open(Options { backend: Backend::Gpu, min_gpu_batch: 4, capacity: 256, verify_rate: 0, cache: Some(cache.clone()), ..Options::default() });
     assert_eq!(e.verdicts(&ns).unwrap(), want);
     let r = e.report();
     assert_eq!(r.gpu_tests, ns.len() as u64, "all 2- to 11-bit candidates run on the GPU");
@@ -166,4 +191,5 @@ fn every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_on
     assert_eq!(r.gpu_errors, 0);
     assert_eq!(r.rechecks, prps);
     assert_eq!(r.tuned_classes, 1, "ten bit lengths, one limb class: autotuned once, not ten times");
+    assert_eq!(cache_classes(&cache), ["4"], "exactly one cache line for the ten bit lengths of class 4");
 }

@@ -36,8 +36,9 @@ pub struct Options {
     /// probable prime is always re-checked.
     pub verify_rate: u32,
     /// Bit-length buckets with fewer candidates than this run on the CPU (tuning and dispatch
-    /// overhead is not worth it). This is the only reason a bucket skips the GPU: the bit length
-    /// itself does not matter, the GPU is used from 2-bit numbers (n = 3) up.
+    /// overhead is not worth it). This is the only size-based reason a bucket skips the GPU: the bit
+    /// length itself does not matter, the GPU is used from 2-bit numbers (n = 3) up. (A failed
+    /// autotune or runner `Err` also sends a bucket to the CPU; see `Backend::Gpu`.)
     pub min_gpu_batch: usize,
     /// Most candidates per GPU dispatch.
     pub capacity: u32,

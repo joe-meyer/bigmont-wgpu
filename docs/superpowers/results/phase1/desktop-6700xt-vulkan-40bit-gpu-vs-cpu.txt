@@ -1,0 +1,146 @@
+# 20,000 random 40-bit candidates (+3 planted PRPs): engine on the GPU against --backend cpu
+# host J-DESK, adapter AMD Radeon RX 6700 XT [Vulkan], 16-thread CPU; commit header: eed9a1e GPU for every bit length down to 2 bits; tune per limb class
+# generate: cargo run --release -p bigmont-cli --example make_candidates -- --bits 40 20000 7 c40.bin
+# Section 1: engine runs as committed (run1 includes autotuning; runs 2-4 use the warm cache). The 'tests/s excluding tuning'
+#   figure subtracts the whole tune_secs, which on a cache hit is the self-test + Runner build (0.03-0.04 s of a 0.04-0.06 s run),
+#   so the end-to-end rate is tests / total seconds: roughly 0.35-0.5 M/s warm. CPU runs print 0.00 s; 4.3-4.6 M tests/s.
+
+# host: J-DESK ; 2026-11-24T19:03:50
+# commit: eed9a1e ; binary C:\Users\<user>\AppData\Local\Temp\claude\615dca6f1938ad93\00661eb5-a96b-411c-8b4d-f33601cea314\scratchpad\bigmont-eed9a1e.exe ; as committed (autotuned)
+# candidates: make_candidates --bits 40 20000 7 c40.bin (20003 candidates, 64-bit container)
+--- GPU run 1 (empty cache): bigmont c40.bin v40-gpu.bin --backend gpu --cache c40.cache
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 4 }: 6102303656 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 4 }: 8366436942 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 4 }: 9020493575 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 8 }: 1885435293 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 8 }: 2579721073 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 8 }: 2868549885 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 16 }: 569140736 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 16 }: 702657643 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 16 }: 794519651 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 32 }: 143541494 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 32 }: 204133178 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 32 }: 216474899 squarings/s
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 3.48 s (3.40 s tuning) | 242782.3 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- GPU run 2 (warm cache): bigmont c40.bin v40-gpu.bin --backend gpu --cache c40.cache
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.06 s (0.04 s tuning) | 1013579.9 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- GPU run 3 (warm cache): bigmont c40.bin v40-gpu.bin --backend gpu --cache c40.cache
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.04 s (0.03 s tuning) | 1385460.4 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- GPU run 4 (warm cache): bigmont c40.bin v40-gpu.bin --backend gpu --cache c40.cache
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1024596.9 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- CPU run 1: bigmont c40.bin v40-cpu.bin --backend cpu
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 20003 (gpu 0, cpu 20003) | 0.00 s (0.00 s tuning) | 4451045.8 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+--- CPU run 2: bigmont c40.bin v40-cpu.bin --backend cpu
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 20003 (gpu 0, cpu 20003) | 0.00 s (0.00 s tuning) | 4568981.3 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+--- CPU run 3: bigmont c40.bin v40-cpu.bin --backend cpu
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 20003 (gpu 0, cpu 20003) | 0.00 s (0.00 s tuning) | 4522802.8 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+--- CPU run 4: bigmont c40.bin v40-cpu.bin --backend cpu
+bigmont: CPU: 16 threads
+bigmont: CPU: 16 threads | tests 20003 (gpu 0, cpu 20003) | 0.00 s (0.00 s tuning) | 4343662.5 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 0 | gpu errors 0
+--- verdict files: GPU 78129635D60711DE16060C346F9F6B9804A958E3E5D084A01FCC95C7093D25DB CPU 78129635D60711DE16060C346F9F6B9804A958E3E5D084A01FCC95C7093D25DB
+--- cache file:
+AMD Radeon RX 6700 XT|Vulkan|AMD proprietary driver 26.10.1 (AMD proprietary shader compiler)|4|unrolled 4 256|9020493574.923382
+
+# Section 2: forced configuration, throwaway local patch (NOT committed): engine.rs read BIGMONT_FORCE_CFG=tpi,wg and used it
+#   instead of the tuned (tpi, wg). Single runs, warm cache; run-to-run noise is about +-30%.
+
+# throwaway BIGMONT_FORCE_CFG patch (not committed) on eed9a1e; cache warm (tpi 4 wg 256); engine --backend gpu, 20003 40-bit candidates
+--- forced tpi,wg=4,64 run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1054015.5 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=4,64 run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1199235.0 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=4,64 run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1023763.1 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=4,256 run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.04 s (0.03 s tuning) | 1412082.8 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=4,256 run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.04 s tuning) | 1377987.2 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=4,256 run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.06 s (0.04 s tuning) | 1022679.6 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=8,256 run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1024922.4 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=8,256 run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1011228.0 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=8,256 run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.05 s (0.03 s tuning) | 1008459.7 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=32,256 run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.06 s (0.03 s tuning) | 693174.3 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=32,256 run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.06 s (0.03 s tuning) | 679613.6 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+--- forced tpi,wg=32,256 run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 20003 (gpu 20003, cpu 0) | 0.06 s (0.03 s tuning) | 693992.0 tests/s excluding tuning | PRP 1480 | disagreements: prp 0, composite 0 | rechecks 1484 | gpu errors 0
+verdict hash: 78129635D60711DE16060C346F9F6B9804A958E3E5D084A01FCC95C7093D25DB
+
+# Section 3: where the time goes, throwaway example (NOT committed; source below) calling Runner::fermat directly on the same
+#   20,003 candidates, capacity 16384, 4 repetitions per configuration. 'gpu dispatch+wait' is Runner stats.gpu_secs (the sum of all
+#   submit+poll round trips of the segmented ladder), 'host prep' is stats.host_prep_secs, 'other' is the rest of fermat() (buffer
+#   uploads, readback, unpack and the x mod n verdict compare). The kernel arithmetic alone at the tuned 9.0 G squarings/s would
+#   take about 20003 * 39 / 9.0e9 = 0.09 ms.
+
+tpi 4 wg 256 limbs 4 capacity 16384: Runner::new 19.1 ms
+rep 0: fermat() wall 22.8 ms = gpu dispatch+wait 11.5 ms + host prep 4.9 ms + other 6.4 ms; CPU recheck of 1480 PRPs 1.5 ms; kernel-only-style rate 876625 tests/s, with recheck 822272 tests/s
+rep 1: fermat() wall 20.0 ms = gpu dispatch+wait 8.5 ms + host prep 4.7 ms + other 6.9 ms; CPU recheck of 1480 PRPs 1.3 ms; kernel-only-style rate 999910 tests/s, with recheck 939589 tests/s
+rep 2: fermat() wall 17.3 ms = gpu dispatch+wait 7.7 ms + host prep 4.5 ms + other 5.1 ms; CPU recheck of 1480 PRPs 1.3 ms; kernel-only-style rate 1158097 tests/s, with recheck 1078654 tests/s
+rep 3: fermat() wall 16.3 ms = gpu dispatch+wait 6.8 ms + host prep 3.9 ms + other 5.6 ms; CPU recheck of 1480 PRPs 1.2 ms; kernel-only-style rate 1228271 tests/s, with recheck 1143016 tests/s
+tpi 4 wg 64 limbs 4 capacity 16384: Runner::new 23.0 ms
+rep 0: fermat() wall 17.3 ms = gpu dispatch+wait 5.8 ms + host prep 5.0 ms + other 6.6 ms; CPU recheck of 1480 PRPs 1.4 ms; kernel-only-style rate 1153090 tests/s, with recheck 1066036 tests/s
+rep 1: fermat() wall 14.0 ms = gpu dispatch+wait 5.7 ms + host prep 4.2 ms + other 4.1 ms; CPU recheck of 1480 PRPs 1.2 ms; kernel-only-style rate 1430083 tests/s, with recheck 1314318 tests/s
+rep 2: fermat() wall 16.2 ms = gpu dispatch+wait 6.9 ms + host prep 4.0 ms + other 5.4 ms; CPU recheck of 1480 PRPs 1.3 ms; kernel-only-style rate 1231189 tests/s, with recheck 1140227 tests/s
+rep 3: fermat() wall 16.4 ms = gpu dispatch+wait 6.1 ms + host prep 4.2 ms + other 6.1 ms; CPU recheck of 1480 PRPs 1.3 ms; kernel-only-style rate 1218818 tests/s, with recheck 1131040 tests/s
+tpi 8 wg 256 limbs 8 capacity 16384: Runner::new 21.2 ms
+rep 0: fermat() wall 19.3 ms = gpu dispatch+wait 6.1 ms + host prep 4.3 ms + other 8.9 ms; CPU recheck of 1480 PRPs 1.3 ms; kernel-only-style rate 1034897 tests/s, with recheck 970572 tests/s
+rep 1: fermat() wall 16.7 ms = gpu dispatch+wait 6.7 ms + host prep 4.1 ms + other 5.9 ms; CPU recheck of 1480 PRPs 1.4 ms; kernel-only-style rate 1197476 tests/s, with recheck 1101845 tests/s
+rep 2: fermat() wall 22.9 ms = gpu dispatch+wait 10.4 ms + host prep 7.6 ms + other 5.0 ms; CPU recheck of 1480 PRPs 1.6 ms; kernel-only-style rate 871720 tests/s, with recheck 816302 tests/s
+rep 3: fermat() wall 22.7 ms = gpu dispatch+wait 11.4 ms + host prep 4.9 ms + other 6.4 ms; CPU recheck of 1480 PRPs 1.5 ms; kernel-only-style rate 879624 tests/s, with recheck 823830 tests/s
+tpi 32 wg 256 limbs 32 capacity 16384: Runner::new 28.1 ms
+rep 0: fermat() wall 26.0 ms = gpu dispatch+wait 12.1 ms + host prep 5.6 ms + other 8.3 ms; CPU recheck of 1480 PRPs 1.4 ms; kernel-only-style rate 770517 tests/s, with recheck 731449 tests/s
+rep 1: fermat() wall 26.0 ms = gpu dispatch+wait 13.1 ms + host prep 5.2 ms + other 7.7 ms; CPU recheck of 1480 PRPs 1.4 ms; kernel-only-style rate 768350 tests/s, with recheck 730388 tests/s
+rep 2: fermat() wall 25.7 ms = gpu dispatch+wait 11.6 ms + host prep 6.0 ms + other 8.0 ms; CPU recheck of 1480 PRPs 1.5 ms; kernel-only-style rate 778272 tests/s, with recheck 735710 tests/s
+rep 3: fermat() wall 25.1 ms = gpu dispatch+wait 11.9 ms + host prep 4.9 ms + other 8.3 ms; CPU recheck of 1480 PRPs 1.4 ms; kernel-only-style rate 795864 tests/s, with recheck 752669 tests/s
+
+# ---- throwaway example source (crates/bigmont-cli/examples/zz_breakdown.rs, deleted after the run) ----
+# // THROWAWAY (not committed): where does the engine's time go for 20k 40-bit candidates?
+# use bigmont_core::gpu::Gpu;
+# use bigmont_core::kernel::{KernelConfig, Variant};
+# use bigmont_core::runner::Runner;
+# use std::time::Instant;
+# 
+# fn main() {
+#     let args: Vec<String> = std::env::args().skip(1).collect();
+#     let file = bigmont_cli::formats::read_candidates(args[0].as_ref()).unwrap();
+#     let (tpi, wg): (u32, u32) = (args[1].parse().unwrap(), args[2].parse().unwrap());
+#     let capacity: u32 = args[3].parse().unwrap();
+#     let gpu = Gpu::new().unwrap();
+#     let cfg = KernelConfig::for_bits(40, tpi, wg, Variant::Unrolled);
+#     let t = Instant::now();
+#     let mut runner = Runner::new(&gpu, cfg, 40, capacity).unwrap();
+#     println!("tpi {tpi} wg {wg} limbs {} capacity {}: Runner::new {:.1} ms", cfg.limbs, runner.capacity(), t.elapsed().as_secs_f64() * 1e3);
+#     for rep in 0..4 {
+#         runner.stats = Default::default();
+#         let t = Instant::now();
+#         let v = runner.fermat(&gpu, &file.numbers).unwrap();
+#         let wall = t.elapsed().as_secs_f64();
+#         let t = Instant::now();
+#         let prps: Vec<_> = file.numbers.iter().zip(&v).filter(|&(_, &p)| p).map(|(n, _)| n.clone()).collect();
+#         let _ = bigmont_cpu::fermat_batch(&prps, 0);
+#         let rc = t.elapsed().as_secs_f64();
+#         println!(
+#             "rep {rep}: fermat() wall {:.1} ms = gpu dispatch+wait {:.1} ms + host prep {:.1} ms + other {:.1} ms; CPU recheck of {} PRPs {:.1} ms; kernel-only-style rate {:.0} tests/s, with recheck {:.0} tests/s",
+#             wall * 1e3,
+#             runner.stats.gpu_secs * 1e3,
+#             runner.stats.host_prep_secs * 1e3,
+#             (wall - runner.stats.gpu_secs - runner.stats.host_prep_secs) * 1e3,
+#             prps.len(),
+#             rc * 1e3,
+#             file.numbers.len() as f64 / wall,
+#             file.numbers.len() as f64 / (wall + rc)
+#         );
+#     }
+# }

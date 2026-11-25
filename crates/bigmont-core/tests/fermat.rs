@@ -143,7 +143,7 @@ fn the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu() {
 fn edge_lengths_around_the_word_and_limb_boundaries() {
     // 2^k-1 and 2^(k-1)+1 have exactly k bits; 2^k+1 has k+1 bits. Lengths straddle 13-bit limbs
     // (26, 39, 52, 65), 32-bit exponent words (32, 64) and the 64-bit CPU limb.
-    let ks = [20u32, 31, 32, 33, 47, 48, 49, 63, 64, 65];
+    let ks = [20u32, 26, 31, 32, 33, 39, 47, 48, 49, 52, 63, 64, 65];
     let mut rng = XorShift64::new(0xB175);
     let mut groups: BTreeMap<u32, Vec<BigUint>> = BTreeMap::new();
     let mut add = |n: BigUint| groups.entry(n.bits() as u32).or_default().push(n);
