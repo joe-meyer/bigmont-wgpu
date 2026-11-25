@@ -1,21 +1,20 @@
 # bigmont-wgpu
 
 A portable GPU engine for batched base-2 Fermat probable-prime tests of large integers (tested up to about 2,000
-bits), on any GPU that [wgpu](https://wgpu.rs) supports (AMD, NVIDIA, Intel, Apple), with a pure-Rust CPU fallback and
-kernels written so they can also run in a browser through WebGPU. It was built for prime-gap searches (see
-[Background](#background-and-credits)), but the engine itself is generic: it takes a list of odd integers and returns
-one verdict each.
+bits), on any GPU that [wgpu](https://wgpu.rs) supports, with a pure-Rust CPU fallback and kernels written so they can
+also run in a browser through WebGPU. It was built for prime-gap searches, but the engine itself is generic: it takes
+a list of odd integers and returns one verdict each.
 
-**Status: experimental.** The engine is correct against independent references and runs on four GPUs, but it is
-not yet as fast as the CUDA implementation it is modelled on (about half its speed on the one card where both were
-measured), and some platforms are untested. See [Limits](#limits).
+**Status: experimental.** Verdicts are checked against independent references, but performance is still being tuned,
+some platforms are untested, and the evidence behind several design choices is thin. Known gaps are tracked in the
+[issue tracker](../../issues).
 
 ## Why this exists: compatibility first
 
-The fastest implementations of this workload are written for one vendor. Beacon's Fermat driver, for example, is CUDA
-built on NVIDIA's CGBN library, so it needs an NVIDIA GPU, `nvcc` and Linux. A prime-gap search is a volunteer-scale job
-that can use whatever hardware people already own: AMD and Intel cards, Apple silicon, laptops with integrated
-GPUs, and eventually a browser tab.
+The fastest implementations of this workload are usually written for one vendor, CUDA on NVIDIA for example, which
+ties a search to specific hardware and an operating system. A search of this kind is a volunteer-scale job that can
+use whatever hardware people already own: AMD and Intel cards, Apple silicon, laptops with integrated GPUs, and
+eventually a browser tab.
 
 This project exists to make that work run on all of them from one code base, and every design choice follows from it:
 
@@ -24,23 +23,21 @@ This project exists to make that work run on all of them from one code base, and
 - **Capabilities, not vendor names.** What a kernel needs (subgroups, 64-bit integers) is checked against what the
   adapter offers. The 32-bit-limb kernels need 64-bit integers, which WebGPU does not have, so they are native-only
   and the browser gets the 13-bit kernels instead.
-- **Measured, not assumed.** Which kernel shape is fastest differs by GPU, driver and even generation (the same
-  engine picks different kernels on an RTX 4070, a Quadro P4000 and an RX 6700 XT), so the autotuner measures on the
-  actual device and verifies each candidate against a CPU reference before using it.
+- **Measured, not assumed.** Which kernel shape is fastest differs by GPU, driver and generation, so the autotuner
+  measures on the actual device and verifies each candidate against a CPU reference before using it.
 - **A CPU path that always works.** With no usable GPU the pure-Rust backend gives the same verdicts.
-- **Compatible with existing tooling.** The `bigmont` driver reads and writes Beacon's candidate and verdict files, so
-  it can replace the CUDA driver without changing the rest of a pipeline.
+- **Compatible with existing tooling.** The `bigmont` driver reads and writes `G2C1` candidate files and `G2V1`
+  verdict files, a binary format used by an existing CUDA-based search pipeline, so it can replace that pipeline's
+  Fermat driver without changing the rest.
 
-Raw speed matters, but it comes second: where portability and speed conflict, portability wins, and the speed gap to
-the CUDA implementation is tracked as open work.
+Raw speed matters, but it comes second: where portability and speed conflict, portability wins.
 
 ## What it does
 
 - The engine (`bigmont-core`, `Runner::fermat`) takes plain big integers and returns Fermat verdicts. The `bigmont`
-  command-line driver is one ready-made front end on top of it: it reads and writes Beacon's `G2C1` candidate and
-  `G2V1` verdict files, so it can stand in for Beacon's `g1_fermat_v3` driver on those files.
+  command-line driver is one ready-made front end on top of it.
 - Runs the base-2 Fermat test with cooperative Montgomery arithmetic: several GPU lanes share one number, using
-  subgroup shuffles for the cross-lane work (the shape of NVIDIA's CGBN, written in WGSL).
+  subgroup shuffles for the cross-lane work, written in WGSL.
 - Measures instead of guessing. An autotuner tries every kernel shape the adapter can run (limb width, lanes per
   number, workgroup size), checks each one against a CPU reference on that adapter, and caches the fastest.
 - Never trusts the GPU alone: every GPU probable prime is re-checked on the CPU, a sample of composites is
@@ -53,9 +50,8 @@ the CUDA implementation is tracked as open work.
 | 13-bit | 13-bit limbs in `u32`, deferred carries | subgroups | yes |
 | 32-bit | 32-bit limbs, `u64` products | subgroups and 64-bit integers in shaders (`SHADER_INT64`) | no (WGSL has no 64-bit integers there) |
 
-Which one is faster depends on the GPU, so it is not hard-coded: `--limbs auto` (the default) measures both. On the
-cards tried so far the tuner picks 32-bit limbs on an RTX 4070 Laptop and a Quadro P4000 and 13-bit limbs on an
-RX 6700 XT.
+Which one is faster depends on the GPU, so it is not hard-coded: `--limbs auto` (the default) measures both and keeps
+the faster.
 
 ## Quick start
 
@@ -83,29 +79,16 @@ auto|13|32`, `--retune`, `--cache PATH | --no-cache`, `--verify-rate N`, `--repe
 arguments for the full usage. The tuning cache lives at `$BIGMONT_CACHE`, else `%LOCALAPPDATA%\bigmont\tune.cache`
 (Windows) or `$XDG_CACHE_HOME/bigmont/tune.cache` / `~/.cache/bigmont/tune.cache`.
 
-## Measured so far
+## Measurements
 
-2,029-bit numbers, the engine end to end (`bigmont CAND OUT --backend gpu`, tests per second, excluding the one-time
-tuning). One to three runs per cell on one machine each, so treat differences of a few percent as noise. Details,
-method and limits: [`docs/superpowers/results/2026-11-25-limb-factory-validation.md`](docs/superpowers/results/2026-11-25-limb-factory-validation.md).
-
-| GPU | 13-bit limbs | 32-bit limbs | Auto picks |
-|---|---|---|---|
-| RTX 4070 Laptop (Vulkan) | ~35.7k | ~61.1k | 32-bit |
-| Quadro P4000 (Vulkan, shared card) | ~5.3k | ~7.8k | 32-bit |
-| RX 6700 XT (Vulkan) | ~31.7k | ~20.8k | 13-bit |
-
-For reference, Beacon's CUDA driver measured 132k tests/s (116k for one pass over the file) on the same RTX 4070
-Laptop, so the engine is at roughly half of CUDA's speed there. On the CPU the pure-Rust backend does about 2k
-tests/s on a 16-thread machine. Verdicts from the GPU engine, the CPU backend and Beacon's own driver were
-byte-identical on Beacon's 32,000-candidate canary file.
+Measurements, their methods and their limits are in
+[`docs/superpowers/results/`](docs/superpowers/results/). They come from a handful of machines with one to three runs
+per figure, so this README does not quote them.
 
 ## In a browser
 
 `web/fermat.html` runs the 13-bit Fermat kernels in a browser's WebGPU and checks every verdict against a BigInt
-oracle. Validated so far in Chrome 156 on an RX 6700 XT only (all kernels compile and pass; about 34k tests/s at
-2,029 bits there). See [`web/README.md`](web/README.md) and
-[`docs/superpowers/results/2026-11-25-browser-fermat-validation.md`](docs/superpowers/results/2026-11-25-browser-fermat-validation.md).
+oracle. See [`web/README.md`](web/README.md).
 
 ## Layout
 
@@ -116,7 +99,7 @@ oracle. Validated so far in Chrome 156 on an RX 6700 XT only (all kernels compil
 | `crates/bigmont-cpu` | pure-Rust 64-bit-limb Montgomery Fermat test (the CPU backend) |
 | `crates/bigmont-cli` | the `bigmont` driver: file formats, autotuner and cache, the engine that buckets and cross-checks |
 | `web/` | browser test pages and generated kernels |
-| `docs/superpowers/` | design, plans, measurements and the open-items list |
+| `docs/superpowers/` | design, plans, measurements and notes |
 
 ## Testing
 
@@ -125,28 +108,19 @@ cargo test --release --workspace --no-fail-fast -- --test-threads=1
 ```
 
 The GPU tests are strict: a missing adapter or capability fails the test. `BIGMONT_ALLOW_SKIP=1` turns that into a
-loud skip. `BIGMONT_ADAPTER=SUBSTR` and `BIGMONT_BACKEND=Vulkan|Dx12|...` pick the device. Run the suite in one
-process with `--test-threads=1`; opening many devices at once is what exhausted the Linux NVIDIA driver in earlier
-runs.
+loud skip. `BIGMONT_ADAPTER=SUBSTR` and `BIGMONT_BACKEND=Vulkan|Dx12|...` pick the device. Run the suite in a single
+process with `--test-threads=1`.
 
-## Limits
+## Known gaps
 
-- Not yet CUDA speed: about half of Beacon's driver on the RTX 4070 Laptop, the only card where both were run.
-- Tested GPUs: RTX 4070 Laptop, Quadro P4000, RX 6700 XT, Radeon 780M (and software Vulkan). Intel and Apple GPUs,
-  and DX12/Metal behaviour of the 32-bit scheme, are untested. Browser testing covers one Chrome build on one GPU.
-- The Linux NVIDIA driver 580 occasionally resets the card for reasons unrelated to these kernels (a few percent of
-  processes in a stress loop); the engine survives it by re-opening the device, but the real driver-level failure has
-  not been seen under the recovery code.
-- Not implemented: Beacon's `--ee`, `--bins`, `--chunk`, `--growth`, `--marker`, `--inject` flags; the Gerbicz check.
-- Small numbers (tens of bits) run slower on the GPU than on the CPU because of per-call overhead.
-
-The open items are tracked in the issues; the older notes are in `docs/superpowers/phase1-backlog.md`.
+Tracked as [issues](../../issues): performance against vendor-specific implementations, the evidence behind the limb
+scheme choice, untested platforms, and missing features.
 
 ## Background and credits
 
-The first use is Beacon-style prime-gap hunting. The design follows [Beacon](https://github.com/djuk8/beacon)'s CUDA Fermat driver (which builds on NVIDIA's
-[CGBN](https://github.com/NVlabs/CGBN) library) as its reference for interface and performance. This repository contains none of their
-source files. The kernels are generated WGSL; the tests compare them with independent big-integer references.
+The first use is prime-gap searching. The cooperative kernel design is shaped after NVIDIA's
+[CGBN](https://github.com/NVlabs/CGBN) library; this repository contains none of its source files. The kernels are
+generated WGSL; the tests compare them with independent big-integer references.
 
 ## License
 
