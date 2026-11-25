@@ -36,6 +36,11 @@ Raw speed matters, but it comes second: where portability and speed conflict, po
 
 - The engine (`bigmont-core`, `Runner::fermat`) takes plain big integers and returns Fermat verdicts. The `bigmont`
   command-line driver is one ready-made front end on top of it.
+- The driver also implements the in-driver early-exit interface (`--bins`, `--ee SIZES`, `--chunk`, `--growth`, `--marker`,
+  `--lock`) used by the existing CUDA pipeline's feeders: candidates are grouped into ks, tested in waves, and a k stops at its
+  first probable prime. Its output is byte-identical to the CUDA driver's on that pipeline's own fixtures (see
+  [`docs/superpowers/results/2026-11-25-early-exit-validation.md`](docs/superpowers/results/2026-11-25-early-exit-validation.md));
+  it is much slower at start-up for now (issue #21).
 - Runs the base-2 Fermat test with cooperative Montgomery arithmetic: several GPU lanes share one number, using
   subgroup shuffles for the cross-lane work, written in WGSL.
 - Measures instead of guessing. An autotuner tries every kernel shape the adapter can run (limb width, lanes per
