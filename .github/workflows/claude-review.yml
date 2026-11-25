@@ -61,7 +61,9 @@ jobs:
             carry errors, WGSL that assumes 64-bit integers in the 13-bit path,
             panics or hangs on device loss, undocumented `unsafe`, kernel changes
             without a differential test against the CPU reference, invented
-            performance numbers, and machine-identifying details. Skip style nits
+            performance numbers, machine-identifying details, and a PR description
+            whose "Tested on" section is missing or doesn't name which GPU vendors
+            were tested and not tested (results vary by vendor). Skip style nits
             that rustfmt or clippy would catch. Be concise; use inline comments
             for specific lines and one summary comment for the rest.
           claude_args: >-

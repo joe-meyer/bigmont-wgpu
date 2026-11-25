@@ -10,7 +10,8 @@ rules keep quality and accountability clear.
    explain and defend every line. "The AI wrote it" is not a review response.
 2. **Test it.** Run `cargo fmt`, `cargo clippy`, and `cargo test` yourself.
    For kernel or arithmetic changes, show differential results against the CPU
-   reference. Don't submit code you haven't run.
+   reference. Don't submit code you haven't run, and say in the PR which GPU
+   vendors you tested on and which you did not (results vary by vendor).
 3. **Disclose meaningful assistance.** Add an `Assisted-by: <tool/model>`
    trailer to commits where AI wrote or substantially shaped the change, and
    tick the box in the PR template. Trivial autocomplete needs no disclosure.

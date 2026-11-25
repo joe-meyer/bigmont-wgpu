@@ -52,8 +52,17 @@ device. Always run the suite with `--test-threads=1`.
   feature and are native-only; the 13-bit kernels must not need it, because they
   also target browsers. Check device features before using optional ones, and
   keep both limb schemes working.
-- **Don't change the limb scheme, TPI, or autotune heuristics** without
-  benchmark evidence from at least two GPU vendors, recorded in the PR.
+- **Limb scheme, TPI and autotune changes are welcome, but results vary by
+  vendor.** Correctness and speed can differ between GPU vendors, architectures
+  and drivers (and between native backends and WebGPU), so a change that is
+  right on one device may be wrong or slower on another. Don't assume your
+  hardware is representative.
+- **Every PR states what it was tested on and what it was not.** List the
+  GPUs/vendors, drivers and OS/backends you ran the tests (and benchmarks, if
+  any) on, and say plainly which vendors (NVIDIA, AMD, Intel, Apple, software
+  rasterisers, browsers) were *not* tested. This lets other contributors pick up
+  the gaps. Fill in the "Tested on" section of the PR template; "untested" is an
+  acceptable answer, a silent omission is not. Never claim coverage you didn't run.
 - **Handle device loss.** GPU calls can fail or reset mid-run; return errors,
   never panic or hang. The `devloss` tests cover this.
 - **No unsafe** unless unavoidable; if added, document the invariant on the line above.

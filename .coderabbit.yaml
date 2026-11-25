@@ -23,6 +23,10 @@ reviews:
         13-bit kernels must not need it. Check that limb ranges and carry handling
         are commented and that device features are checked before use. GPU calls
         can fail or reset mid-run, so flag any panic, unwrap or hang on that path.
+        Limb scheme, TPI and autotune changes are welcome, but results vary by GPU
+        vendor and driver. Check that the PR description's "Tested on" section
+        names the vendors tested and not tested, and note any vendor-specific
+        assumption in the code.
     - path: "crates/**/src/**"
       instructions: |
         Flag `unsafe` without a comment stating the invariant on the line above.

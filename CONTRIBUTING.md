@@ -32,6 +32,15 @@ claims need numbers: name the GPU, driver and OS, and include the command you
 ran (for example `bigmont tune`). Don't include hostnames, usernames or other
 personal details.
 
+## Vendor and hardware coverage
+
+GPU vendors, architectures and drivers can give different results, both in
+correctness and in speed, so what works on your hardware may not elsewhere.
+Changes to the limb scheme, TPI or autotuner are welcome. In every PR, fill in
+the "Tested on" section: which GPUs, drivers and backends you ran on, and which
+vendors you did not test. Say so if you can't cover one; other contributors can
+then pick it up. Please don't claim coverage you didn't run.
+
 ## AI-assisted contributions
 
 Allowed and welcome, with a few rules. Read [`AI_POLICY.md`](AI_POLICY.md).
