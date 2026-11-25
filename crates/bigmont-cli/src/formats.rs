@@ -62,6 +62,68 @@ pub fn read_candidates(path: &Path) -> Result<CandidateFile, String> {
     Ok(CandidateFile { bits, numbers })
 }
 
+/// Reads every file of `paths` (all `G2C1`, same container width) as one candidate array, the files
+/// concatenated in the order given. Errors name the offending file.
+pub fn read_candidate_files(paths: &[PathBuf]) -> Result<CandidateFile, String> {
+    let (first, rest) = paths.split_first().ok_or_else(|| "no candidate files given".to_string())?;
+    let mut all = read_candidates(first)?;
+    for p in rest {
+        let next = read_candidates(p)?;
+        if next.bits != all.bits {
+            return Err(format!("mixed bits in list: {} has {}-bit containers, {} has {}-bit", first.display(), all.bits, p.display(), next.bits));
+        }
+        all.numbers.extend(next.numbers);
+    }
+    Ok(all)
+}
+
+/// Reads a text file listing one path per line: trailing `\r`, `\n` and spaces are stripped, empty
+/// lines skipped. Errors if the file cannot be read or lists no path.
+pub fn read_bin_list(path: &Path) -> Result<Vec<PathBuf>, String> {
+    let raw = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let text = String::from_utf8(raw).map_err(|_| format!("{}: list file is not valid UTF-8", path.display()))?;
+    let paths: Vec<PathBuf> = text.split('\n').map(|l| l.trim_end_matches(['\r', ' '])).filter(|l| !l.is_empty()).map(PathBuf::from).collect();
+    if paths.is_empty() {
+        return Err(format!("{}: list file names no candidate files", path.display()));
+    }
+    Ok(paths)
+}
+
+/// `"G2S1"` read as a little-endian `u32`.
+pub const SIZES_MAGIC: u32 = 0x3153_3247;
+
+/// Reads a `G2S1` sizes file: magic `u32`, entry count `u32`, then that many `u32` counts, all
+/// little-endian. The length must match the header exactly, checked before anything is allocated.
+pub fn read_sizes(path: &Path) -> Result<Vec<u32>, String> {
+    let raw = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let bad = |e: String| format!("{}: {e}", path.display());
+    if raw.len() < 8 {
+        return Err(bad(format!("sizes file is {} bytes, shorter than its 8-byte header", raw.len())));
+    }
+    let got = u32::from_le_bytes(raw[0..4].try_into().expect("4 bytes"));
+    if got != SIZES_MAGIC {
+        return Err(bad(format!("sizes file has magic {got:#010x}, expected {SIZES_MAGIC:#010x}")));
+    }
+    let nk = u32::from_le_bytes(raw[4..8].try_into().expect("4 bytes"));
+    let body = (raw.len() - 8) as u64;
+    if u64::from(nk) * 4 != body {
+        return Err(bad(format!("sizes file header claims {nk} entries, which does not match its {body}-byte body")));
+    }
+    Ok(raw[8..].as_chunks::<4>().0.iter().map(|c| u32::from_le_bytes(*c)).collect())
+}
+
+/// Writes a `G2S1` sizes file to `path` (used to build test inputs).
+pub fn write_sizes(path: &Path, sizes: &[u32]) -> Result<(), String> {
+    let nk = u32::try_from(sizes.len()).map_err(|_| format!("{} sizes do not fit a G2S1 file", sizes.len()))?;
+    let mut out = Vec::with_capacity(8 + sizes.len() * 4);
+    out.extend_from_slice(&SIZES_MAGIC.to_le_bytes());
+    out.extend_from_slice(&nk.to_le_bytes());
+    for s in sizes {
+        out.extend_from_slice(&s.to_le_bytes());
+    }
+    std::fs::write(path, out).map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
 fn header(magic: u32, bits: u32, count: usize) -> Vec<u8> {
     let mut v = Vec::with_capacity(HEADER);
     v.extend_from_slice(&magic.to_le_bytes());
