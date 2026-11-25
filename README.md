@@ -10,6 +10,30 @@ one verdict each.
 not yet as fast as the CUDA implementation it is modelled on (about half its speed on the one card where both were
 measured), and some platforms are untested. See [Limits](#limits).
 
+## Why this exists: compatibility first
+
+The fastest implementations of this workload are written for one vendor. Beacon's Fermat driver, for example, is CUDA
+built on NVIDIA's CGBN library, so it needs an NVIDIA GPU, `nvcc` and Linux. A prime-gap search is a volunteer-scale job
+that can use whatever hardware people already own: AMD and Intel cards, Apple silicon, laptops with integrated
+GPUs, and eventually a browser tab.
+
+This project exists to make that work run on all of them from one code base, and every design choice follows from it:
+
+- **One kernel source, many backends.** The kernels are generated WGSL, run through wgpu on Vulkan, DX12 and Metal and
+  through WebGPU in a browser, with no vendor-specific code paths.
+- **Capabilities, not vendor names.** What a kernel needs (subgroups, 64-bit integers) is checked against what the
+  adapter offers. The 32-bit-limb kernels need 64-bit integers, which WebGPU does not have, so they are native-only
+  and the browser gets the 13-bit kernels instead.
+- **Measured, not assumed.** Which kernel shape is fastest differs by GPU, driver and even generation (the same
+  engine picks different kernels on an RTX 4070, a Quadro P4000 and an RX 6700 XT), so the autotuner measures on the
+  actual device and verifies each candidate against a CPU reference before using it.
+- **A CPU path that always works.** With no usable GPU the pure-Rust backend gives the same verdicts.
+- **Compatible with existing tooling.** The `bigmont` driver reads and writes Beacon's candidate and verdict files, so
+  it can replace the CUDA driver without changing the rest of a pipeline.
+
+Raw speed matters, but it comes second: where portability and speed conflict, portability wins, and the speed gap to
+the CUDA implementation is tracked as open work.
+
 ## What it does
 
 - The engine (`bigmont-core`, `Runner::fermat`) takes plain big integers and returns Fermat verdicts. The `bigmont`
