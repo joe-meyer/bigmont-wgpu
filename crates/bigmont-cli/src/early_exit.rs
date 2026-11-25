@@ -7,8 +7,8 @@ use num_bigint::BigUint;
 /// Wave boundaries `[0, b1, b2, ..., s_max]`: wave `w` covers positions `[b[w-1], b[w])` of every
 /// k still alive. The first step is `chunk`; the step is multiplied by `growth` after each wave
 /// when `growth > 1.0`, rounded half to even, clamped to at least 1, and the last boundary is
-/// capped at `s_max` (the largest k size). `chunk <= 0` therefore gives steps of 1, and
-/// `s_max == 0` gives `[0]` (nothing to test).
+/// capped at `s_max` (the largest k size). `chunk <= 0` therefore gives steps of 1 whatever the
+/// growth (`0 * growth` is still 0), and `s_max == 0` gives `[0]` (nothing to test).
 pub fn schedule(chunk: i32, growth: f64, s_max: u32) -> Vec<u32> {
     let s = i64::from(s_max);
     let mut bounds = vec![0u32];
@@ -46,8 +46,11 @@ pub struct EeOutcome {
     pub tested: u64,
     /// Source calls that carried at least one candidate.
     pub waves: u32,
-    /// Bytes equal to 1 in `verdicts`.
+    /// Tested candidates the source called probable primes (verdict 1). Skipped positions are never
+    /// counted, whatever the marker is.
     pub prp: u64,
+    /// Tested candidates the source flagged with verdict 2 (a Gerbicz alarm).
+    pub alarms: u64,
 }
 
 /// Per-k progress through the waves.
@@ -98,6 +101,7 @@ pub fn run_waves(
     let mut verdicts = vec![marker; numbers.len()];
     let mut tested_total = 0u64;
     let mut waves = 0u32;
+    let (mut prp, mut alarms) = (0u64, 0u64);
     let mut idx: Vec<usize> = Vec::new();
     let mut batch: Vec<BigUint> = Vec::new();
     for &bound in boundaries.iter().skip(1) {
@@ -121,6 +125,8 @@ pub fn run_waves(
         }
         for (&i, &v) in idx.iter().zip(&reply) {
             verdicts[i] = v;
+            prp += u64::from(v == 1);
+            alarms += u64::from(v == 2);
         }
         waves += 1;
         tested_total += idx.len() as u64;
@@ -134,11 +140,11 @@ pub fn run_waves(
             !(hit || k.tested >= k.size)
         });
     }
-    let prp = verdicts.iter().filter(|&&v| v == 1).count() as u64;
     Ok(EeOutcome {
         verdicts,
         tested: tested_total,
         waves,
         prp,
+        alarms,
     })
 }

@@ -606,7 +606,7 @@ fn marker_chunk_and_growth_change_the_output_as_the_semantics_require() {
     // (flags, chunk, growth, marker)
     let cases: [(&[&str], i32, f64, u8); 5] = [
         (&["--marker", "7"], 6, 1.15, 7),
-        (&["--marker", "0"], 6, 1.15, 0),
+        (&["--marker", "4"], 6, 1.15, 4),
         (&["--chunk", "1", "--growth", "1.0"], 1, 1.0, 3),
         (
             &["--chunk", "2", "--growth", "1.0", "--marker", "255"],
@@ -724,6 +724,10 @@ fn ee_input_errors_exit_2_with_a_message_and_leave_no_output() {
 
     fails(&cand, &["--bins"], "--bins requires --ee");
     fails(&cand, &["--ee", &sizes, "--marker", "256"], "--marker");
+    // 0, 1 and 2 are verdict bytes; a skipped position carrying one would read as a real verdict.
+    for m in ["0", "1", "2"] {
+        fails(&cand, &["--ee", &sizes, "--marker", m], "verdict bytes");
+    }
     fails(&cand, &["--ee", &sizes, "--chunk", "many"], "--chunk");
     fails(&cand, &["--ee", &sizes, "--growth", "nan"], "--growth");
 
@@ -768,6 +772,39 @@ fn ee_input_errors_exit_2_with_a_message_and_leave_no_output() {
         s(&dir.join("empty.txt")),
         &["--bins", "--ee", &sizes],
         "empty.txt",
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// `--backend gpu` with an adapter that does not exist must fail even when there is nothing to test:
+/// an empty input never reaches the engine's verdict call, which used to be the only check.
+#[test]
+fn a_demanded_gpu_that_is_missing_fails_even_with_no_candidates() {
+    let dir = tmp_dir("ee-empty-gpu");
+    formats::write_candidates(&dir.join("cand.bin"), EE_BITS, &[]).unwrap();
+    formats::write_sizes(&dir.join("sizes.bin"), &[]).unwrap();
+    let (cand, sizes, out) = (
+        s(&dir.join("cand.bin")).to_string(),
+        s(&dir.join("sizes.bin")).to_string(),
+        s(&dir.join("o.bin")).to_string(),
+    );
+    let gpu = [
+        "--backend",
+        "gpu",
+        "--adapter",
+        "no-such-adapter-zzz",
+        "--no-cache",
+    ];
+    let mut ee = vec![cand.as_str(), out.as_str(), "--ee", sizes.as_str()];
+    ee.extend_from_slice(&gpu);
+    expect_input_error(&dir, &ee, "o.bin", "GPU backend requested but unavailable");
+    let mut plain = vec![cand.as_str(), out.as_str()];
+    plain.extend_from_slice(&gpu);
+    expect_input_error(
+        &dir,
+        &plain,
+        "o.bin",
+        "GPU backend requested but unavailable",
     );
     let _ = std::fs::remove_dir_all(dir);
 }

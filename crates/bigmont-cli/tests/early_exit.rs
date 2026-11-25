@@ -192,7 +192,8 @@ fn empty_inputs_and_zero_sized_ks() {
             verdicts: vec![],
             tested: 0,
             waves: 0,
-            prp: 0
+            prp: 0,
+            alarms: 0
         }
     );
     assert!(src.calls.is_empty());
@@ -204,7 +205,8 @@ fn empty_inputs_and_zero_sized_ks() {
             verdicts: vec![],
             tested: 0,
             waves: 0,
-            prp: 0
+            prp: 0,
+            alarms: 0
         }
     );
     assert!(src.calls.is_empty());
@@ -275,7 +277,7 @@ fn a_source_error_is_propagated() {
 
 #[test]
 fn the_marker_is_used_as_given_and_prp_counts_only_ones() {
-    for marker in [3u8, 7, 0, 255] {
+    for marker in [3u8, 7, 255] {
         let mut src = FakeSource::new(&[0]);
         let out = run(&mut src, &[3, 3], 1, 1.0, marker).unwrap();
         // k0 hits at wave 1, k1 never does
@@ -286,18 +288,21 @@ fn the_marker_is_used_as_given_and_prp_counts_only_ones() {
         );
         assert_eq!(out.prp, 1, "marker {marker}");
     }
-    // prp counts every byte equal to 1 in the output, so a marker of 1 is counted at each
-    // skipped position too (one real prime plus two marker bytes).
-    let mut src = FakeSource::new(&[0]);
-    let out = run(&mut src, &[3, 3], 1, 1.0, 1).unwrap();
-    assert_eq!(out.verdicts, vec![1, 1, 1, 0, 0, 0]);
-    assert_eq!(out.prp, 3);
-    // A verdict byte of 2 (the Gerbicz alarm) retires a k like a hit but is not counted as prp.
+    // prp counts tested positions only, so even a marker that collides with a verdict byte (the CLI
+    // refuses 0, 1 and 2, but the library takes any byte) is never counted at a skipped position.
+    for marker in [0u8, 1, 2] {
+        let mut src = FakeSource::new(&[0]);
+        let out = run(&mut src, &[3, 3], 1, 1.0, marker).unwrap();
+        assert_eq!(out.verdicts, vec![1, marker, marker, 0, 0, 0]);
+        assert_eq!((out.prp, out.alarms), (1, 0), "marker {marker}");
+    }
+    // A verdict byte of 2 (the Gerbicz alarm) retires a k like a hit, is counted as an alarm and
+    // not as prp.
     let mut src = FakeSource::new(&[0]);
     src.answer_for_prime = 2;
     let out = run(&mut src, &[3, 3], 1, 1.0, 7).unwrap();
     assert_eq!(out.verdicts, vec![2, 7, 7, 0, 0, 0]);
-    assert_eq!(out.prp, 0);
+    assert_eq!((out.prp, out.alarms), (0, 1));
     assert_eq!(src.calls, vec![vec![0, 3], vec![4], vec![5]]);
 }
 

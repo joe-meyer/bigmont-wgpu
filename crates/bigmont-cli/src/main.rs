@@ -7,7 +7,7 @@
 //!
 //! Early exit (`--ee SIZES`): the candidates are grouped into "k"s by a `G2S1` sizes file and tested in
 //! waves; a k that yields a probable prime is retired and its remaining candidates are skipped (their
-//! verdict byte is `--marker`, default 3). With `--bins`, the first argument is a text file listing
+//! verdict byte is `--marker`, 3 to 255, default 3). With `--bins`, the first argument is a text file listing
 //! candidate files (one path per line) that are concatenated. `--lock FILE` serialises the GPU phase
 //! between processes (an exclusive lock taken after the inputs are read, released before the output is
 //! written; in plain mode it surrounds the engine run).
@@ -41,13 +41,14 @@ const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--ada
        bigmont canary CAND EXPECTED [same engine flags]
        bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
 early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
-              prime; skipped verdict bytes are --marker (0-255, default 3). --bins reads CAND as a text file listing
+              prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
               candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
-              --chunk positions per k (default 6), each later wave --growth times more (default 1.15; 1.0 = constant).
+              --chunk positions per k (default 6), each later wave --growth times more (default 1.15; 1.0 = constant;
+              a --chunk of 0 or less steps one position at a time whatever the growth).
 lock:        --lock FILE takes an exclusive lock (created if missing) before any GPU work and holds it until the last
               wave (early-exit mode) or the end of the engine run; other bigmont processes using FILE wait their turn.
               The gpu-phase time of the g1_fermat[EE] line includes engine setup and any first-run tuning.
-              Input errors exit with status 2.
+              Input and usage errors exit with status 2; a failure while testing (the engine gave up) exits with 3.
 limb scheme: --limbs auto (default) measures every scheme the adapter can run and uses the fastest; 13 or 32 forces one
               (tuning caches from before the limb schemes are re-measured once)
 tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPPDATA%\\bigmont\\tune.cache on Windows,
@@ -195,9 +196,16 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             "--marker" => {
                 a.marker = value.parse().map_err(|_| {
                     usage_err(format!(
-                        "--marker must be a whole number from 0 to 255, not {value:?}"
+                        "--marker must be a whole number from 3 to 255, not {value:?}"
                     ))
-                })?
+                })?;
+                // 0, 1 and 2 are verdict bytes (composite, probable prime, Gerbicz alarm): a skipped
+                // position carrying one would read as a real verdict. The CUDA driver refuses them too.
+                if a.marker < 3 {
+                    return Err(usage_err(format!(
+                        "--marker must be at least 3 (0, 1 and 2 are verdict bytes), not {value:?}"
+                    )));
+                }
             }
             _ => eprintln!("bigmont: note: {flag} is accepted and ignored"), // --repeat
         }
@@ -221,14 +229,50 @@ struct RunOutput {
     gpu_active: bool,
 }
 
+/// Exit status for a failure while testing (the engine could not produce verdicts), as opposed to a
+/// problem with the command line or the input files (2). The CUDA driver likewise ends a run that
+/// cannot obtain a verdict with its own status (3), apart from its input errors (2).
+const EXIT_RUN_FAILED: u8 = 3;
+
+/// Why a test run did not produce verdicts.
+#[derive(Debug, PartialEq, Eq)]
+enum RunError {
+    /// The request cannot be served as given (for example `--backend gpu` without a usable GPU).
+    Config(String),
+    /// The engine failed while testing (device failure it could not recover from, a malformed reply).
+    Failed(String),
+}
+
+impl RunError {
+    /// The process exit status for this error.
+    fn status(&self) -> u8 {
+        match self {
+            RunError::Config(_) => 2,
+            RunError::Failed(_) => EXIT_RUN_FAILED,
+        }
+    }
+
+    /// Prints the message and returns the exit status.
+    fn report(self) -> ExitCode {
+        let status = self.status();
+        match self {
+            RunError::Config(m) => eprintln!("{m}"),
+            RunError::Failed(m) => eprintln!("bigmont: run failed: {m}"),
+        }
+        ExitCode::from(status)
+    }
+}
+
 /// Runs the engine over `numbers` in chunks and prints the summary.
-fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutput, String> {
+fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutput, RunError> {
     let mut engine = Engine::open(opts);
     eprintln!("bigmont: {}", engine.describe());
+    // An empty input never reaches `verdicts`, so a demanded-but-missing GPU is reported here.
+    engine.require_backend().map_err(RunError::Config)?;
     let t = Instant::now();
     let mut verdicts = Vec::with_capacity(numbers.len());
     for chunk in numbers.chunks(CHUNK) {
-        verdicts.extend(engine.verdicts(chunk)?);
+        verdicts.extend(engine.verdicts(chunk).map_err(RunError::Failed)?);
         if numbers.len() > CHUNK {
             eprintln!("bigmont: {}/{} candidates", verdicts.len(), numbers.len());
         }
@@ -331,7 +375,10 @@ fn cmd_verdicts(a: Args) -> Result<ExitCode, String> {
     };
     let file = formats::read_candidates(cand.as_ref())?;
     let (lock, _) = take_lock(a.lock.as_deref())?;
-    let run = run_engine(a.opts, &file.numbers)?;
+    let run = match run_engine(a.opts, &file.numbers) {
+        Ok(run) => run,
+        Err(e) => return Ok(e.report()),
+    };
     drop(lock);
     formats::write_verdicts(verdict.as_ref(), file.bits, &run.verdicts)?;
     Ok(ExitCode::SUCCESS)
@@ -372,7 +419,14 @@ fn cmd_early_exit(a: Args, sizes_path: &Path) -> Result<ExitCode, String> {
     let t = Instant::now();
     let mut engine = Engine::open(a.opts);
     eprintln!("bigmont: {}", engine.describe());
-    let out = run_waves(&mut engine, &file.numbers, &sizes, &bounds, a.marker)?;
+    // No candidates (or all ks empty) means `run_waves` never calls the engine; still honour `--backend gpu`.
+    if let Err(m) = engine.require_backend() {
+        return Ok(RunError::Config(m).report());
+    }
+    let out = match run_waves(&mut engine, &file.numbers, &sizes, &bounds, a.marker) {
+        Ok(out) => out,
+        Err(m) => return Ok(RunError::Failed(m).report()),
+    };
     let secs = t.elapsed().as_secs_f64();
     print_engine_summary(&engine, secs, out.prp);
     // The GPU phase is over: free the engine's GPU memory, then let the next process start its waves.
@@ -386,13 +440,14 @@ fn cmd_early_exit(a: Args, sizes_path: &Path) -> Result<ExitCode, String> {
         out.tested as f64 / count as f64
     };
     eprintln!(
-        "g1_fermat[EE]: bits={} count={count} ks={} tested={} ({fraction:.3}) waves={} | {secs:.3}s gpu-phase (lock wait {lock_wait:.2}s) | {:.1} tests/s | prp={} gec_alarm=0",
+        "g1_fermat[EE]: bits={} count={count} ks={} tested={} ({fraction:.3}) waves={} | {secs:.3}s gpu-phase (lock wait {lock_wait:.2}s) | {:.1} tests/s | prp={} gec_alarm={}",
         file.bits,
         sizes.len(),
         out.tested,
         out.waves,
         out.tested as f64 / secs.max(1e-9),
         out.prp,
+        out.alarms,
     );
     Ok(ExitCode::SUCCESS)
 }
@@ -419,7 +474,10 @@ fn cmd_canary(a: Args) -> Result<ExitCode, String> {
         return Ok(ExitCode::from(1));
     }
     let (lock, _) = take_lock(a.lock.as_deref())?;
-    let run = run_engine(a.opts, &file.numbers)?;
+    let run = match run_engine(a.opts, &file.numbers) {
+        Ok(run) => run,
+        Err(e) => return Ok(e.report()),
+    };
     drop(lock);
     let failed = canary::failures(&run.verdicts, &want, &run.report, run.gpu_active);
     if failed.is_empty() {
@@ -558,6 +616,14 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Input and configuration problems exit 2, a failure while testing exits 3, so a caller can tell a
+    /// bad request from a device that gave up.
+    #[test]
+    fn run_errors_map_to_distinct_exit_statuses() {
+        assert_eq!(RunError::Config("x".into()).status(), 2);
+        assert_eq!(RunError::Failed("x".into()).status(), 3);
+    }
 
     /// The length guard must agree with the real schedule, on both sides of the limit.
     #[test]

@@ -3,6 +3,7 @@ name = "bigmont-cli"
 description = "Candidate/verdict file driver and autotuned engine for bigmont"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]

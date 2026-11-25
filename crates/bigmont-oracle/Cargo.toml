@@ -3,6 +3,7 @@ name = "bigmont-oracle"
 description = "CPU reference for the 13-bit and 32-bit limb Montgomery arithmetic used by the bigmont GPU kernels"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
