@@ -1,8 +1,10 @@
 # bigmont-wgpu
 
-A portable GPU engine for the heavy step of a Beacon-style prime-gap hunt: base-2 Fermat tests of about
-2,029-bit numbers, on any GPU that [wgpu](https://wgpu.rs) supports (AMD, NVIDIA, Intel, Apple), with a pure-Rust
-CPU fallback and kernels written so they can also run in a browser through WebGPU.
+A portable GPU engine for batched base-2 Fermat probable-prime tests of large integers (tested up to about 2,000
+bits), on any GPU that [wgpu](https://wgpu.rs) supports (AMD, NVIDIA, Intel, Apple), with a pure-Rust CPU fallback and
+kernels written so they can also run in a browser through WebGPU. It was built for prime-gap searches (see
+[Background](#background-and-credits)), but the engine itself is generic: it takes a list of odd integers and returns
+one verdict each.
 
 **Status: experimental.** The engine is correct against independent references and runs on four GPUs, but it is
 not yet as fast as the CUDA implementation it is modelled on (about half its speed on the one card where both were
@@ -10,8 +12,9 @@ measured), and some platforms are untested. See [Limits](#limits).
 
 ## What it does
 
-- Reads and writes Beacon's `G2C1` candidate files and `G2V1` verdict files, so `bigmont` can stand in for Beacon's
-  `g1_fermat_v3` driver on those files.
+- The engine (`bigmont-core`, `Runner::fermat`) takes plain big integers and returns Fermat verdicts. The `bigmont`
+  command-line driver is one ready-made front end on top of it: it reads and writes Beacon's `G2C1` candidate and
+  `G2V1` verdict files, so it can stand in for Beacon's `g1_fermat_v3` driver on those files.
 - Runs the base-2 Fermat test with cooperative Montgomery arithmetic: several GPU lanes share one number, using
   subgroup shuffles for the cross-lane work (the shape of NVIDIA's CGBN, written in WGSL).
 - Measures instead of guessing. An autotuner tries every kernel shape the adapter can run (limb width, lanes per
@@ -117,7 +120,7 @@ The open items are tracked in the issues; the older notes are in `docs/superpowe
 
 ## Background and credits
 
-The design follows [Beacon](https://github.com/djuk8/beacon)'s CUDA Fermat driver (which builds on NVIDIA's
+The first use is Beacon-style prime-gap hunting. The design follows [Beacon](https://github.com/djuk8/beacon)'s CUDA Fermat driver (which builds on NVIDIA's
 [CGBN](https://github.com/NVlabs/CGBN) library) as its reference for interface and performance. This repository contains none of their
 source files. The kernels are generated WGSL; the tests compare them with independent big-integer references.
 
