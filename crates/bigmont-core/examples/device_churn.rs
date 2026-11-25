@@ -22,15 +22,31 @@ fn make_gpu(vkonly: bool) -> Gpu {
         return Gpu::new().expect("gpu");
     }
     pollster::block_on(async {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::VULKAN, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
         let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default() })
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                ..Default::default()
+            })
             .await
             .expect("vulkan adapter");
         let info = adapter.get_info();
         let has_subgroups = adapter.features().contains(wgpu::Features::SUBGROUP);
-        let features = if has_subgroups { wgpu::Features::SUBGROUP } else { wgpu::Features::empty() };
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor { required_features: features, ..Default::default() }).await.expect("device");
+        let features = if has_subgroups {
+            wgpu::Features::SUBGROUP
+        } else {
+            wgpu::Features::empty()
+        };
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                required_features: features,
+                ..Default::default()
+            })
+            .await
+            .expect("device");
         Gpu::from_parts(info, has_subgroups, device, queue)
     })
 }
@@ -41,7 +57,11 @@ fn proc_counts() -> String {
     let fds = std::fs::read_dir("/proc/self/fd").map(|d| d.count().to_string());
     let threads = std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("Threads:")).map(|l| l.trim_start_matches("Threads:").trim().to_string()));
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("Threads:"))
+                .map(|l| l.trim_start_matches("Threads:").trim().to_string())
+        });
     match (fds, threads) {
         (Ok(f), Some(t)) => format!("fds {f} threads {t}"),
         _ => String::new(),
@@ -55,13 +75,23 @@ fn main() {
     let tpi: u32 = args.next().map_or(8, |s| s.parse().expect("tpi"));
     let squarings: u32 = args.next().map_or(128, |s| s.parse().expect("squarings"));
     let rest: Vec<String> = args.collect();
-    let (threaded, vkonly) = (rest.iter().any(|a| a == "thread"), rest.iter().any(|a| a == "vkonly"));
+    let (threaded, vkonly) = (
+        rest.iter().any(|a| a == "thread"),
+        rest.iter().any(|a| a == "vkonly"),
+    );
     let cfg = KernelConfig::new(tpi, 64, Variant::Unrolled);
     let batch = Batch::from_values(&Batch::random_values(70, 2029, 7));
 
     let cycle = |i: u32, gpu: &Gpu| {
         let r = run(gpu, cfg, &batch, squarings, 1).expect("run");
-        eprintln!("cycle {i}: {} limbs back, {:.4} s | {} [{:?}] | {}", r.x.len(), r.best_secs, gpu.info.name, gpu.info.backend, proc_counts());
+        eprintln!(
+            "cycle {i}: {} limbs back, {:.4} s | {} [{:?}] | {}",
+            r.x.len(),
+            r.best_secs,
+            gpu.info.name,
+            gpu.info.backend,
+            proc_counts()
+        );
     };
     let shared = (mode == "reuse").then(|| make_gpu(vkonly));
     let mut kept = Vec::new();
@@ -84,5 +114,9 @@ fn main() {
             }
         }
     }
-    eprintln!("exiting normally after {cycles} cycles ({mode}{}{})", if threaded { ", thread" } else { "" }, if vkonly { ", vkonly" } else { "" });
+    eprintln!(
+        "exiting normally after {cycles} cycles ({mode}{}{})",
+        if threaded { ", thread" } else { "" },
+        if vkonly { ", vkonly" } else { "" }
+    );
 }

@@ -10,7 +10,7 @@ use crate::kernel::{KernelConfig, Target, Variant};
 use crate::scheme::LimbScheme;
 use num_bigint::BigUint;
 use num_traits::One;
-use std::time::Instant;
+use web_time::Instant;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RunStats {
@@ -62,7 +62,18 @@ impl Runner {
     /// Builds the Fermat shader, pipeline and buffers for `bits`-bit candidates, `bits >= MIN_BITS`
     /// (2). `capacity` (the most candidates per dispatch) is clamped to the dispatch-size and
     /// storage-binding limits.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<Runner, String> {
+        pollster::block_on(Runner::new_async(gpu, cfg, bits, capacity))
+    }
+
+    /// [`Runner::new`] as a future: the form a browser needs.
+    pub async fn new_async(
+        gpu: &Gpu,
+        cfg: KernelConfig,
+        bits: u32,
+        capacity: u32,
+    ) -> Result<Runner, String> {
         cfg.validate()?;
         if cfg.variant != Variant::Unrolled {
             return Err("the Fermat runner needs the unrolled variant".into());
@@ -70,10 +81,16 @@ impl Runner {
         // The ladder runs `bits - 1` iterations and reads exponent bit `bits - 2 - iteration`, which
         // needs bits >= 2; below that there is no odd n >= 3 anyway.
         if bits < MIN_BITS {
-            return Err(format!("{bits} bits is below the {MIN_BITS}-bit minimum (the smallest odd candidate, n = 3, has {MIN_BITS} bits)"));
+            return Err(format!(
+                "{bits} bits is below the {MIN_BITS}-bit minimum (the smallest odd candidate, n = 3, has {MIN_BITS} bits)"
+            ));
         }
         if cfg.r_bits() < bits + 4 {
-            return Err(format!("{} limbs give R = 2^{}, which is not above 16n for {bits}-bit n (use KernelConfig::for_bits)", cfg.limbs, cfg.r_bits()));
+            return Err(format!(
+                "{} limbs give R = 2^{}, which is not above 16n for {bits}-bit n (use KernelConfig::for_bits)",
+                cfg.limbs,
+                cfg.r_bits()
+            ));
         }
         if capacity == 0 {
             return Err("capacity must be at least 1".into());
@@ -81,19 +98,29 @@ impl Runner {
         cfg.check_caps(gpu.caps())?;
         gpu.check_subgroups(cfg.tpi)?;
         gpu.check_health()?;
-        Self::build(gpu, cfg, bits, capacity).map_err(|e| gpu.explain(e))
+        Self::build(gpu, cfg, bits, capacity)
+            .await
+            .map_err(|e| gpu.explain(e))
     }
 
-    fn build(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<Runner, String> {
+    async fn build(
+        gpu: &Gpu,
+        cfg: KernelConfig,
+        bits: u32,
+        capacity: u32,
+    ) -> Result<Runner, String> {
         // Generate the source first: a configuration with no Fermat source is an `Err`, never a panic.
-        let source = cfg.try_fermat_wgsl_for(Target::Native)?;
+        let source = cfg.try_fermat_wgsl_for(Target::host())?;
         let words = bits.div_ceil(32);
         let limits = gpu.device.limits();
         let max_groups = u64::from(limits.max_compute_workgroups_per_dimension.min(65535));
         let by_groups = max_groups * u64::from(cfg.instances_per_workgroup());
         let by_limbs = limits.max_storage_buffer_binding_size / (u64::from(cfg.limbs) * 4);
         let by_words = limits.max_storage_buffer_binding_size / (u64::from(words) * 4);
-        let cap = u64::from(capacity).min(by_groups).min(by_limbs).min(by_words);
+        let cap = u64::from(capacity)
+            .min(by_groups)
+            .min(by_limbs)
+            .min(by_words);
         let cap = u32::try_from(cap).map_err(|_| "capacity overflow".to_string())?;
         if cap == 0 {
             return Err("the device's storage binding limit is too small for one candidate".into());
@@ -101,68 +128,99 @@ impl Runner {
 
         let device = &gpu.device;
         let limb_bytes = u64::from(cap) * u64::from(cfg.limbs) * 4;
-        let (params, fp, n_buf, ninv_buf, x_buf, e_buf, staging) = guarded(device, "buffer creation", || {
-            let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(label),
-                    size,
-                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | extra,
+        let (params, fp, n_buf, ninv_buf, x_buf, e_buf, staging) =
+            guarded(device, "buffer creation", || {
+                let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(label),
+                        size,
+                        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | extra,
+                        mapped_at_creation: false,
+                    })
+                };
+                let uniform = |label: &str| {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(label),
+                        size: 16,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    })
+                };
+                let params = uniform("params");
+                let fp = uniform("fp");
+                let n_buf = storage("n", limb_bytes, wgpu::BufferUsages::empty());
+                let ninv_buf = storage("ninv", u64::from(cap) * 4, wgpu::BufferUsages::empty());
+                let x_buf = storage("x", limb_bytes, wgpu::BufferUsages::COPY_SRC);
+                let e_buf = storage(
+                    "e",
+                    u64::from(cap) * u64::from(words) * 4,
+                    wgpu::BufferUsages::empty(),
+                );
+                let staging = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("staging"),
+                    size: limb_bytes,
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
-                })
-            };
-            let uniform = |label: &str| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(label),
-                    size: 16,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                })
-            };
-            let params = uniform("params");
-            let fp = uniform("fp");
-            let n_buf = storage("n", limb_bytes, wgpu::BufferUsages::empty());
-            let ninv_buf = storage("ninv", u64::from(cap) * 4, wgpu::BufferUsages::empty());
-            let x_buf = storage("x", limb_bytes, wgpu::BufferUsages::COPY_SRC);
-            let e_buf = storage("e", u64::from(cap) * u64::from(words) * 4, wgpu::BufferUsages::empty());
-            let staging = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("staging"),
-                size: limb_bytes,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            (params, fp, n_buf, ninv_buf, x_buf, e_buf, staging)
-        })?;
+                });
+                (params, fp, n_buf, ninv_buf, x_buf, e_buf, staging)
+            })
+            .await?;
 
         let module = guarded(device, &format!("Fermat shader module for {cfg:?}"), || {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("fermat"),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             })
-        })?;
-        let pipeline = guarded(device, &format!("Fermat compute pipeline for {cfg:?}"), || {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("fermat"),
-                layout: None,
-                module: &module,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            })
-        })?;
+        })
+        .await?;
+        let pipeline = guarded(
+            device,
+            &format!("Fermat compute pipeline for {cfg:?}"),
+            || {
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("fermat"),
+                    layout: None,
+                    module: &module,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    cache: None,
+                })
+            },
+        )
+        .await?;
         let bind_group = guarded(device, "bind group creation", || {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("fermat"),
                 layout: &pipeline.get_bind_group_layout(0),
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: n_buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 2, resource: ninv_buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 3, resource: x_buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 4, resource: e_buf.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 5, resource: fp.as_entire_binding() },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: params.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: n_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: ninv_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: x_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: e_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: fp.as_entire_binding(),
+                    },
                 ],
             })
-        })?;
+        })
+        .await?;
         Ok(Runner {
             cfg,
             bits,
@@ -192,21 +250,41 @@ impl Runner {
     /// candidates; they are processed in chunks of `capacity()`. A lost device, a timed-out wait
     /// or an uncaptured wgpu error is an `Err` (see `Gpu::check_health`); the runner's buffers are
     /// then in an unknown state and it should be dropped.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn fermat(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<bool>, String> {
+        pollster::block_on(self.fermat_async(gpu, ns))
+    }
+
+    /// [`Runner::fermat`] as a future: the form a browser needs. Natively it blocks while it runs.
+    pub async fn fermat_async(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<bool>, String> {
         gpu.check_health()?;
         let mut out = Vec::with_capacity(ns.len());
         for (k, chunk) in ns.chunks(self.cap as usize).enumerate() {
-            out.extend(self.fermat_chunk(gpu, chunk, k * self.cap as usize).map_err(|e| gpu.explain(e))?);
+            out.extend(
+                self.fermat_chunk(gpu, chunk, k * self.cap as usize)
+                    .await
+                    .map_err(|e| gpu.explain(e))?,
+            );
         }
         Ok(out)
     }
 
     /// One dispatch-sized chunk; `base` is the index of `ns[0]` in the caller's slice (for errors).
-    fn fermat_chunk(&mut self, gpu: &Gpu, ns: &[BigUint], base: usize) -> Result<Vec<bool>, String> {
+    async fn fermat_chunk(
+        &mut self,
+        gpu: &Gpu,
+        ns: &[BigUint],
+        base: usize,
+    ) -> Result<Vec<bool>, String> {
         let bits = self.bits;
         for (i, n) in ns.iter().enumerate() {
             if !n.bit(0) || n.bits() != u64::from(bits) {
-                return Err(format!("candidate {} must be odd with exactly {bits} bits (has {} bits, odd = {})", base + i, n.bits(), n.bit(0)));
+                return Err(format!(
+                    "candidate {} must be odd with exactly {bits} bits (has {} bits, odd = {})",
+                    base + i,
+                    n.bits(),
+                    n.bit(0)
+                ));
             }
         }
         let count = ns.len() as u32;
@@ -243,8 +321,16 @@ impl Runner {
         let mut seg = self.segment_override.unwrap_or(1).max(1);
         while done < total {
             let this = seg.min(total - done);
-            queue.write_buffer(&self.params, 0, bytemuck::cast_slice(&[count, this, 0u32, 0u32]));
-            queue.write_buffer(&self.fp, 0, bytemuck::cast_slice(&[done, bits, self.words, 0u32]));
+            queue.write_buffer(
+                &self.params,
+                0,
+                bytemuck::cast_slice(&[count, this, 0u32, 0u32]),
+            );
+            queue.write_buffer(
+                &self.fp,
+                0,
+                bytemuck::cast_slice(&[done, bits, self.words, 0u32]),
+            );
             let mut enc = device.create_command_encoder(&Default::default());
             {
                 let mut pass = enc.begin_compute_pass(&Default::default());
@@ -254,7 +340,7 @@ impl Runner {
             }
             let t = Instant::now();
             queue.submit([enc.finish()]);
-            gpu.wait()?;
+            gpu.wait_async().await?;
             let dt = t.elapsed().as_secs_f64();
             self.stats.gpu_secs += dt;
             done += this;
@@ -269,13 +355,18 @@ impl Runner {
         let mut enc = device.create_command_encoder(&Default::default());
         enc.copy_buffer_to_buffer(&self.x_buf, 0, &self.staging, 0, bytes);
         queue.submit([enc.finish()]);
-        let x = gpu.read_back(&self.staging, bytes)?;
+        let x = gpu.read_back_async(&self.staging, bytes).await?;
 
         let scheme = self.cfg.scheme;
         if !scheme.normalised(&x) {
             return Err("kernel returned an unnormalised limb".into());
         }
-        let verdicts = ns.iter().zip(&preps).enumerate().map(|(i, (n, p))| scheme.unpack(&x[i * limbs..(i + 1) * limbs]) % n == p.r).collect();
+        let verdicts = ns
+            .iter()
+            .zip(&preps)
+            .enumerate()
+            .map(|(i, (n, p))| scheme.unpack(&x[i * limbs..(i + 1) * limbs]) % n == p.r)
+            .collect();
         self.stats.tests += u64::from(count);
         Ok(verdicts)
     }
@@ -290,15 +381,38 @@ fn prepare(ns: &[BigUint], scheme: LimbScheme, limbs: usize, words: usize) -> Ve
         let x0 = (&r << 1u32) % n;
         let mut e = (n - 1u32).to_u32_digits();
         e.resize(words, 0);
-        Prep { n: scheme.pack(n, limbs), x0: scheme.pack(&x0, limbs), ninv: scheme.neg_inv(n), e, r }
+        Prep {
+            n: scheme.pack(n, limbs),
+            x0: scheme.pack(&x0, limbs),
+            ninv: scheme.neg_inv(n),
+            e,
+            r,
+        }
     };
-    let threads = std::thread::available_parallelism().map_or(1, |t| t.get()).min(ns.len()).max(1);
-    if threads == 1 {
-        return ns.iter().map(one).collect();
+    // A browser page has no worker threads here: prepare on the one it has.
+    #[cfg(target_arch = "wasm32")]
+    {
+        ns.iter().map(one).collect()
     }
-    let per = ns.len().div_ceil(threads);
-    std::thread::scope(|s| {
-        let handles: Vec<_> = ns.chunks(per).map(|part| s.spawn(|| part.iter().map(one).collect::<Vec<_>>())).collect();
-        handles.into_iter().flat_map(|h| h.join().expect("host prep thread panicked")).collect()
-    })
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let threads = std::thread::available_parallelism()
+            .map_or(1, |t| t.get())
+            .min(ns.len())
+            .max(1);
+        if threads == 1 {
+            return ns.iter().map(one).collect();
+        }
+        let per = ns.len().div_ceil(threads);
+        std::thread::scope(|s| {
+            let handles: Vec<_> = ns
+                .chunks(per)
+                .map(|part| s.spawn(|| part.iter().map(one).collect::<Vec<_>>()))
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|h| h.join().expect("host prep thread panicked"))
+                .collect()
+        })
+    }
 }

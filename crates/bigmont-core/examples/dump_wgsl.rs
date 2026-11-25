@@ -24,10 +24,21 @@ fn main() {
         Some("unrolled") => Variant::Unrolled,
         _ => panic!("{usage}"),
     };
-    let flag = |name: &str| a.iter().position(|x| x == name).map(|i| a.get(i + 1).unwrap_or_else(|| panic!("{name} needs a value")).clone());
+    let flag = |name: &str| {
+        a.iter().position(|x| x == name).map(|i| {
+            a.get(i + 1)
+                .unwrap_or_else(|| panic!("{name} needs a value"))
+                .clone()
+        })
+    };
     let bits: u32 = flag("--bits").map_or(2029, |v| v.parse().expect("--bits N"));
-    let scheme = flag("--scheme").map_or(LimbScheme::Limb13, |v| LimbScheme::parse(&v).unwrap_or_else(|| panic!("--scheme must be 13 or 32, got {v}")));
-    let form = a.get(3).map(String::as_str).filter(|s| !s.starts_with("--"));
+    let scheme = flag("--scheme").map_or(LimbScheme::Limb13, |v| {
+        LimbScheme::parse(&v).unwrap_or_else(|| panic!("--scheme must be 13 or 32, got {v}"))
+    });
+    let form = a
+        .get(3)
+        .map(String::as_str)
+        .filter(|s| !s.starts_with("--"));
     let result = match form {
         None => {
             let cfg = KernelConfig::new(tpi, wg, variant);
@@ -44,7 +55,11 @@ fn main() {
             };
             let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, variant);
             cfg.validate().expect("invalid configuration");
-            if kernel == "fermat" { cfg.try_fermat_wgsl_for(target) } else { cfg.try_wgsl_for(target) }
+            if kernel == "fermat" {
+                cfg.try_fermat_wgsl_for(target)
+            } else {
+                cfg.try_wgsl_for(target)
+            }
         }
     };
     match result {

@@ -92,8 +92,10 @@ per figure, so this README does not quote them.
 
 ## In a browser
 
-`web/fermat.html` runs the 13-bit Fermat kernels in a browser's WebGPU and checks every verdict against a BigInt
-oracle. See [`web/README.md`](web/README.md).
+`web/fermat.html` runs the generated 13-bit Fermat kernels from JavaScript and checks every verdict against a BigInt
+oracle. `web/rust.html` does the same through the Rust engine itself: `bigmont-core` compiles to wasm32 (async API,
+13-bit scheme only, no autotuner yet) and `bigmont-wasm` exposes it to the page. The engine currently depends on wgpu at a trunk commit, because the
+browser's `subgroups` feature is only exposed by wgpu's WebGPU backend since gfx-rs/wgpu#10265 (not in the 30.0.2 release). See [`web/README.md`](web/README.md).
 
 ## Layout
 

@@ -42,10 +42,22 @@ pub enum Target {
 }
 
 impl Target {
+    /// The target the current build runs on: [`Target::Browser`] for wasm32, otherwise native.
+    pub const fn host() -> Target {
+        if cfg!(target_arch = "wasm32") {
+            Target::Browser
+        } else {
+            Target::Native
+        }
+    }
+
     /// What this target can run: a browser offers no 64-bit integers, native offers everything.
     pub fn offers(self) -> Caps {
         match self {
-            Target::Native => Caps { subgroups: true, int64: true },
+            Target::Native => Caps {
+                subgroups: true,
+                int64: true,
+            },
             Target::Browser => Caps::BROWSER,
         }
     }
@@ -53,9 +65,11 @@ impl Target {
     pub(crate) fn prelude(self) -> &'static str {
         match self {
             Target::Native => "",
-            Target::Browser => "enable subgroups;
+            Target::Browser => {
+                "enable subgroups;
 diagnostic(off, subgroup_uniformity);
-",
+"
+            }
         }
     }
 }
@@ -77,7 +91,13 @@ pub struct KernelConfig {
 impl KernelConfig {
     /// The Phase 0 size class: 160 limbs (2,029-bit numbers).
     pub const fn new(tpi: u32, wg: u32, variant: Variant) -> Self {
-        Self { tpi, wg, variant, limbs: LIMBS as u32, scheme: LimbScheme::Limb13 }
+        Self {
+            tpi,
+            wg,
+            variant,
+            limbs: LIMBS as u32,
+            scheme: LimbScheme::Limb13,
+        }
     }
 
     pub const fn with_limbs(mut self, limbs: u32) -> Self {
@@ -92,9 +112,19 @@ impl KernelConfig {
     }
 
     /// [`KernelConfig::for_bits`] for a given limb scheme.
-    pub fn for_bits_scheme(scheme: LimbScheme, bits: u32, tpi: u32, wg: u32, variant: Variant) -> Self {
+    pub fn for_bits_scheme(
+        scheme: LimbScheme,
+        bits: u32,
+        tpi: u32,
+        wg: u32,
+        variant: Variant,
+    ) -> Self {
         let need = scheme.limbs_for_bits(bits);
-        Self { scheme, ..Self::new(tpi, wg, variant) }.with_limbs(need.div_ceil(tpi) * tpi)
+        Self {
+            scheme,
+            ..Self::new(tpi, wg, variant)
+        }
+        .with_limbs(need.div_ceil(tpi) * tpi)
     }
 
     /// The same scheme, lane count, workgroup size and variant, with the limb count for `bits`.
@@ -109,7 +139,10 @@ impl KernelConfig {
 
     /// What a device must offer to run this kernel.
     pub fn requires(&self) -> Caps {
-        Caps { subgroups: self.needs_subgroups(), int64: self.scheme.requires().int64 }
+        Caps {
+            subgroups: self.needs_subgroups(),
+            int64: self.scheme.requires().int64,
+        }
     }
 
     /// `Ok` when a device offering `have` can run this kernel, else an error naming what is missing
@@ -119,7 +152,10 @@ impl KernelConfig {
         if missing.is_empty() {
             Ok(())
         } else {
-            Err(format!("{self:?} needs {}, which the adapter lacks", missing.join(" and ")))
+            Err(format!(
+                "{self:?} needs {}, which the adapter lacks",
+                missing.join(" and ")
+            ))
         }
     }
 
@@ -130,7 +166,10 @@ impl KernelConfig {
         if missing.is_empty() {
             Ok(())
         } else {
-            Err(format!("{:?} needs {missing:?}, which the {target:?} target does not offer", self.scheme))
+            Err(format!(
+                "{:?} needs {missing:?}, which the {target:?} target does not offer",
+                self.scheme
+            ))
         }
     }
 
@@ -138,17 +177,30 @@ impl KernelConfig {
         if !matches!(self.tpi, 1 | 4 | 8 | 16 | 32) {
             return Err(format!("tpi {} not supported (1, 4, 8, 16, 32)", self.tpi));
         }
-        if self.limbs < self.tpi || self.limbs % self.tpi != 0 || self.limbs > 1024 {
-            return Err(format!("{} limbs must be a multiple of tpi {} and at most 1024", self.limbs, self.tpi));
+        if self.limbs < self.tpi || !self.limbs.is_multiple_of(self.tpi) || self.limbs > 1024 {
+            return Err(format!(
+                "{} limbs must be a multiple of tpi {} and at most 1024",
+                self.limbs, self.tpi
+            ));
         }
-        if self.wg == 0 || self.wg % self.tpi != 0 || self.wg > 256 {
-            return Err(format!("workgroup size {} must be a multiple of tpi {} and at most 256", self.wg, self.tpi));
+        if self.wg == 0 || !self.wg.is_multiple_of(self.tpi) || self.wg > 256 {
+            return Err(format!(
+                "workgroup size {} must be a multiple of tpi {} and at most 256",
+                self.wg, self.tpi
+            ));
         }
         if self.variant == Variant::Unrolled && self.tpi == 1 {
-            return Err("the unrolled variant supports tpi 4, 8, 16, 32 only (tpi 1 is rolled-only)".to_string());
+            return Err(
+                "the unrolled variant supports tpi 4, 8, 16, 32 only (tpi 1 is rolled-only)"
+                    .to_string(),
+            );
         }
-        if self.scheme == LimbScheme::Limb32 && (self.variant != Variant::Unrolled || self.tpi == 1) {
-            return Err("32-bit limbs are generated for the unrolled variant with tpi 4, 8, 16, 32 only".to_string());
+        if self.scheme == LimbScheme::Limb32 && (self.variant != Variant::Unrolled || self.tpi == 1)
+        {
+            return Err(
+                "32-bit limbs are generated for the unrolled variant with tpi 4, 8, 16, 32 only"
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -185,10 +237,19 @@ impl KernelConfig {
             return crate::limb32::wgsl(self, crate::unrolled::Mode::Squarings);
         }
         if self.variant == Variant::Unrolled {
-            return Ok(crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Squarings));
+            return Ok(crate::unrolled::wgsl(
+                self,
+                target,
+                crate::unrolled::Mode::Squarings,
+            ));
         }
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
-            (target.prelude(), ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
+            (
+                target.prelude(),
+                ", @builtin(subgroup_invocation_id) sg_in: u32",
+                "let sg = sg_in;",
+                SUBGROUP_HELPERS,
+            )
         } else {
             ("", "", "let sg = 0u;", SCALAR_HELPERS)
         };
@@ -206,7 +267,8 @@ impl KernelConfig {
     /// mode plus `@binding(4) e_words` (`n - 1` as u32 words, read-only storage) and `@binding(5) fp`
     /// (uniform: first iteration, nbits, words per instance). Needs R > 16n (see `for_bits`).
     pub fn fermat_wgsl_for(&self, target: Target) -> String {
-        self.try_fermat_wgsl_for(target).unwrap_or_else(|e| panic!("{e}"))
+        self.try_fermat_wgsl_for(target)
+            .unwrap_or_else(|e| panic!("{e}"))
     }
 
     /// [`KernelConfig::fermat_wgsl_for`], or the reason this configuration has no source for `target`.
@@ -218,6 +280,10 @@ impl KernelConfig {
         if self.scheme == LimbScheme::Limb32 {
             return crate::limb32::wgsl(self, crate::unrolled::Mode::Fermat);
         }
-        Ok(crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Fermat))
+        Ok(crate::unrolled::wgsl(
+            self,
+            target,
+            crate::unrolled::Mode::Fermat,
+        ))
     }
 }

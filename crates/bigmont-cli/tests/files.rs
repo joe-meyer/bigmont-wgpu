@@ -8,7 +8,7 @@ fn tmp(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn candidate_file_round_trips_and_has_the_beacon_layout() {
+fn candidate_file_round_trips_and_has_the_g2c1_layout() {
     let mut rng = XorShift64::new(1);
     let ns: Vec<BigUint> = (0..5).map(|_| random_odd_modulus(&mut rng, 2029)).collect();
     let p = tmp("cand.bin");
@@ -146,7 +146,10 @@ fn sizes_file_one_entry_short_of_its_claim_is_an_error() {
     let p = tmp("shortsizes.bin");
     std::fs::write(&p, sizes_bytes(0x3153_3247, 3, &[1, 2])).unwrap();
     let err = read_sizes(&p).unwrap_err();
-    assert!(err.contains("claims 3 entries but only has 8 bytes"), "{err}");
+    assert!(
+        err.contains("claims 3 entries but only has 8 bytes"),
+        "{err}"
+    );
     std::fs::remove_file(p).unwrap();
 }
 
@@ -169,7 +172,14 @@ fn bin_list_strips_line_endings_and_trailing_spaces_and_skips_blanks() {
     let p = tmp("list.txt");
     std::fs::write(&p, "a.bin\r\n\r\n  \nb dir/b.bin  \n\nc.bin").unwrap();
     let got = read_bin_list(&p).unwrap();
-    assert_eq!(got, vec![PathBuf::from("a.bin"), PathBuf::from("b dir/b.bin"), PathBuf::from("c.bin")]);
+    assert_eq!(
+        got,
+        vec![
+            PathBuf::from("a.bin"),
+            PathBuf::from("b dir/b.bin"),
+            PathBuf::from("c.bin")
+        ]
+    );
     std::fs::remove_file(p).unwrap();
 }
 

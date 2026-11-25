@@ -9,11 +9,17 @@ use bigmont_core::kernel::{KernelConfig, Variant};
 
 #[test]
 fn opening_many_devices_keeps_the_same_adapter() {
-    let Some(first) = common::open_gpu(KernelConfig::new(8, 64, Variant::Unrolled)) else { return };
+    let Some(first) = common::open_gpu(KernelConfig::new(8, 64, Variant::Unrolled)) else {
+        return;
+    };
     let (name, backend) = (first.info.name.clone(), first.info.backend);
     drop(first);
     for i in 1..40 {
         let gpu = Gpu::new().unwrap_or_else(|e| panic!("open #{i} failed: {e}"));
-        assert_eq!((gpu.info.name.as_str(), gpu.info.backend), (name.as_str(), backend), "open #{i} picked a different adapter");
+        assert_eq!(
+            (gpu.info.name.as_str(), gpu.info.backend),
+            (name.as_str(), backend),
+            "open #{i} picked a different adapter"
+        );
     }
 }

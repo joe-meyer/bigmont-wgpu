@@ -13,7 +13,11 @@ fn browser_source_is_native_source_plus_the_two_directives() {
             assert!(!native.contains("enable subgroups"), "{cfg:?}");
             // everything after the prelude is identical, except that the rolled template's own
             // blank first line (the empty `__ENABLE__` placeholder) is replaced.
-            assert_eq!(browser[PRELUDE.len()..].trim_start(), native.trim_start(), "{cfg:?}");
+            assert_eq!(
+                browser[PRELUDE.len()..].trim_start(),
+                native.trim_start(),
+                "{cfg:?}"
+            );
         }
     }
 }

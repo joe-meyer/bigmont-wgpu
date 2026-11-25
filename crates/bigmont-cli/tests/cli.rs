@@ -7,6 +7,8 @@ use num_bigint::BigUint;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+mod common;
+
 fn bigmont(args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_bigmont"));
     c.args(args);
@@ -25,7 +27,10 @@ fn code(out: &Output) -> Option<i32> {
 fn no_arguments_is_a_usage_error_with_exit_code_2() {
     let out = run(bigmont(&[]));
     assert_eq!(code(&out), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("usage:"), "usage goes to stderr");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("usage:"),
+        "usage goes to stderr"
+    );
 }
 
 #[test]
@@ -33,7 +38,10 @@ fn help_exits_0_and_prints_usage() {
     for flag in ["--help", "-h"] {
         let out = run(bigmont(&[flag]));
         assert_eq!(code(&out), Some(0), "{flag}");
-        assert!(String::from_utf8_lossy(&out.stdout).contains("usage:"), "{flag}");
+        assert!(
+            String::from_utf8_lossy(&out.stdout).contains("usage:"),
+            "{flag}"
+        );
     }
 }
 
@@ -46,7 +54,10 @@ fn unknown_flags_and_missing_positionals_exit_2() {
 
 #[test]
 fn cache_and_no_cache_together_are_a_usage_error() {
-    assert_eq!(code(&run(bigmont(&["a", "b", "--cache", "x", "--no-cache"]))), Some(2));
+    assert_eq!(
+        code(&run(bigmont(&["a", "b", "--cache", "x", "--no-cache"]))),
+        Some(2)
+    );
 }
 
 // ---- tuning cache: default location, BIGMONT_CACHE, --no-cache ----
@@ -58,28 +69,27 @@ fn tmp_dir(tag: &str) -> PathBuf {
     d
 }
 
+/// The engine's GPU backend needs an adapter with subgroups; see `common::usable_gpu`.
 fn gpu_available() -> bool {
-    match Gpu::new() {
-        Ok(_) => true,
-        Err(e) => {
-            assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
-            eprintln!("SKIP no adapter: {e}");
-            false
-        }
-    }
+    common::usable_gpu()
 }
 
 /// 80 odd 1019-bit candidates (above the engine's 64-candidate GPU threshold), written to `dir`.
 fn candidates(dir: &Path) -> PathBuf {
     let mut rng = XorShift64::new(5);
-    let ns: Vec<BigUint> = (0..80).map(|_| random_odd_modulus(&mut rng, 1019)).collect();
+    let ns: Vec<BigUint> = (0..80)
+        .map(|_| random_odd_modulus(&mut rng, 1019))
+        .collect();
     let p = dir.join("cand.bin");
     formats::write_candidates(&p, 1024, &ns).unwrap();
     p
 }
 
 fn files_in(dir: &Path) -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    let mut v: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
     v.sort();
     v
 }
@@ -94,18 +104,49 @@ fn bigmont_cache_env_names_the_default_cache_and_no_cache_disables_it() {
     let cache_dir = dir.join("nested").join("cache-dir"); // parent does not exist yet
     let cache = cache_dir.join("tune.cache");
 
-    let mut c = bigmont(&[cand.to_str().unwrap(), dir.join("v1.bin").to_str().unwrap(), "--backend", "gpu", "--no-cache"]);
+    let mut c = bigmont(&[
+        cand.to_str().unwrap(),
+        dir.join("v1.bin").to_str().unwrap(),
+        "--backend",
+        "gpu",
+        "--no-cache",
+    ]);
     c.env("BIGMONT_CACHE", &cache);
     let out = run(c);
-    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(!cache.exists() && !cache_dir.exists(), "--no-cache must not create the cache");
+    assert_eq!(
+        code(&out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !cache.exists() && !cache_dir.exists(),
+        "--no-cache must not create the cache"
+    );
 
-    let mut c = bigmont(&[cand.to_str().unwrap(), dir.join("v2.bin").to_str().unwrap(), "--backend", "gpu"]);
+    let mut c = bigmont(&[
+        cand.to_str().unwrap(),
+        dir.join("v2.bin").to_str().unwrap(),
+        "--backend",
+        "gpu",
+    ]);
     c.env("BIGMONT_CACHE", &cache);
     let out = run(c);
-    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(cache.exists(), "the default (here BIGMONT_CACHE) cache is written");
-    assert_eq!(files_in(&cache_dir), ["tune.cache"], "an atomic write leaves no temporary file");
+    assert_eq!(
+        code(&out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        cache.exists(),
+        "the default (here BIGMONT_CACHE) cache is written"
+    );
+    assert_eq!(
+        files_in(&cache_dir),
+        ["tune.cache"],
+        "an atomic write leaves no temporary file"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -116,17 +157,41 @@ fn the_tune_subcommand_writes_the_cache() {
     }
     let dir = tmp_dir("tune");
     let cache = dir.join("tune.cache");
-    let out = run(bigmont(&["tune", "--bits", "1019", "--cache", cache.to_str().unwrap()]));
-    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = run(bigmont(&[
+        "tune",
+        "--bits",
+        "1019",
+        "--cache",
+        cache.to_str().unwrap(),
+    ]));
+    assert_eq!(
+        code(&out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
     // Auto may pick either scheme: the line must parse as a winner of one of them (the value is the
     // last two `|` fields, `<unrolled|unrolled32> <tpi> <wg>|<rate>`), under the Auto key
     // (`name|backend|driver|any|class`).
-    let line = text.lines().find(|l| !l.is_empty()).expect("one cache line");
+    let line = text
+        .lines()
+        .find(|l| !l.is_empty())
+        .expect("one cache line");
     let mut fields = line.rsplitn(3, '|');
-    let (rate, shape, key) = (fields.next().unwrap(), fields.next().unwrap(), fields.next().unwrap());
-    assert!(bigmont_cli::tune::parse_value(&format!("{shape}|{rate}")).is_some(), "{text}");
-    assert!(key.contains("|any|") && !key.contains("only-"), "tune with the default --limbs uses the Auto (`any`) key: {text}");
+    let (rate, shape, key) = (
+        fields.next().unwrap(),
+        fields.next().unwrap(),
+        fields.next().unwrap(),
+    );
+    assert!(
+        bigmont_cli::tune::parse_value(&format!("{shape}|{rate}")).is_some(),
+        "{text}"
+    );
+    assert!(
+        key.contains("|any|") && !key.contains("only-"),
+        "tune with the default --limbs uses the Auto (`any`) key: {text}"
+    );
     assert_eq!(files_in(&dir), ["tune.cache"]);
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -139,13 +204,19 @@ fn an_invalid_limbs_value_is_a_usage_error_naming_the_allowed_values() {
         let out = run(bigmont(&["a", "b", "--limbs", bad]));
         assert_eq!(code(&out), Some(2), "--limbs {bad:?}");
         let err = String::from_utf8_lossy(&out.stderr);
-        assert!(err.contains("auto") && err.contains("13") && err.contains("32"), "--limbs {bad:?}: {err}");
+        assert!(
+            err.contains("auto") && err.contains("13") && err.contains("32"),
+            "--limbs {bad:?}: {err}"
+        );
     }
     let out = run(bigmont(&["tune", "--limbs=7"]));
     assert_eq!(code(&out), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("--limbs"));
     let out = run(bigmont(&["--help"]));
-    assert!(String::from_utf8_lossy(&out.stdout).contains("--limbs"), "the usage text documents the flag");
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("--limbs"),
+        "the usage text documents the flag"
+    );
 }
 
 fn has_int64() -> Option<bool> {
@@ -157,7 +228,10 @@ fn int64_available() -> bool {
     match has_int64() {
         Some(true) => true,
         other => {
-            assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no int64 adapter (found: {other:?}); set BIGMONT_ALLOW_SKIP=1 to allow skips");
+            assert!(
+                std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
+                "no int64 adapter (found: {other:?}); set BIGMONT_ALLOW_SKIP=1 to allow skips"
+            );
             eprintln!("SKIP no adapter with SHADER_INT64");
             false
         }
@@ -173,17 +247,45 @@ fn limbs_32_runs_a_candidate_file_and_writes_the_expected_verdicts() {
     let cand = candidates(&dir);
     let verdict = dir.join("v.bin");
     let cache = dir.join("tune.cache");
-    let out = run(bigmont(&[cand.to_str().unwrap(), verdict.to_str().unwrap(), "--backend", "gpu", "--limbs", "32", "--cache", cache.to_str().unwrap()]));
-    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = run(bigmont(&[
+        cand.to_str().unwrap(),
+        verdict.to_str().unwrap(),
+        "--backend",
+        "gpu",
+        "--limbs",
+        "32",
+        "--cache",
+        cache.to_str().unwrap(),
+    ]));
+    assert_eq!(
+        code(&out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let file = formats::read_candidates(&cand).unwrap();
     let (_, got) = formats::read_verdicts(&verdict).unwrap();
-    let want: Vec<u8> = file.numbers.iter().map(|n| u8::from(bigmont_cpu::fermat_base2(n))).collect();
+    let want: Vec<u8> = file
+        .numbers
+        .iter()
+        .map(|n| u8::from(bigmont_cpu::fermat_base2(n)))
+        .collect();
     assert_eq!(got, want);
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("Limb32"), "the engine's tune lines name the scheme: {stderr}");
-    assert!(stderr.contains("gpu 80"), "all 80 candidates ran on the GPU: {stderr}");
+    assert!(
+        stderr.contains("Limb32"),
+        "the engine's tune lines name the scheme: {stderr}"
+    );
+    assert!(
+        stderr.contains("gpu 80"),
+        "all 80 candidates ran on the GPU: {stderr}"
+    );
     let text = std::fs::read_to_string(&cache).unwrap();
-    assert!(text.lines().all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")), "{text}");
+    assert!(
+        text.lines()
+            .all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -194,15 +296,41 @@ fn the_tune_subcommand_forces_a_scheme_and_prints_a_scheme_column() {
     }
     let dir = tmp_dir("tune32");
     let cache = dir.join("tune.cache");
-    let out = run(bigmont(&["tune", "--bits", "1019", "--limbs", "32", "--cache", cache.to_str().unwrap()]));
-    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = run(bigmont(&[
+        "tune",
+        "--bits",
+        "1019",
+        "--limbs",
+        "32",
+        "--cache",
+        cache.to_str().unwrap(),
+    ]));
+    assert_eq!(
+        code(&out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let header = stdout.lines().find(|l| l.contains("squarings/s") && l.contains("tpi")).expect("table header");
+    let header = stdout
+        .lines()
+        .find(|l| l.contains("squarings/s") && l.contains("tpi"))
+        .expect("table header");
     assert!(header.contains("scheme"), "{header}");
-    assert!(stdout.lines().filter(|l| l.trim_end().ends_with("ok")).all(|l| l.split_whitespace().next() == Some("32")), "only 32-bit rows: {stdout}");
+    assert!(
+        stdout
+            .lines()
+            .filter(|l| l.trim_end().ends_with("ok"))
+            .all(|l| l.split_whitespace().next() == Some("32")),
+        "only 32-bit rows: {stdout}"
+    );
     assert!(stdout.contains("best: scheme 32"), "{stdout}");
     let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
-    assert!(text.lines().all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")), "{text}");
+    assert!(
+        text.lines()
+            .all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")),
+        "{text}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -247,7 +375,10 @@ fn build_with(spec: &[(u32, &[u32])], seed: u64, bits_of: impl Fn(u32) -> u32) -
             ns.push(n);
         }
     }
-    let plain = ns.iter().map(|n| u8::from(bigmont_cpu::fermat_base2(n))).collect();
+    let plain = ns
+        .iter()
+        .map(|n| u8::from(bigmont_cpu::fermat_base2(n)))
+        .collect();
     Data { ns, sizes, plain }
 }
 
@@ -282,7 +413,12 @@ fn model(plain: &[u8], sizes: &[u32], bounds: &[u32], marker: u8) -> (Vec<u8>, u
     for &size in sizes {
         let ks = &plain[off..off + size as usize];
         let end = match ks.iter().position(|&v| v == 1) {
-            Some(h) => bounds.iter().copied().find(|&b| b as usize > h).expect("last boundary covers every position").min(size),
+            Some(h) => bounds
+                .iter()
+                .copied()
+                .find(|&b| b as usize > h)
+                .expect("last boundary covers every position")
+                .min(size),
             None => size,
         };
         out[off..off + end as usize].copy_from_slice(&ks[..end as usize]);
@@ -312,31 +448,55 @@ fn ee_dir(tag: &str, d: &Data) -> PathBuf {
 
 /// `bigmont cand.bin out.bin --backend cpu --no-cache <extra>` in `dir`.
 fn ee_run(dir: &Path, out_name: &str, extra: &[&str]) -> Output {
-    let mut args = vec![s(&dir.join("cand.bin")).to_string(), s(&dir.join(out_name)).to_string(), "--backend".into(), "cpu".into(), "--no-cache".into()];
+    let mut args = vec![
+        s(&dir.join("cand.bin")).to_string(),
+        s(&dir.join(out_name)).to_string(),
+        "--backend".into(),
+        "cpu".into(),
+        "--no-cache".into(),
+    ];
     args.extend(extra.iter().map(|a| a.to_string()));
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     run(bigmont(&refs))
 }
 
 fn ok(out: &Output) {
-    assert_eq!(code(out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        code(out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 fn verdicts_of(path: &Path) -> Vec<u8> {
     let (bits, v) = formats::read_verdicts(path).unwrap();
-    assert_eq!(bits, EE_BITS, "the verdict header carries the candidates' container width");
+    assert_eq!(
+        bits, EE_BITS,
+        "the verdict header carries the candidates' container width"
+    );
     v
 }
 
 /// The `key=value` fields of the `g1_fermat[EE]:` line.
 fn summary(out: &Output) -> Vec<(String, String)> {
     let err = String::from_utf8_lossy(&out.stderr);
-    let line = err.lines().find(|l| l.starts_with("g1_fermat[EE]: bits=")).unwrap_or_else(|| panic!("no summary line in: {err}"));
-    line.split_whitespace().filter_map(|t| t.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    let line = err
+        .lines()
+        .find(|l| l.starts_with("g1_fermat[EE]: bits="))
+        .unwrap_or_else(|| panic!("no summary line in: {err}"));
+    line.split_whitespace()
+        .filter_map(|t| t.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
 }
 
 fn field(sum: &[(String, String)], key: &str) -> String {
-    sum.iter().find(|(k, _)| k == key).unwrap_or_else(|| panic!("no {key}= in {sum:?}")).1.clone()
+    sum.iter()
+        .find(|(k, _)| k == key)
+        .unwrap_or_else(|| panic!("no {key}= in {sum:?}"))
+        .1
+        .clone()
 }
 
 #[test]
@@ -346,7 +506,11 @@ fn the_oracle_data_has_what_the_ee_tests_need() {
     let (v, tested, waves) = model(&d.plain, &d.sizes, &b, 3);
     assert!(v.contains(&3), "some positions are skipped");
     assert!(d.plain.iter().filter(|&&x| x == 1).count() >= 8);
-    assert!(tested < d.ns.len() as u64 && waves >= 3, "tested {tested} of {}, {waves} waves", d.ns.len());
+    assert!(
+        tested < d.ns.len() as u64 && waves >= 3,
+        "tested {tested} of {}, {waves} waves",
+        d.ns.len()
+    );
 }
 
 #[test]
@@ -368,12 +532,26 @@ fn ee_matches_a_plain_run_where_tested_and_writes_the_marker_where_skipped() {
     for &size in &d.sizes {
         let k = off..off + size as usize;
         match got[k.clone()].iter().position(|&v| v == 3) {
-            None => assert_eq!(got[k.clone()], plain_v[k.clone()], "a k that is never cut short equals the plain run"),
+            None => assert_eq!(
+                got[k.clone()],
+                plain_v[k.clone()],
+                "a k that is never cut short equals the plain run"
+            ),
             Some(first_skipped) => {
                 let cut = k.start + first_skipped;
-                assert_eq!(got[k.start..cut], plain_v[k.start..cut], "the tested part equals the plain run");
-                assert!(got[cut..k.end].iter().all(|&v| v == 3), "everything after the first skip is skipped");
-                assert!(plain_v[k.start..cut].contains(&1), "only a k with a prime in its tested part is cut short");
+                assert_eq!(
+                    got[k.start..cut],
+                    plain_v[k.start..cut],
+                    "the tested part equals the plain run"
+                );
+                assert!(
+                    got[cut..k.end].iter().all(|&v| v == 3),
+                    "everything after the first skip is skipped"
+                );
+                assert!(
+                    plain_v[k.start..cut].contains(&1),
+                    "only a k with a prime in its tested part is cut short"
+                );
             }
         }
         off += size as usize;
@@ -390,14 +568,30 @@ fn bins_list_with_crlf_equals_the_concatenation_run_as_one_file() {
     let cut = d.ns.len() / 3 + 1;
     formats::write_candidates(&dir.join("a.bin"), EE_BITS, &d.ns[..cut]).unwrap();
     formats::write_candidates(&dir.join("b.bin"), EE_BITS, &d.ns[cut..]).unwrap();
-    let list = format!("{}  \r\n\r\n{}\r\n", s(&dir.join("a.bin")), s(&dir.join("b.bin")));
+    let list = format!(
+        "{}  \r\n\r\n{}\r\n",
+        s(&dir.join("a.bin")),
+        s(&dir.join("b.bin"))
+    );
     std::fs::write(dir.join("list.txt"), list).unwrap();
     let sizes = s(&dir.join("sizes.bin")).to_string();
 
     ok(&ee_run(&dir, "one.bin", &["--ee", &sizes]));
-    let out = run(bigmont(&[s(&dir.join("list.txt")), s(&dir.join("list-out.bin")), "--backend", "cpu", "--no-cache", "--bins", "--ee", &sizes]));
+    let out = run(bigmont(&[
+        s(&dir.join("list.txt")),
+        s(&dir.join("list-out.bin")),
+        "--backend",
+        "cpu",
+        "--no-cache",
+        "--bins",
+        "--ee",
+        &sizes,
+    ]));
     ok(&out);
-    assert_eq!(verdicts_of(&dir.join("list-out.bin")), verdicts_of(&dir.join("one.bin")));
+    assert_eq!(
+        verdicts_of(&dir.join("list-out.bin")),
+        verdicts_of(&dir.join("one.bin"))
+    );
     assert_eq!(field(&summary(&out), "count"), d.ns.len().to_string());
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -414,7 +608,12 @@ fn marker_chunk_and_growth_change_the_output_as_the_semantics_require() {
         (&["--marker", "7"], 6, 1.15, 7),
         (&["--marker", "0"], 6, 1.15, 0),
         (&["--chunk", "1", "--growth", "1.0"], 1, 1.0, 3),
-        (&["--chunk", "2", "--growth", "1.0", "--marker", "255"], 2, 1.0, 255),
+        (
+            &["--chunk", "2", "--growth", "1.0", "--marker", "255"],
+            2,
+            1.0,
+            255,
+        ),
         (&["--chunk", "0", "--growth", "1.5"], 0, 1.5, 3), // chunk <= 0 steps by one position at a time
     ];
     for (i, (flags, chunk, growth, marker)) in cases.iter().enumerate() {
@@ -423,23 +622,38 @@ fn marker_chunk_and_growth_change_the_output_as_the_semantics_require() {
         let name = format!("o{i}.bin");
         let out = ee_run(&dir, &name, &args);
         ok(&out);
-        let (want, tested, waves) = model(&d.plain, &d.sizes, &schedule(*chunk, *growth, top), *marker);
+        let (want, tested, waves) =
+            model(&d.plain, &d.sizes, &schedule(*chunk, *growth, top), *marker);
         assert_eq!(verdicts_of(&dir.join(&name)), want, "{flags:?}");
         let sum = summary(&out);
         assert_eq!(field(&sum, "tested"), tested.to_string(), "{flags:?}");
         assert_eq!(field(&sum, "waves"), waves.to_string(), "{flags:?}");
     }
     // One huge chunk is a single wave with nothing skipped: equal to a plain run.
-    let out = ee_run(&dir, "big.bin", &["--ee", &sizes, "--chunk", "1000000", "--growth", "1.0"]);
+    let out = ee_run(
+        &dir,
+        "big.bin",
+        &["--ee", &sizes, "--chunk", "1000000", "--growth", "1.0"],
+    );
     ok(&out);
     assert_eq!(verdicts_of(&dir.join("big.bin")), d.plain);
     assert_eq!(field(&summary(&out), "waves"), "1");
     assert_eq!(field(&summary(&out), "tested"), d.ns.len().to_string());
     // chunk 1 retires as early as possible: strictly fewer tests than the default, more waves.
-    let tiny = summary(&ee_run(&dir, "tiny.bin", &["--ee", &sizes, "--chunk", "1", "--growth", "1.0"]));
+    let tiny = summary(&ee_run(
+        &dir,
+        "tiny.bin",
+        &["--ee", &sizes, "--chunk", "1", "--growth", "1.0"],
+    ));
     let default = summary(&ee_run(&dir, "def.bin", &["--ee", &sizes]));
-    assert!(field(&tiny, "tested").parse::<u64>().unwrap() < field(&default, "tested").parse::<u64>().unwrap());
-    assert!(field(&tiny, "waves").parse::<u32>().unwrap() > field(&default, "waves").parse::<u32>().unwrap());
+    assert!(
+        field(&tiny, "tested").parse::<u64>().unwrap()
+            < field(&default, "tested").parse::<u64>().unwrap()
+    );
+    assert!(
+        field(&tiny, "waves").parse::<u32>().unwrap()
+            > field(&default, "waves").parse::<u32>().unwrap()
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -450,13 +664,26 @@ fn the_summary_line_has_the_documented_format_and_the_independently_computed_wav
     let out = ee_run(&dir, "o.bin", &["--ee", s(&dir.join("sizes.bin"))]);
     ok(&out);
     let err = String::from_utf8_lossy(&out.stderr);
-    let line = err.lines().find(|l| l.starts_with("g1_fermat[EE]: bits=")).expect("summary line");
+    let line = err
+        .lines()
+        .find(|l| l.starts_with("g1_fermat[EE]: bits="))
+        .expect("summary line");
     let (want_v, tested, waves) = model(&d.plain, &d.sizes, &schedule(6, 1.15, s_max(&d.sizes)), 3);
     let count = d.ns.len();
     let prp = want_v.iter().filter(|&&v| v == 1).count();
-    let head = format!("g1_fermat[EE]: bits={EE_BITS} count={count} ks={} tested={tested} ({:.3}) waves={waves} | ", d.sizes.len(), tested as f64 / count as f64);
-    assert!(line.starts_with(&head), "{line}\nwanted a line starting {head}");
-    assert!(line.contains("s gpu-phase (lock wait 0.00s) | ") && line.contains(" tests/s | "), "{line}");
+    let head = format!(
+        "g1_fermat[EE]: bits={EE_BITS} count={count} ks={} tested={tested} ({:.3}) waves={waves} | ",
+        d.sizes.len(),
+        tested as f64 / count as f64
+    );
+    assert!(
+        line.starts_with(&head),
+        "{line}\nwanted a line starting {head}"
+    );
+    assert!(
+        line.contains("s gpu-phase (lock wait 0.00s) | ") && line.contains(" tests/s | "),
+        "{line}"
+    );
     assert!(line.ends_with(&format!("prp={prp} gec_alarm=0")), "{line}");
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -465,17 +692,29 @@ fn the_summary_line_has_the_documented_format_and_the_independently_computed_wav
 /// exist in `dir` afterwards.
 fn expect_input_error(dir: &Path, args: &[&str], out_name: &str, needle: &str) {
     let out = run(bigmont(args));
-    assert_eq!(code(&out), Some(2), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        code(&out),
+        Some(2),
+        "{args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains(needle), "{args:?}: wanted {needle:?} in {err}");
-    assert!(!dir.join(out_name).exists() && !dir.join(format!("{out_name}.tmp")).exists(), "{args:?}: an output file was left behind");
+    assert!(
+        !dir.join(out_name).exists() && !dir.join(format!("{out_name}.tmp")).exists(),
+        "{args:?}: an output file was left behind"
+    );
 }
 
 #[test]
 fn ee_input_errors_exit_2_with_a_message_and_leave_no_output() {
     let d = mixed();
     let dir = ee_dir("ee-errors", &d);
-    let (cand, sizes, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("sizes.bin")).to_string(), s(&dir.join("o.bin")).to_string());
+    let (cand, sizes, out) = (
+        s(&dir.join("cand.bin")).to_string(),
+        s(&dir.join("sizes.bin")).to_string(),
+        s(&dir.join("o.bin")).to_string(),
+    );
     // `bigmont <input> o.bin --backend cpu --no-cache <extra>` must fail with `needle`.
     let fails = |input: &str, extra: &[&str], needle: &str| {
         let mut a = vec![input, out.as_str(), "--backend", "cpu", "--no-cache"];
@@ -508,12 +747,28 @@ fn ee_input_errors_exit_2_with_a_message_and_leave_no_output() {
     let absent = s(&dir.join("nope.bin")).to_string();
     fails(&absent, &["--ee", &sizes], "nope.bin");
     std::fs::write(dir.join("missing.txt"), format!("{cand}\n{absent}\n")).unwrap();
-    fails(s(&dir.join("missing.txt")), &["--bins", "--ee", &sizes], "nope.bin");
+    fails(
+        s(&dir.join("missing.txt")),
+        &["--bins", "--ee", &sizes],
+        "nope.bin",
+    );
     formats::write_candidates(&dir.join("wide.bin"), EE_BITS + 32, &d.ns[..1]).unwrap();
-    std::fs::write(dir.join("mixed.txt"), format!("{cand}\n{}\n", s(&dir.join("wide.bin")))).unwrap();
-    fails(s(&dir.join("mixed.txt")), &["--bins", "--ee", &sizes], "mixed bits");
+    std::fs::write(
+        dir.join("mixed.txt"),
+        format!("{cand}\n{}\n", s(&dir.join("wide.bin"))),
+    )
+    .unwrap();
+    fails(
+        s(&dir.join("mixed.txt")),
+        &["--bins", "--ee", &sizes],
+        "mixed bits",
+    );
     std::fs::write(dir.join("empty.txt"), "\r\n  \r\n").unwrap();
-    fails(s(&dir.join("empty.txt")), &["--bins", "--ee", &sizes], "empty.txt");
+    fails(
+        s(&dir.join("empty.txt")),
+        &["--bins", "--ee", &sizes],
+        "empty.txt",
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -523,19 +778,56 @@ fn an_absurd_schedule_is_refused_before_anything_is_allocated() {
     let dir = ee_dir("ee-absurd", &d);
     // One k of 4 billion candidates with a step of 1 would be 4 billion boundaries (16 GB of schedule).
     formats::write_sizes(&dir.join("huge.bin"), &[u32::MAX]).unwrap();
-    let (cand, huge, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("huge.bin")).to_string(), s(&dir.join("o.bin")).to_string());
-    for flags in [&["--chunk", "1", "--growth", "1.0"][..], &["--chunk", "0", "--growth", "1.0"], &["--chunk", "-5"]] {
-        let mut a = vec![cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", huge.as_str()];
+    let (cand, huge, out) = (
+        s(&dir.join("cand.bin")).to_string(),
+        s(&dir.join("huge.bin")).to_string(),
+        s(&dir.join("o.bin")).to_string(),
+    );
+    for flags in [
+        &["--chunk", "1", "--growth", "1.0"][..],
+        &["--chunk", "0", "--growth", "1.0"],
+        &["--chunk", "-5"],
+    ] {
+        let mut a = vec![
+            cand.as_str(),
+            out.as_str(),
+            "--backend",
+            "cpu",
+            "--no-cache",
+            "--ee",
+            huge.as_str(),
+        ];
         a.extend_from_slice(flags);
         let started = Instant::now();
         expect_input_error(&dir, &a, "o.bin", "waves");
-        assert!(started.elapsed() < Duration::from_secs(20), "{flags:?}: refused quickly");
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "{flags:?}: refused quickly"
+        );
     }
     // A growing schedule over the same k is short, so it is not refused for its length (it fails the
     // sizes-sum check instead, because the file does not hold 4 billion candidates).
-    let a = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", huge.as_str()];
+    let a = [
+        cand.as_str(),
+        out.as_str(),
+        "--backend",
+        "cpu",
+        "--no-cache",
+        "--ee",
+        huge.as_str(),
+    ];
     expect_input_error(&dir, &a, "o.bin", "sizes sum");
-    let a = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", huge.as_str(), "--chunk", "1"];
+    let a = [
+        cand.as_str(),
+        out.as_str(),
+        "--backend",
+        "cpu",
+        "--no-cache",
+        "--ee",
+        huge.as_str(),
+        "--chunk",
+        "1",
+    ];
     expect_input_error(&dir, &a, "o.bin", "sizes sum");
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -545,26 +837,47 @@ fn inject_is_still_refused_and_the_ee_flags_are_rejected_by_other_subcommands() 
     let out = run(bigmont(&["a", "b", "--inject", "1", "2"]));
     assert_eq!(code(&out), Some(2));
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("--inject") && err.contains("not supported"), "{err}");
+    assert!(
+        err.contains("--inject") && err.contains("not supported"),
+        "{err}"
+    );
     for sub in ["canary", "tune"] {
         let out = run(bigmont(&[sub, "a", "b", "--ee", "sizes.bin"]));
         assert_eq!(code(&out), Some(2), "{sub}");
-        assert!(String::from_utf8_lossy(&out.stderr).contains("--ee"), "{sub}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("--ee"),
+            "{sub}"
+        );
     }
 }
 
 /// Runs bigmont with `args` while this test holds an exclusive lock on `lock`, releasing it `hold` after
 /// the child reports that it is waiting for it. Returns the child's output.
 fn run_while_locked(args: &[&str], lock: &Path, hold: Duration) -> Output {
-    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(lock).unwrap();
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock)
+        .unwrap();
     file.lock().unwrap();
-    let mut child = bigmont(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().expect("spawn bigmont");
+    let mut child = bigmont(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn bigmont");
     let mut stderr = BufReader::new(child.stderr.take().unwrap());
     let mut seen = String::new();
     loop {
         let mut line = String::new();
-        let n = stderr.read_line(&mut line).expect("read the child's stderr");
-        assert!(n > 0, "the child exited without waiting for the lock: {seen}");
+        let n = stderr
+            .read_line(&mut line)
+            .expect("read the child's stderr");
+        assert!(
+            n > 0,
+            "the child exited without waiting for the lock: {seen}"
+        );
         seen.push_str(&line);
         if line.contains("waiting for the lock") {
             break;
@@ -575,9 +888,18 @@ fn run_while_locked(args: &[&str], lock: &Path, hold: Duration) -> Output {
     let mut rest = String::new();
     stderr.read_to_string(&mut rest).unwrap();
     let mut stdout = String::new();
-    child.stdout.take().unwrap().read_to_string(&mut stdout).unwrap();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut stdout)
+        .unwrap();
     let status = child.wait().unwrap();
-    Output { status, stdout: stdout.into_bytes(), stderr: (seen + &rest).into_bytes() }
+    Output {
+        status,
+        stdout: stdout.into_bytes(),
+        stderr: (seen + &rest).into_bytes(),
+    }
 }
 
 #[test]
@@ -586,20 +908,46 @@ fn lock_waits_for_the_holder_and_the_ee_summary_reports_the_wait() {
     let dir = ee_dir("ee-lock", &d);
     let lock = dir.join("gpu.lock");
     assert!(!lock.exists());
-    let (cand, sizes, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("sizes.bin")).to_string(), s(&dir.join("o.bin")).to_string());
-    let args = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", sizes.as_str(), "--lock", s(&lock)];
+    let (cand, sizes, out) = (
+        s(&dir.join("cand.bin")).to_string(),
+        s(&dir.join("sizes.bin")).to_string(),
+        s(&dir.join("o.bin")).to_string(),
+    );
+    let args = [
+        cand.as_str(),
+        out.as_str(),
+        "--backend",
+        "cpu",
+        "--no-cache",
+        "--ee",
+        sizes.as_str(),
+        "--lock",
+        s(&lock),
+    ];
     let hold = Duration::from_millis(500);
     let o = run_while_locked(&args, &lock, hold);
     ok(&o);
     let err = String::from_utf8_lossy(&o.stderr);
-    let after = err.split("lock wait ").nth(1).expect("lock wait in the summary");
+    let after = err
+        .split("lock wait ")
+        .nth(1)
+        .expect("lock wait in the summary");
     let waited: f64 = after.split('s').next().unwrap().parse().unwrap();
-    assert!(waited >= hold.as_secs_f64() - 0.01, "reported a lock wait of {waited}s for a {hold:?} hold: {err}"); // %.2f rounds
+    assert!(
+        waited >= hold.as_secs_f64() - 0.01,
+        "reported a lock wait of {waited}s for a {hold:?} hold: {err}"
+    ); // %.2f rounds
     let (want, _, _) = model(&d.plain, &d.sizes, &schedule(6, 1.15, s_max(&d.sizes)), 3);
     assert_eq!(verdicts_of(&dir.join("o.bin")), want);
     assert!(lock.exists());
-    let again = std::fs::OpenOptions::new().read(true).write(true).open(&lock).unwrap();
-    again.try_lock().expect("the child released the lock when it exited");
+    let again = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock)
+        .unwrap();
+    again
+        .try_lock()
+        .expect("the child released the lock when it exited");
     again.unlock().unwrap();
 
     // Uncontended: no waiting message and a near-zero wait.
@@ -616,14 +964,28 @@ fn lock_works_in_plain_mode_too_and_is_no_longer_ignored() {
     let d = mixed();
     let dir = ee_dir("plain-lock", &d);
     let lock = dir.join("plain.lock");
-    let (cand, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("o.bin")).to_string());
-    let args = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--lock", s(&lock)];
+    let (cand, out) = (
+        s(&dir.join("cand.bin")).to_string(),
+        s(&dir.join("o.bin")).to_string(),
+    );
+    let args = [
+        cand.as_str(),
+        out.as_str(),
+        "--backend",
+        "cpu",
+        "--no-cache",
+        "--lock",
+        s(&lock),
+    ];
 
     // `run_while_locked` itself proves the child waited: it fails unless the child reports waiting.
     let o = run_while_locked(&args, &lock, Duration::from_millis(500));
     ok(&o);
     assert_eq!(verdicts_of(&dir.join("o.bin")), d.plain);
-    assert!(!String::from_utf8_lossy(&o.stderr).contains("accepted and ignored"), "--lock is real now");
+    assert!(
+        !String::from_utf8_lossy(&o.stderr).contains("accepted and ignored"),
+        "--lock is real now"
+    );
 
     let fresh = dir.join("fresh.lock");
     let o = ee_run(&dir, "o2.bin", &["--lock", s(&fresh)]);
@@ -645,14 +1007,25 @@ fn ee_runs_end_to_end_on_the_gpu() {
     }
     // 50 ks of 12, all 190-bit (the engine batches by exact bit length and sends 64 or more to the GPU):
     // the first wave (6 per k) is 300 candidates.
-    let primes: Vec<Vec<u32>> = (0..50u32).map(|k| if k % 3 == 0 { vec![] } else { vec![k % 11] }).collect();
+    let primes: Vec<Vec<u32>> = (0..50u32)
+        .map(|k| if k % 3 == 0 { vec![] } else { vec![k % 11] })
+        .collect();
     let spec: Vec<(u32, &[u32])> = primes.iter().map(|p| (12u32, p.as_slice())).collect();
     let d = build_with(&spec, 4242, |_| 190);
     let dir = ee_dir("ee-gpu", &d);
     let cache = dir.join("tune.cache");
     let sizes = s(&dir.join("sizes.bin")).to_string();
     let (cand, out_path) = (dir.join("cand.bin"), dir.join("o.bin"));
-    let args = [s(&cand), s(&out_path), "--backend", "gpu", "--cache", s(&cache), "--ee", sizes.as_str()];
+    let args = [
+        s(&cand),
+        s(&out_path),
+        "--backend",
+        "gpu",
+        "--cache",
+        s(&cache),
+        "--ee",
+        sizes.as_str(),
+    ];
     let out = run(bigmont(&args));
     ok(&out);
     let (want, tested, waves) = model(&d.plain, &d.sizes, &schedule(6, 1.15, 12), 3);
@@ -661,6 +1034,9 @@ fn ee_runs_end_to_end_on_the_gpu() {
     assert_eq!(field(&sum, "tested"), tested.to_string());
     assert_eq!(field(&sum, "waves"), waves.to_string());
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("GPU:") && !err.contains("(gpu 0,"), "the waves ran on the GPU: {err}");
+    assert!(
+        err.contains("GPU:") && !err.contains("(gpu 0,"),
+        "the waves ran on the GPU: {err}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -30,7 +30,11 @@ impl FakeSource {
         }
     }
     fn answer(&self, i: u64) -> u8 {
-        if self.prime.contains(&i) { self.answer_for_prime } else { 0 }
+        if self.prime.contains(&i) {
+            self.answer_for_prime
+        } else {
+            0
+        }
     }
 }
 
@@ -58,10 +62,22 @@ fn numbers(count: u64) -> Vec<BigUint> {
     (0..count).map(BigUint::from).collect()
 }
 
-fn run(src: &mut FakeSource, sizes: &[u32], chunk: i32, growth: f64, marker: u8) -> Result<EeOutcome, String> {
+fn run(
+    src: &mut FakeSource,
+    sizes: &[u32],
+    chunk: i32,
+    growth: f64,
+    marker: u8,
+) -> Result<EeOutcome, String> {
     let count: u64 = sizes.iter().map(|&s| u64::from(s)).sum();
     let s_max = sizes.iter().copied().max().unwrap_or(0);
-    run_waves(src, &numbers(count), sizes, &schedule(chunk, growth, s_max), marker)
+    run_waves(
+        src,
+        &numbers(count),
+        sizes,
+        &schedule(chunk, growth, s_max),
+        marker,
+    )
 }
 
 #[test]
@@ -170,11 +186,27 @@ fn empty_inputs_and_zero_sized_ks() {
     // no candidates, no ks
     let mut src = FakeSource::new(&[]);
     let out = run(&mut src, &[], 6, 1.15, 3).unwrap();
-    assert_eq!(out, EeOutcome { verdicts: vec![], tested: 0, waves: 0, prp: 0 });
+    assert_eq!(
+        out,
+        EeOutcome {
+            verdicts: vec![],
+            tested: 0,
+            waves: 0,
+            prp: 0
+        }
+    );
     assert!(src.calls.is_empty());
     // ks that are all empty
     let out = run(&mut src, &[0, 0], 6, 1.15, 3).unwrap();
-    assert_eq!(out, EeOutcome { verdicts: vec![], tested: 0, waves: 0, prp: 0 });
+    assert_eq!(
+        out,
+        EeOutcome {
+            verdicts: vec![],
+            tested: 0,
+            waves: 0,
+            prp: 0
+        }
+    );
     assert!(src.calls.is_empty());
     // a zero-sized k in the middle neither tests anything nor disturbs its neighbours' offsets
     let mut src = FakeSource::new(&[2]);
@@ -191,7 +223,10 @@ fn sizes_that_do_not_sum_to_the_candidate_count_are_an_error() {
     assert_eq!(err, "sizes sum 7 != count 4");
     let err = run_waves(&mut src, &numbers(9), &[3, 4], &schedule(2, 1.0, 4), 3).unwrap_err();
     assert_eq!(err, "sizes sum 7 != count 9");
-    assert!(src.calls.is_empty(), "nothing may reach the source before the check");
+    assert!(
+        src.calls.is_empty(),
+        "nothing may reach the source before the check"
+    );
 }
 
 #[test]
@@ -220,7 +255,10 @@ fn a_source_with_the_wrong_reply_length_is_an_error() {
         let mut src = FakeSource::new(&[]);
         src.len_delta = delta;
         let err = run(&mut src, &[3, 3], 2, 1.0, 3).unwrap_err();
-        assert!(err.contains('4') && err.contains(&(4 + delta).to_string()), "{err}");
+        assert!(
+            err.contains('4') && err.contains(&(4 + delta).to_string()),
+            "{err}"
+        );
     }
 }
 
@@ -241,7 +279,11 @@ fn the_marker_is_used_as_given_and_prp_counts_only_ones() {
         let mut src = FakeSource::new(&[0]);
         let out = run(&mut src, &[3, 3], 1, 1.0, marker).unwrap();
         // k0 hits at wave 1, k1 never does
-        assert_eq!(out.verdicts, vec![1, marker, marker, 0, 0, 0], "marker {marker}");
+        assert_eq!(
+            out.verdicts,
+            vec![1, marker, marker, 0, 0, 0],
+            "marker {marker}"
+        );
         assert_eq!(out.prp, 1, "marker {marker}");
     }
     // prp counts every byte equal to 1 in the output, so a marker of 1 is counted at each
@@ -260,11 +302,17 @@ fn the_marker_is_used_as_given_and_prp_counts_only_ones() {
 }
 
 /// Independent model: each k is simulated on its own, then the waves are assembled afterwards.
-fn model(prime: &HashSet<u64>, sizes: &[u32], bounds: &[u32], marker: u8) -> (Vec<u8>, Vec<Vec<u64>>) {
+fn model(
+    prime: &HashSet<u64>,
+    sizes: &[u32],
+    bounds: &[u32],
+    marker: u8,
+) -> (Vec<u8>, Vec<Vec<u64>>) {
     let count: u64 = sizes.iter().map(|&s| u64::from(s)).sum();
     let mut verdicts = vec![marker; count as usize];
     // per_wave[w][k] = global indices k contributes to wave w+1
-    let mut per_wave: Vec<Vec<Vec<u64>>> = vec![vec![Vec::new(); sizes.len()]; bounds.len().saturating_sub(1)];
+    let mut per_wave: Vec<Vec<Vec<u64>>> =
+        vec![vec![Vec::new(); sizes.len()]; bounds.len().saturating_sub(1)];
     let mut off = 0u64;
     for (k, &size) in sizes.iter().enumerate() {
         let mut lo = 0u32;
@@ -301,7 +349,9 @@ fn run_waves_matches_an_independent_model_on_random_layouts() {
         let sizes: Vec<u32> = (0..nk).map(|_| (rng.next_u64() % 13) as u32).collect();
         let count: u64 = sizes.iter().map(|&s| u64::from(s)).sum();
         let density = [0u64, 5, 15, 40][(rng.next_u64() % 4) as usize];
-        let prime: HashSet<u64> = (0..count).filter(|_| rng.next_u64() % 100 < density).collect();
+        let prime: HashSet<u64> = (0..count)
+            .filter(|_| rng.next_u64() % 100 < density)
+            .collect();
         let chunk = (rng.next_u64() % 10) as i32 - 1;
         let growth = [1.0, 1.15, 1.5, 2.0][(rng.next_u64() % 4) as usize];
         let marker = (rng.next_u64() % 256) as u8;
@@ -311,11 +361,20 @@ fn run_waves_matches_an_independent_model_on_random_layouts() {
         let mut src = FakeSource::new(&prime.iter().copied().collect::<Vec<_>>());
         let got = run_waves(&mut src, &numbers(count), &sizes, &bounds, marker).unwrap();
         let (want_v, want_calls) = model(&prime, &sizes, &bounds, marker);
-        let ctx = format!("case {case}: sizes {sizes:?} chunk {chunk} growth {growth} marker {marker}");
+        let ctx =
+            format!("case {case}: sizes {sizes:?} chunk {chunk} growth {growth} marker {marker}");
         assert_eq!(got.verdicts, want_v, "{ctx}");
         assert_eq!(src.calls, want_calls, "{ctx}");
         assert_eq!(got.waves as usize, want_calls.len(), "{ctx}");
-        assert_eq!(got.tested, want_calls.iter().map(|c| c.len() as u64).sum::<u64>(), "{ctx}");
-        assert_eq!(got.prp, want_v.iter().filter(|&&b| b == 1).count() as u64, "{ctx}");
+        assert_eq!(
+            got.tested,
+            want_calls.iter().map(|c| c.len() as u64).sum::<u64>(),
+            "{ctx}"
+        );
+        assert_eq!(
+            got.prp,
+            want_v.iter().filter(|&&b| b == 1).count() as u64,
+            "{ctx}"
+        );
     }
 }

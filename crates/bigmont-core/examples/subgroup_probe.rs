@@ -31,8 +31,16 @@ fn main() {
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
-    let staging = device.create_buffer(&wgpu::BufferDescriptor { label: None, size, usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
-    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: None, source: wgpu::ShaderSource::Wgsl(SRC.into()) });
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: None,
+        source: wgpu::ShaderSource::Wgsl(SRC.into()),
+    });
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: None,
         layout: None,
@@ -44,7 +52,10 @@ fn main() {
     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &pipeline.get_bind_group_layout(0),
-        entries: &[wgpu::BindGroupEntry { binding: 0, resource: buf.as_entire_binding() }],
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buf.as_entire_binding(),
+        }],
     });
     let mut enc = device.create_command_encoder(&Default::default());
     {
@@ -62,5 +73,7 @@ fn main() {
         *sizes.entry(pair[0]).or_default() += 1;
         max_id = max_id.max(pair[1]);
     }
-    println!("observed subgroup_size values (value: invocations) over {invocations} invocations: {sizes:?}; max subgroup_invocation_id {max_id}");
+    println!(
+        "observed subgroup_size values (value: invocations) over {invocations} invocations: {sizes:?}; max subgroup_invocation_id {max_id}"
+    );
 }

@@ -18,17 +18,21 @@ impl Mont {
         for _ in 0..5 {
             inv = inv.wrapping_mul(2u64.wrapping_sub(n[0].wrapping_mul(inv)));
         }
-        Mont { n: n.to_vec(), ninv: inv.wrapping_neg(), w: n.len() }
+        Mont {
+            n: n.to_vec(),
+            ninv: inv.wrapping_neg(),
+            w: n.len(),
+        }
     }
 
     /// out = a * b * R^-1 mod n for a, b < n. `t` is scratch of length w + 2.
     pub fn mul(&self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]) {
         let w = self.w;
         t.iter_mut().for_each(|v| *v = 0);
-        for i in 0..w {
+        for &bi in &b[..w] {
             let mut c: u128 = 0;
             for j in 0..w {
-                let s = u128::from(t[j]) + u128::from(a[j]) * u128::from(b[i]) + c;
+                let s = u128::from(t[j]) + u128::from(a[j]) * u128::from(bi) + c;
                 t[j] = s as u64;
                 c = s >> 64;
             }
@@ -130,7 +134,11 @@ pub fn fermat_base2(n: &BigUint) -> bool {
 
 /// Verdicts for every `n`, in order. `threads == 0` uses all cores.
 pub fn fermat_batch(ns: &[BigUint], threads: usize) -> Vec<bool> {
-    let threads = if threads == 0 { std::thread::available_parallelism().map_or(1, |n| n.get()) } else { threads };
+    let threads = if threads == 0 {
+        std::thread::available_parallelism().map_or(1, |n| n.get())
+    } else {
+        threads
+    };
     let threads = threads.min(ns.len()).max(1);
     let per = ns.len().div_ceil(threads).max(1);
     let mut out = vec![false; ns.len()];

@@ -86,7 +86,11 @@ pub fn run_waves(
     let mut ks = Vec::with_capacity(sizes.len());
     let mut off = 0usize;
     for &size in sizes {
-        ks.push(KState { off, size, tested: 0 });
+        ks.push(KState {
+            off,
+            size,
+            tested: 0,
+        });
         off += size as usize;
     }
     // Indices of the ks still alive, in k order; shrinks after each wave.
@@ -131,5 +135,10 @@ pub fn run_waves(
         });
     }
     let prp = verdicts.iter().filter(|&&v| v == 1).count() as u64;
-    Ok(EeOutcome { verdicts, tested: tested_total, waves, prp })
+    Ok(EeOutcome {
+        verdicts,
+        tested: tested_total,
+        waves,
+        prp,
+    })
 }
