@@ -52,9 +52,14 @@ pub struct Options {
     pub capacity: u32,
     /// CPU worker threads, 0 = all cores.
     pub threads: usize,
-    /// Device re-opens allowed per `verdicts` call after device-level GPU failures. When they are
-    /// used up the failing bucket, every later bucket and every later call run on the CPU.
+    /// Device re-opens allowed per `verdicts` call after device-level GPU failures (successful
+    /// re-opens count too, so a device that keeps dying cannot loop). When they are used up the
+    /// failing bucket, every later bucket and every later call run on the CPU.
     pub device_retries: u32,
+    /// Device re-opens allowed over the engine's whole life (the CLI calls `verdicts` once per
+    /// chunk, so the per-call budget alone would let a device that dies on every chunk be re-opened,
+    /// and leaked, without bound). Reaching it makes the engine CPU-only for the process.
+    pub device_retries_total: u32,
     /// The longest one GPU wait may take (`Gpu::poll_timeout`); `None` keeps the `Gpu` default
     /// (`BIGMONT_POLL_TIMEOUT_MS`, else 30 s). A longer wait counts as a device-level failure.
     pub poll_timeout: Option<Duration>,
@@ -76,6 +81,7 @@ impl Default for Options {
             capacity: 16384,
             threads: 0,
             device_retries: 2,
+            device_retries_total: 8,
             poll_timeout: None,
             inject_loss_on_open: 0,
         }
@@ -123,6 +129,38 @@ enum GpuRun {
     DeviceFailure(String),
 }
 
+/// What to do with a healthy re-opened device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reopen {
+    /// The same adapter: keep the tuned configurations.
+    Keep,
+    /// A different adapter: forget the tuned configurations (autotune and self-test again).
+    Retune,
+    /// Unusable under `Backend::Auto` (no subgroups): CPU for the rest of the process.
+    CpuOnly,
+    /// Unusable under `Backend::Gpu` (a different adapter without subgroups): `verdicts` fails.
+    Fail,
+}
+
+/// The rule for a re-opened device. It mirrors `Engine::open`, where `Auto` refuses an adapter
+/// without subgroups and `Gpu` accepts any adapter. Under `Gpu`, a re-open that silently switched
+/// to a different adapter without subgroups is refused: that is not the GPU the run was started on.
+fn reopen_decision(backend: Backend, same_adapter: bool, has_subgroups: bool) -> Reopen {
+    match (has_subgroups, same_adapter, backend) {
+        (false, _, Backend::Auto | Backend::Cpu) => Reopen::CpuOnly,
+        (false, false, Backend::Gpu) => Reopen::Fail,
+        (false, true, Backend::Gpu) | (true, true, _) => Reopen::Keep,
+        (true, false, _) => Reopen::Retune,
+    }
+}
+
+/// How a recovery attempt ended.
+enum Recovery {
+    Recovered,
+    CpuOnly,
+    Fatal(String),
+}
+
 /// Whether `e`, returned by a GPU call on `gpu`, means the device itself failed.
 fn device_failure(gpu: &Gpu, e: &str) -> bool {
     gpu.check_health().is_err() || is_device_error(e)
@@ -146,6 +184,10 @@ pub struct Engine {
     inject_on_open: u32,
     /// Device re-opens left in the current `verdicts` call.
     reopens_left: u32,
+    /// Device re-opens over the engine's life (capped by `Options::device_retries_total`).
+    reopens_done: u32,
+    /// Test hook: the next recovery treats the re-opened device as a different adapter.
+    inject_adapter_change: bool,
 }
 
 impl Engine {
@@ -153,6 +195,8 @@ impl Engine {
         let mut e = Engine {
             inject_on_open: opts.inject_loss_on_open,
             reopens_left: opts.device_retries,
+            reopens_done: 0,
+            inject_adapter_change: false,
             opts,
             gpu: None,
             gpu_err: None,
@@ -215,6 +259,23 @@ impl Engine {
         }
     }
 
+    /// Test only: the next GPU wait behaves as if `Device::poll` had panicked, as wgpu 30 does on
+    /// a real driver-side loss (see `Gpu::inject_poll_panic`).
+    #[doc(hidden)]
+    pub fn inject_poll_panic(&mut self) {
+        if let Some(g) = &self.gpu {
+            eprintln!("bigmont: test hook: the next GPU wait panics");
+            g.inject_poll_panic();
+        }
+    }
+
+    /// Test only: the next recovery treats the re-opened device as a different adapter (one host
+    /// cannot portably make `Gpu::open` return another adapter).
+    #[doc(hidden)]
+    pub fn inject_adapter_change(&mut self) {
+        self.inject_adapter_change = true;
+    }
+
     pub fn report(&self) -> EngineReport {
         self.report.clone()
     }
@@ -250,12 +311,14 @@ impl Engine {
                     GpuRun::Done(v) => break v,
                     GpuRun::Cpu => break self.cpu(&nums),
                     // Re-run the whole bucket on the re-opened device, or answer it on the CPU.
-                    GpuRun::DeviceFailure(why) => {
-                        if !self.recover(bits, &why) {
+                    GpuRun::DeviceFailure(why) => match self.recover(bits, &why) {
+                        Recovery::Recovered => {}
+                        Recovery::CpuOnly => {
                             self.report.gpu_errors += 1;
                             break self.cpu(&nums);
                         }
-                    }
+                        Recovery::Fatal(e) => return Err(e),
+                    },
                 }
             };
             for (&i, v) in idx.iter().zip(verdicts) {
@@ -265,10 +328,12 @@ impl Engine {
         Ok(out)
     }
 
-    /// After a device-level failure on the `bits`-bit bucket: drops the device and every runner
-    /// (the tuned configurations are kept) and re-opens the device, at most `reopens_left` times.
-    /// `true` when a healthy device is back; otherwise the engine is CPU-only from now on.
-    fn recover(&mut self, bits: u32, why: &str) -> bool {
+    /// After a device-level failure on the `bits`-bit bucket: drops the device and every runner and
+    /// re-opens the device, at most `reopens_left` times in this call and `device_retries_total`
+    /// times over the engine's life. On the same adapter the tuned configurations are kept; on a
+    /// different one they are dropped, so the next bucket autotunes and self-tests again, and the
+    /// `Auto`/subgroup rule of `Engine::open` applies (see `reopen_decision`).
+    fn recover(&mut self, bits: u32, why: &str) -> Recovery {
         self.report.device_losses += 1;
         if self.gpu.as_ref().is_some_and(Gpu::is_poisoned) {
             self.report.poll_timeouts += 1;
@@ -277,26 +342,56 @@ impl Engine {
         // Runners first: they hold the old device's buffers. A poisoned or driver-lost Gpu leaks
         // its device on drop instead of blocking (see `Gpu`).
         self.runners.clear();
-        self.gpu = None;
-        while self.reopens_left > 0 {
+        let lost_info = self.gpu.take().map(|g| g.info.clone());
+        while self.reopens_left > 0 && self.reopens_done < self.opts.device_retries_total {
             self.reopens_left -= 1;
-            match self.open_device() {
-                Ok(g) => match g.check_health() {
-                    Ok(()) => {
-                        self.report.device_recoveries += 1;
-                        eprintln!("bigmont: GPU device re-opened ({}); re-running the {bits}-bit bucket", g.describe());
-                        self.gpu = Some(g);
-                        return true;
-                    }
-                    Err(e) => eprintln!("bigmont: the re-opened GPU device is unusable: {e}"),
-                },
-                Err(e) => eprintln!("bigmont: cannot re-open the GPU device: {e}"),
+            self.reopens_done += 1;
+            let g = match self.open_device() {
+                Ok(g) => g,
+                Err(e) => {
+                    eprintln!("bigmont: cannot re-open the GPU device: {e}");
+                    continue;
+                }
+            };
+            if let Err(e) = g.check_health() {
+                eprintln!("bigmont: the re-opened GPU device is unusable: {e}");
+                continue;
             }
+            let forced_change = std::mem::take(&mut self.inject_adapter_change);
+            let same = !forced_change && lost_info.as_ref().is_some_and(|old| bigmont_core::gpu::same_adapter(old, &g.info));
+            match reopen_decision(self.opts.backend, same, g.has_subgroups) {
+                Reopen::Keep => {}
+                Reopen::Retune => {
+                    eprintln!("bigmont: the re-opened GPU is a different adapter ({}); tuning again", g.describe());
+                    self.tuned.clear();
+                }
+                Reopen::CpuOnly => {
+                    let reason = format!("the re-opened GPU {} lacks subgroup support (after: {why})", g.describe());
+                    eprintln!("bigmont: {reason}; using the CPU for the rest of this process");
+                    self.cpu_only = Some(reason);
+                    return Recovery::CpuOnly;
+                }
+                Reopen::Fail => {
+                    let reason = format!("the GPU device failed ({why}) and re-opening it gave a different adapter without subgroup support: {}", g.describe());
+                    eprintln!("bigmont: {reason}");
+                    self.gpu_err = Some(reason.clone());
+                    return Recovery::Fatal(format!("GPU backend requested but unavailable: {reason}"));
+                }
+            }
+            self.report.device_recoveries += 1;
+            eprintln!("bigmont: GPU device re-opened ({}); re-running the {bits}-bit bucket", g.describe());
+            self.gpu = Some(g);
+            return Recovery::Recovered;
         }
-        let reason = format!("device failure not recovered within {} re-opens: {why}", self.opts.device_retries);
+        let limit = if self.reopens_done >= self.opts.device_retries_total {
+            format!("the engine's limit of {} re-opens (device_retries_total) is used up", self.opts.device_retries_total)
+        } else {
+            format!("not recovered within {} re-opens in this call (device_retries)", self.opts.device_retries)
+        };
+        let reason = format!("device failure, {limit}: {why}");
         eprintln!("bigmont: GPU {reason}; using the CPU for the rest of this process");
         self.cpu_only = Some(reason);
-        false
+        Recovery::CpuOnly
     }
 
     /// Runs the bucket on the GPU with integrity checks. `Cpu` means "use the CPU": the GPU is not
@@ -389,5 +484,29 @@ impl Engine {
             }
         }
         GpuRun::Done(verdicts)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_same_adapter_keeps_its_tuning_and_a_different_one_is_retuned() {
+        for backend in [Backend::Auto, Backend::Gpu] {
+            assert_eq!(reopen_decision(backend, true, true), Reopen::Keep, "{backend:?}");
+            assert_eq!(reopen_decision(backend, false, true), Reopen::Retune, "{backend:?}");
+        }
+    }
+
+    #[test]
+    fn a_reopened_adapter_without_subgroups_follows_the_open_rules() {
+        // Auto refuses an adapter without subgroups, as Engine::open does: CPU from then on.
+        assert_eq!(reopen_decision(Backend::Auto, false, false), Reopen::CpuOnly);
+        assert_eq!(reopen_decision(Backend::Auto, true, false), Reopen::CpuOnly);
+        // Gpu: a silent switch to a different adapter without subgroups is an error; the same
+        // adapter is what Engine::open already accepted.
+        assert_eq!(reopen_decision(Backend::Gpu, false, false), Reopen::Fail);
+        assert_eq!(reopen_decision(Backend::Gpu, true, false), Reopen::Keep);
     }
 }

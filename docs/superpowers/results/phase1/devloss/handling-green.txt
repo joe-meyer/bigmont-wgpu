@@ -1,13 +1,14 @@
+# note: machine-specific home paths (/home/<user>) replaced with ~ after the run (8 lines); nothing else changed
 # command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-core --lib --test devloss -- --test-threads=1 2>&1; cargo test --release -p bigmont-cli --no-fail-fast --test devloss --test canary -- --test-threads=1 --nocapture 2>&1
 # host: test-laptop
 # adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
 # commit: 8fa2188
 # date: 2026-11-25T04:36:45Z
 # Xid lines in kernel log before: 98
-   Compiling bigmont-oracle v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-oracle)
-   Compiling bigmont-core v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-core)
+   Compiling bigmont-oracle v0.1.0 (~/bigmont-devloss/crates/bigmont-oracle)
+   Compiling bigmont-core v0.1.0 (~/bigmont-devloss/crates/bigmont-core)
     Finished `release` profile [optimized] target(s) in 0.99s
-     Running unittests src/lib.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-core/4000a2deb77d063f/out/bigmont_core-4000a2deb77d063f)
+     Running unittests src/lib.rs (~/bigmont-devloss-target/release/build/bigmont-core/4000a2deb77d063f/out/bigmont_core-4000a2deb77d063f)
 
 running 6 tests
 test gpu::tests::classifies_device_level_errors ... ok
@@ -19,7 +20,7 @@ test gpu::tests::the_default_leaves_gl_out ... ok
 
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
-     Running tests/devloss.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-core/ad32b640dbf84c8f/out/devloss-ad32b640dbf84c8f)
+     Running tests/devloss.rs (~/bigmont-devloss-target/release/build/bigmont-core/ad32b640dbf84c8f/out/devloss-ad32b640dbf84c8f)
 
 running 4 tests
 test a_destroyed_device_gives_device_lost_errors_not_panics ... ok
@@ -29,10 +30,10 @@ test the_device_lost_callback_and_handlers_survive_from_parts ... ok
 
 test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
 
-   Compiling bigmont-cpu v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-cpu)
-   Compiling bigmont-cli v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-cli)
+   Compiling bigmont-cpu v0.1.0 (~/bigmont-devloss/crates/bigmont-cpu)
+   Compiling bigmont-cli v0.1.0 (~/bigmont-devloss/crates/bigmont-cli)
     Finished `release` profile [optimized] target(s) in 0.73s
-     Running tests/canary.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
+     Running tests/canary.rs (~/bigmont-devloss-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
 
 running 11 tests
 test a_cpu_run_passes_without_gpu_tests ... ok
@@ -49,7 +50,7 @@ test matching_verdicts_and_a_healthy_gpu_pass ... ok
 
 test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
 
-     Running tests/devloss.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-cli/7178146366baafa5/out/devloss-7178146366baafa5)
+     Running tests/devloss.rs (~/bigmont-devloss-target/release/build/bigmont-cli/7178146366baafa5/out/devloss-7178146366baafa5)
 
 running 4 tests
 test a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu ... GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]

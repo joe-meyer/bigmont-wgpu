@@ -41,6 +41,7 @@ fn show(label: &str, r: &EngineReport) {
 fn the_default_allows_two_device_retries() {
     let o = Options::default();
     assert_eq!(o.device_retries, 2);
+    assert_eq!(o.device_retries_total, 8);
     assert_eq!(o.inject_loss_on_open, 0);
     assert_eq!(o.poll_timeout, None);
     let r = EngineReport::default();
@@ -84,8 +85,11 @@ fn more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process() {
     assert_eq!(e.verdicts(&ns).unwrap(), want, "the CPU fallback must give the oracle's verdicts");
     let first = e.report();
     show("first", &first);
-    assert!(first.device_losses >= 1);
-    assert!(first.gpu_errors >= 1);
+    // One loss (the first device, found dead by the first GPU bucket); both re-opened devices were
+    // dead too, which is a failed re-open, not another loss; the bucket fell back once.
+    assert_eq!(first.device_losses, 1);
+    assert_eq!(first.gpu_errors, 1);
+    assert_eq!(first.poll_timeouts, 0);
     assert_eq!(first.device_recoveries, 0, "every re-opened device was dead");
     assert_eq!(first.gpu_tests, 0);
     assert_eq!(first.cpu_tests, gpu_candidates + 1, "every candidate ran on the CPU");
@@ -111,7 +115,76 @@ fn a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu() {
     assert_eq!(e.verdicts(&ns).unwrap(), want);
     let r = e.report();
     show("timeout", &r);
-    assert!(r.poll_timeouts >= 1, "{r:?}");
-    assert!(r.device_losses >= r.poll_timeouts, "a timeout is a device-level failure: {r:?}");
-    assert!(r.cpu_tests > 1, "at least one GPU bucket fell back to the CPU: {r:?}");
+    // The first GPU bucket times out on the first device and on both re-opened ones (the budget of
+    // 2 re-opens per call), then everything runs on the CPU.
+    assert_eq!(r.poll_timeouts, 3, "{r:?}");
+    assert_eq!(r.device_losses, 3, "a timeout is a device-level failure: {r:?}");
+    assert_eq!(r.device_recoveries, 2, "{r:?}");
+    assert_eq!(r.gpu_errors, 1, "{r:?}");
+    assert_eq!(r.gpu_tests, 0, "{r:?}");
+    assert_eq!(r.cpu_tests, 22, "every candidate ran on the CPU: {r:?}");
+    assert!(!e.gpu_active());
+}
+
+#[test]
+fn a_panicking_poll_is_recovered_like_a_lost_device() {
+    // The path a real NVIDIA Xid takes: wgpu 30's Device::poll panics. The engine must classify it
+    // as a device failure, re-open, and re-run the bucket on the GPU.
+    let (ns, want, gpu_candidates) = batch();
+    let (o, _cleanup) = opts("pollpanic");
+    let mut e = Engine::open(o);
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    let before = e.report();
+    e.inject_poll_panic();
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    let after = e.report();
+    show("poll panic", &after);
+    assert_eq!((after.device_losses, after.device_recoveries, after.poll_timeouts, after.gpu_errors), (1, 1, 0, 0));
+    assert_eq!(after.gpu_tests - before.gpu_tests, gpu_candidates, "both buckets ran on the re-opened GPU");
+    assert_eq!(after.tuned_classes, before.tuned_classes, "same adapter: the tuning is kept");
+    assert!(e.gpu_active());
+}
+
+#[test]
+fn a_different_adapter_after_a_reopen_is_tuned_again() {
+    let (ns, want, gpu_candidates) = batch();
+    let (o, _cleanup) = opts("adapter");
+    let mut e = Engine::open(o);
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    let before = e.report();
+    assert_eq!(before.tuned_classes, 2, "1019 and 777 bits are two limb classes");
+    e.inject_device_loss();
+    e.inject_adapter_change();
+    assert_eq!(e.verdicts(&ns).unwrap(), want, "verdicts after re-tuning on the 'new' adapter");
+    let after = e.report();
+    show("adapter change", &after);
+    assert_eq!((after.device_losses, after.device_recoveries, after.gpu_errors), (1, 1, 0));
+    assert_eq!(after.tuned_classes, before.tuned_classes + 2, "both classes are tuned (self-tested) again on the new adapter");
+    assert_eq!(after.gpu_tests - before.gpu_tests, gpu_candidates);
+}
+
+#[test]
+fn the_lifetime_reopen_cap_makes_the_engine_cpu_only() {
+    // A device that dies on every call: the per-call budget resets each call, the lifetime cap does not.
+    let (ns, want, gpu_candidates) = batch();
+    let (o, _cleanup) = opts("cap");
+    let mut e = Engine::open(Options { device_retries: 2, device_retries_total: 2, ..o });
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    for call in 1..=2u64 {
+        e.inject_device_loss();
+        assert_eq!(e.verdicts(&ns).unwrap(), want);
+        let r = e.report();
+        assert_eq!((r.device_losses, r.device_recoveries, r.gpu_errors), (call, call, 0), "call {call}: {r:?}");
+        assert!(e.gpu_active());
+    }
+    let r2 = e.report();
+    e.inject_device_loss();
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    let r = e.report();
+    show("cap", &r);
+    assert_eq!((r.device_losses, r.device_recoveries, r.gpu_errors), (3, 2, 1), "the third loss finds the lifetime cap used up: {r:?}");
+    assert_eq!(r.gpu_tests, r2.gpu_tests, "nothing more ran on the GPU");
+    assert_eq!(r.cpu_tests - r2.cpu_tests, gpu_candidates + 1);
+    assert!(!e.gpu_active());
+    assert!(e.describe().contains("device_retries_total"), "{}", e.describe());
 }

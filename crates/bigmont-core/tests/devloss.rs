@@ -133,6 +133,62 @@ fn an_uncaptured_wgpu_error_is_recorded_instead_of_panicking() {
 }
 
 #[test]
+fn a_panicking_poll_is_a_driver_loss_and_the_device_is_leaked_on_drop() {
+    // wgpu 30's Device::poll panics ("Error in Device::poll: Parent device is lost") on a real
+    // driver-side loss; destroy() never takes this path, so inject the panic directly.
+    let Some(gpu) = common::open_gpu(cfg()) else { return };
+    let e = no_panic("a wait whose poll panics", || gpu.wait_with(|_, _| panic!("Error in Device::poll: Parent device is lost (test)")))
+        .expect_err("a panicking poll must be an Err");
+    assert!(e.contains("device lost") && e.contains("poll panicked") && e.contains("Parent device is lost"), "{e}");
+    assert!(gpu.is_lost());
+    assert!(!gpu.is_poisoned(), "a lost device is not a timeout");
+    assert!(gpu.leaks_on_drop(), "a driver loss leaks the device instead of a possibly blocking drop");
+    assert!(gpu.check_health().unwrap_err().contains("poll panicked"));
+    // A later destroy() does not turn the driver loss into an idle, normally dropped device.
+    gpu.device.destroy();
+    assert!(gpu.check_health().unwrap_err().contains("poll panicked"));
+    assert!(gpu.leaks_on_drop());
+    let t = Instant::now();
+    drop(gpu);
+    assert!(t.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+fn the_poll_panic_hook_reaches_the_entry_points() {
+    let cfg = cfg();
+    let Some(gpu) = common::open_gpu(cfg) else { return };
+    let batch = squaring_batch(cfg, 64, 5);
+    run(&gpu, cfg, &batch, 3, 1).expect("healthy run");
+    gpu.inject_poll_panic();
+    let e = no_panic("run with an injected poll panic", || run(&gpu, cfg, &batch, 3, 1)).err().expect("run must fail");
+    assert!(e.contains("device lost") && e.contains("poll panicked"), "{e}");
+    assert!(gpu.is_lost() && !gpu.is_poisoned() && gpu.leaks_on_drop());
+}
+
+#[test]
+fn a_poll_that_never_returns_is_abandoned_after_the_grace_period() {
+    // The hang mode seen on the laptop: the poll ignores its own timeout. The wait gives up after
+    // the timeout plus a 2 s grace, poisons the Gpu and leaves the helper thread behind.
+    let Some(mut gpu) = common::open_gpu(cfg()) else { return };
+    gpu.set_poll_timeout(Duration::from_millis(1));
+    let t = Instant::now();
+    let e = no_panic("a wait whose poll hangs", || {
+        gpu.wait_with(|_, _| {
+            std::thread::sleep(Duration::from_secs(4));
+            Ok(wgpu::PollStatus::QueueEmpty)
+        })
+    })
+    .expect_err("a hung poll must be an Err");
+    let waited = t.elapsed();
+    assert!(e.contains("timed out") && e.contains("grace"), "{e}");
+    assert!(waited >= Duration::from_secs(2) && waited < Duration::from_millis(3500), "gave up after {waited:?}");
+    assert!(gpu.is_poisoned());
+    assert!(!gpu.is_lost());
+    assert!(gpu.leaks_on_drop());
+    assert!(gpu.check_health().unwrap_err().contains("timed out"));
+}
+
+#[test]
 fn the_device_lost_callback_and_handlers_survive_from_parts() {
     // Gpu::from_parts (used by diagnostics that build their own device) installs the same handlers.
     let Some(opened) = common::open_gpu(cfg()) else { return };

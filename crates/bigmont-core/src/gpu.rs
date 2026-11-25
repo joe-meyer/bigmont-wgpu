@@ -41,6 +41,9 @@ pub const DEFAULT_POLL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Extra time [`Gpu::wait`] gives a poll that ignores its own timeout before it gives up on it.
 const WAIT_GRACE: Duration = Duration::from_secs(2);
 
+/// How long [`Gpu::read_back`] waits for the mapping callback after a successful wait.
+const READBACK_GUARD: Duration = Duration::from_secs(1);
+
 /// At most this many uncaptured error messages are kept per device.
 const MAX_RECORDED_ERRORS: usize = 16;
 
@@ -64,6 +67,23 @@ pub fn is_device_error(message: &str) -> bool {
     m.contains("device lost") || m.contains("device is lost") || m.contains("timed out") || m.contains("uncaptured wgpu error")
 }
 
+/// Whether two adapter descriptions name the same adapter and driver: same name, vendor and device
+/// id, device type, PCI bus id, backend, driver and driver info, and subgroup sizes. A re-opened
+/// device must pass this before configurations tuned on the old one are reused. Opening with the
+/// same selector can return another adapter after a real failure (for example an integrated GPU or
+/// a software rasteriser when the discrete GPU is gone).
+pub fn same_adapter(a: &wgpu::AdapterInfo, b: &wgpu::AdapterInfo) -> bool {
+    a.name == b.name
+        && a.vendor == b.vendor
+        && a.device == b.device
+        && a.device_type == b.device_type
+        && a.device_pci_bus_id == b.device_pci_bus_id
+        && a.backend == b.backend
+        && a.driver == b.driver
+        && a.driver_info == b.driver_info
+        && (a.subgroup_min_size, a.subgroup_max_size) == (b.subgroup_min_size, b.subgroup_max_size)
+}
+
 /// What the device-lost callback, the uncaptured-error handler and [`Gpu::wait`] have recorded.
 /// Shared (`Arc`) with the callbacks, which wgpu may run on any thread.
 #[derive(Default)]
@@ -78,6 +98,8 @@ struct Health {
     poison_reason: Mutex<Option<String>>,
     /// Uncaptured error messages, oldest first (at most `MAX_RECORDED_ERRORS`).
     errors: Mutex<Vec<String>>,
+    /// Test hook: the next wait's poll panics (see `Gpu::inject_poll_panic`).
+    inject_poll_panic: AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -85,12 +107,25 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 impl Health {
+    /// Records a loss. Only the first loss counts: its reason is kept, and only it decides whether
+    /// the device counts as `destroyed` (idle, safe to drop). A driver loss followed by a
+    /// `destroy()` therefore stays a driver loss, and the device is still leaked on drop.
     fn mark_lost(&self, why: String, destroyed: bool) {
-        lock(&self.lost_reason).get_or_insert(why);
-        if destroyed {
-            self.destroyed.store(true, Ordering::SeqCst);
+        let mut reason = lock(&self.lost_reason);
+        if reason.is_none() {
+            *reason = Some(why);
+            if destroyed {
+                self.destroyed.store(true, Ordering::SeqCst);
+            }
         }
         self.lost.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether dropping the device could block (see [`Gpu`]): a timed-out wait, or a loss that was
+    /// not a `destroy()`.
+    fn leak_on_drop(&self) -> bool {
+        let lost_by_driver = self.lost.load(Ordering::SeqCst) && !self.destroyed.load(Ordering::SeqCst);
+        self.poisoned.load(Ordering::SeqCst) || lost_by_driver
     }
 
     fn poison(&self, why: String) {
@@ -140,9 +175,7 @@ pub struct Gpu {
 
 impl Drop for Gpu {
     fn drop(&mut self) {
-        let h = &self.health;
-        let lost_by_driver = h.lost.load(Ordering::SeqCst) && !h.destroyed.load(Ordering::SeqCst);
-        if h.poisoned.load(Ordering::SeqCst) || lost_by_driver {
+        if self.health.leak_on_drop() {
             // Keep one reference to the device and queue alive forever, so wgpu never runs the
             // queue's blocking wait-for-idle teardown (see the type docs).
             std::mem::forget(self.device.clone());
@@ -352,6 +385,33 @@ impl Gpu {
     /// driver hangs inside it) cannot hang the caller: after the timeout plus a 2 s grace the wait
     /// gives up, poisons the `Gpu` and leaves the helper thread behind.
     pub fn wait(&self) -> Result<(), String> {
+        if self.health.inject_poll_panic.swap(false, Ordering::SeqCst) {
+            // Test hook (`inject_poll_panic`): what wgpu 30 does when the driver reports the device
+            // lost during a wait.
+            return self.wait_with(|_, _| panic!("Error in Device::poll: Parent device is lost (injected by a test hook)"));
+        }
+        self.wait_with(|device, timeout| device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(timeout) }))
+    }
+
+    /// Test only: the next [`Gpu::wait`] behaves as if `Device::poll` had panicked, which is what
+    /// wgpu 30 does on a real driver-side device loss (an NVIDIA Xid). Unlike `device.destroy()`,
+    /// this takes the `catch_unwind` path of the wait. The real submitted work still runs.
+    #[doc(hidden)]
+    pub fn inject_poll_panic(&self) {
+        self.health.inject_poll_panic.store(true, Ordering::SeqCst);
+    }
+
+    /// Test only: whether dropping this `Gpu` would leak its device (see the type docs).
+    #[doc(hidden)]
+    pub fn leaks_on_drop(&self) -> bool {
+        self.health.leak_on_drop()
+    }
+
+    /// [`Gpu::wait`] with the blocking poll supplied by the caller: `poll(device, timeout)` runs on
+    /// the helper thread exactly where `wait` runs `Device::poll`. Public for tests that need a poll
+    /// which panics or never returns; everything else uses `wait`.
+    #[doc(hidden)]
+    pub fn wait_with(&self, poll: impl FnOnce(&wgpu::Device, Duration) -> Result<wgpu::PollStatus, wgpu::PollError> + Send + 'static) -> Result<(), String> {
         self.check_health()?;
         let timeout = self.poll_timeout;
         let device = self.device.clone();
@@ -359,7 +419,7 @@ impl Gpu {
         std::thread::Builder::new()
             .name("bigmont-gpu-wait".into())
             .spawn(move || {
-                let result = catch_unwind(AssertUnwindSafe(|| device.poll(wgpu::PollType::Wait { submission_index: None, timeout: Some(timeout) })));
+                let result = catch_unwind(AssertUnwindSafe(|| poll(&device, timeout)));
                 let _ = tx.send(result.map_err(|p| panic_text(&*p)));
             })
             .map_err(|e| format!("cannot start the GPU wait thread: {e}"))?;
@@ -395,11 +455,17 @@ impl Gpu {
             let _ = tx.send(r);
         });
         self.wait()?;
-        // The callback runs inside the poll that completed the copy; waiting longer is only a guard.
-        match rx.recv_timeout(self.poll_timeout.max(Duration::from_millis(100))) {
+        // The callback runs inside the poll that completed the copy, so it has normally fired
+        // already; the short fixed guard only catches a mapping that never completes, which is
+        // treated like a timed-out wait (the Gpu is poisoned).
+        match rx.recv_timeout(READBACK_GUARD) {
             Ok(Ok(())) => {}
             Ok(Err(e)) => return Err(self.explain(format!("mapping readback buffer failed: {e}"))),
-            Err(_) => return Err(self.explain("the readback mapping did not complete (GPU wait timed out)".into())),
+            Err(_) => {
+                let why = format!("GPU wait timed out: the readback mapping did not complete within {} s after the wait", READBACK_GUARD.as_secs());
+                self.health.poison(why.clone());
+                return Err(self.explain(why));
+            }
         }
         let x = {
             let view = slice.get_mapped_range().map_err(|e| self.explain(format!("readback buffer not mapped: {e}")))?;
@@ -662,10 +728,59 @@ mod tests {
         lock(&h.errors).push("bad usage".into());
         assert_eq!(h.problem().unwrap(), "uncaptured wgpu error: bad usage");
         h.mark_lost("Unknown: driver".into(), false);
+        assert!(h.leak_on_drop(), "a driver loss leaks the device on drop");
+        // A later destroy() (for instance the engine's test hook) must not make it look idle.
         h.mark_lost("second loss is ignored".into(), true);
         assert_eq!(h.problem().unwrap(), "device lost: Unknown: driver");
+        assert!(!h.destroyed.load(Ordering::SeqCst), "the second loss did not set destroyed");
+        assert!(h.leak_on_drop(), "still a driver loss");
         h.poison("GPU wait timed out after 1 ms".into());
         assert_eq!(h.problem().unwrap(), "GPU wait timed out after 1 ms");
+    }
+
+    #[test]
+    fn a_first_loss_by_destroy_is_idle_and_dropped_normally() {
+        let h = Health::default();
+        assert!(!h.leak_on_drop());
+        h.mark_lost("Destroyed".into(), true);
+        assert!(!h.leak_on_drop());
+        h.poison("GPU wait timed out".into());
+        assert!(h.leak_on_drop(), "a timeout always leaks");
+    }
+
+    fn adapter(name: &str) -> wgpu::AdapterInfo {
+        let mut a = wgpu::AdapterInfo::new(wgpu::DeviceType::DiscreteGpu, wgpu::Backend::Vulkan);
+        a.name = name.into();
+        a.vendor = 0x10de;
+        a.device = 0x2860;
+        a.driver = "NVIDIA".into();
+        a.driver_info = "580.178.04".into();
+        a.subgroup_min_size = 32;
+        a.subgroup_max_size = 32;
+        a
+    }
+
+    #[test]
+    fn same_adapter_compares_identity_and_driver() {
+        let a = adapter("NVIDIA GeForce RTX 4070 Laptop GPU");
+        assert!(same_adapter(&a, &a.clone()));
+        type Change = (&'static str, fn(&mut wgpu::AdapterInfo));
+        let changes: [Change; 9] = [
+            ("name", |b| b.name = "AMD Radeon 780M".into()),
+            ("vendor", |b| b.vendor = 0x1002),
+            ("device id", |b| b.device = 0x15bf),
+            ("device type", |b| b.device_type = wgpu::DeviceType::Cpu),
+            ("pci bus", |b| b.device_pci_bus_id = "0000:65:00.0".into()),
+            ("backend", |b| b.backend = wgpu::Backend::Gl),
+            ("driver", |b| b.driver = "llvmpipe".into()),
+            ("driver version", |b| b.driver_info = "590.1".into()),
+            ("subgroups", |b| b.subgroup_min_size = 16),
+        ];
+        for (what, change) in changes {
+            let mut b = a.clone();
+            change(&mut b);
+            assert!(!same_adapter(&a, &b), "a different {what} is a different adapter");
+        }
     }
 
     #[test]

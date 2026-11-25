@@ -1,3 +1,4 @@
+# note: machine-specific home paths (/home/<user>) replaced with ~ after the run (7 lines); nothing else changed
 # command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-core --test devloss -- --test-threads=1 2>&1; cargo test --release -p bigmont-cli --test devloss --test canary -- --test-threads=1 2>&1
 # host: test-laptop
 # adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
@@ -66,14 +67,14 @@
    Compiling naga-types v30.0.2
    Compiling zerocopy-derive v0.8.64
    Compiling wgpu-types v30.0.2
-   Compiling bigmont-oracle v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-oracle)
+   Compiling bigmont-oracle v0.1.0 (~/bigmont-devloss/crates/bigmont-oracle)
    Compiling half v2.7.1
    Compiling gpu-allocator v0.28.0
    Compiling wgpu-naga-bridge v30.0.2
    Compiling wgpu-core-deps-windows-linux-android v30.0.2
-   Compiling bigmont-core v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-core)
+   Compiling bigmont-core v0.1.0 (~/bigmont-devloss/crates/bigmont-core)
     Finished `release` profile [optimized] target(s) in 18.32s
-     Running tests/devloss.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-core/ad32b640dbf84c8f/out/devloss-ad32b640dbf84c8f)
+     Running tests/devloss.rs (~/bigmont-devloss-target/release/build/bigmont-core/ad32b640dbf84c8f/out/devloss-ad32b640dbf84c8f)
 
 running 4 tests
 test a_destroyed_device_gives_device_lost_errors_not_panics ... FAILED
@@ -104,7 +105,7 @@ a 0.822 s dispatch (16384 squarings) finished without a timeout under a 1 ms pol
 ---- an_uncaptured_wgpu_error_is_recorded_instead_of_panicking stdout ----
 adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 24 }
 
-thread 'an_uncaptured_wgpu_error_is_recorded_instead_of_panicking' (453365) panicked at /home/<user>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wgpu-30.0.2/src/backend/wgpu_core.rs:1619:18:
+thread 'an_uncaptured_wgpu_error_is_recorded_instead_of_panicking' (453365) panicked at ~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/wgpu-30.0.2/src/backend/wgpu_core.rs:1619:18:
 wgpu error: Validation Error
 
 Caused by:
@@ -138,10 +139,10 @@ failures:
 test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.36s
 
 error: test failed, to rerun pass `-p bigmont-core --test devloss`
-   Compiling bigmont-cpu v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-cpu)
-   Compiling bigmont-cli v0.1.0 (/home/<user>/bigmont-devloss/crates/bigmont-cli)
+   Compiling bigmont-cpu v0.1.0 (~/bigmont-devloss/crates/bigmont-cpu)
+   Compiling bigmont-cli v0.1.0 (~/bigmont-devloss/crates/bigmont-cli)
     Finished `release` profile [optimized] target(s) in 0.79s
-     Running tests/canary.rs (/home/<user>/bigmont-devloss-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
+     Running tests/canary.rs (~/bigmont-devloss-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
 
 running 11 tests
 test a_cpu_run_passes_without_gpu_tests ... ok
