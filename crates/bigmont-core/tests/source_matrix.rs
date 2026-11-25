@@ -40,6 +40,29 @@ fn every_scheme_and_target_that_generates_validates_with_exactly_that_targets_ca
 }
 
 #[test]
+fn every_fermat_source_that_generates_validates_with_exactly_that_targets_capabilities() {
+    let native = Caps { subgroups: true, int64: true };
+    let mut generated = 0;
+    for &scheme in LimbScheme::ALL {
+        for tpi in [4u32, 8, 16, 32] {
+            for bits in [64u32, 254, 1019, 2029] {
+                let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, 64, Variant::Unrolled);
+                for (target, caps) in [(Target::Native, native), (Target::Browser, Caps::BROWSER)] {
+                    match cfg.try_fermat_wgsl_for(target) {
+                        Ok(src) => {
+                            validate(&src, caps).unwrap_or_else(|e| panic!("{cfg:?} {target:?} fermat: {e}"));
+                            generated += 1;
+                        }
+                        Err(_) => assert!(!caps.satisfies(cfg.requires()), "{cfg:?} {target:?} fermat refused although the target can run it"),
+                    }
+                }
+            }
+        }
+    }
+    assert!(generated > 0);
+}
+
+#[test]
 fn a_32_bit_kernel_is_never_generated_for_the_browser() {
     let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 2029, 8, 64, Variant::Unrolled);
     let e = cfg.try_wgsl_for(Target::Browser).unwrap_err();
@@ -51,6 +74,15 @@ fn a_32_bit_kernel_is_never_generated_for_the_browser() {
     // the 13-bit source never mentions u64.
     let c13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled).try_wgsl_for(Target::Browser).unwrap();
     assert!(!c13.contains("u64"));
+
+    // the same for the Fermat ladder.
+    let e = cfg.try_fermat_wgsl_for(Target::Browser).unwrap_err();
+    assert!(e.contains("int64"), "{e}");
+    let fermat = cfg.try_fermat_wgsl_for(Target::Native).unwrap();
+    assert!(fermat.contains("u64") && fermat.contains("e_words"));
+    assert!(validate(&fermat, Caps { subgroups: true, int64: false }).is_err());
+    let f13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled).try_fermat_wgsl_for(Target::Browser).unwrap();
+    assert!(!f13.contains("u64"));
 }
 
 #[test]

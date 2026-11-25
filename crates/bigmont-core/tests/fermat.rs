@@ -228,7 +228,8 @@ fn boundary_groups(ks: &[u32], seed: u64) -> BTreeMap<u32, Vec<BigUint>> {
 fn edge_lengths_around_the_word_and_limb_boundaries() {
     // 2^k-1 and 2^(k-1)+1 have exactly k bits; 2^k+1 has k+1 bits. Lengths straddle 13-bit limbs
     // (26, 39, 52, 65), 32-bit limbs and exponent words (31, 32, 33, 62..65) and the 64-bit CPU limb.
-    let ks = [3u32, 20, 26, 31, 32, 33, 39, 47, 48, 49, 52, 62, 63, 64, 65];
+    // 3 and 62 are the 32-bit additions, kept last so the seeded draws of the earlier lengths are unchanged.
+    let ks = [20u32, 26, 31, 32, 33, 39, 47, 48, 49, 52, 63, 64, 65, 3, 62];
     let mut groups = boundary_groups(&ks, 0xB175);
     let mut add = |n: BigUint| groups.entry(n.bits() as u32).or_default().push(n);
     // Known primes at the boundary lengths: 2^31-1, 2^61-1, 2^64-59, and the Fermat prime 65537.

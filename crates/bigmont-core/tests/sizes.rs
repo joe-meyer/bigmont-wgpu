@@ -1,5 +1,5 @@
 mod common;
-use bigmont_core::gpu::{Batch, run};
+use bigmont_core::gpu::{Batch, Gpu, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
@@ -30,13 +30,12 @@ fn check_size(cfg: KernelConfig, squarings: u32) {
 
 /// The 32-bit scheme's variant of [`check_size`]: moduli of `32 * limbs - 3` bits (R > 4n), plus
 /// all-ones and sparse moduli, compared with the oracle chain at the same limb count.
-fn check_size32(tpi: u32, limbs: u32, squarings: u32) {
+fn check_size32(gpu: &Gpu, tpi: u32, limbs: u32, squarings: u32) {
     let mut cfg = KernelConfig::new(tpi, 64, Variant::Unrolled);
     cfg.scheme = LimbScheme::Limb32;
     cfg.limbs = limbs;
-    let Some(gpu) = common::open_gpu(cfg) else { return };
-    if !gpu.caps().satisfies(cfg.requires()) {
-        common::skip(format!("{cfg:?}: the adapter lacks {}", gpu.caps().missing(cfg.requires()).join(" and ")));
+    if let Err(e) = gpu.check_subgroups(tpi) {
+        common::skip(format!("{cfg:?}: {e}"));
         return;
     }
     let bits = limbs * 32 - 3;
@@ -46,7 +45,7 @@ fn check_size32(tpi: u32, limbs: u32, squarings: u32) {
     let sparse = (BigUint::one() << (bits - 1)) + 1u32;
     values.push((sparse.clone(), &sparse - 1u32));
     let batch = Batch::from_values_cfg(&values, &cfg);
-    let result = run(&gpu, cfg, &batch, squarings, 1).expect("run failed");
+    let result = run(gpu, cfg, &batch, squarings, 1).expect("run failed");
     let l = limbs as usize;
     for (i, (n, x0)) in values.iter().enumerate() {
         let got = cfg.scheme.unpack(&result.x[i * l..(i + 1) * l]);
@@ -55,21 +54,35 @@ fn check_size32(tpi: u32, limbs: u32, squarings: u32) {
     }
 }
 
+/// One device for a whole 32-bit test; `None` after a loud skip when the adapter lacks int64.
+fn open32() -> Option<Gpu> {
+    let mut cfg = KernelConfig::new(4, 64, Variant::Unrolled);
+    cfg.scheme = LimbScheme::Limb32;
+    let gpu = common::open_gpu(cfg)?;
+    if !gpu.caps().satisfies(cfg.requires()) {
+        common::skip(format!("{cfg:?}: the adapter lacks {}", gpu.caps().missing(cfg.requires()).join(" and ")));
+        return None;
+    }
+    Some(gpu)
+}
+
 /// (tpi, limbs) for 32-bit limbs: 1, 2, 3, 4, 5, 9 and 16 limbs per lane at TPI 4, and 1, 2, 3, 8 at
 /// TPI 8 (every count a multiple of its TPI).
 const SIZES32: &[(u32, u32)] = &[(4, 4), (4, 8), (4, 12), (4, 16), (4, 20), (4, 36), (4, 64), (8, 8), (8, 16), (8, 24), (8, 64)];
 
 #[test]
 fn limb32_size_classes_match_oracle() {
+    let Some(gpu) = open32() else { return };
     for &(tpi, limbs) in SIZES32 {
-        check_size32(tpi, limbs, 3);
+        check_size32(&gpu, tpi, limbs, 3);
     }
 }
 
 #[test]
 fn limb32_size_classes_long_chain_match_oracle() {
+    let Some(gpu) = open32() else { return };
     for &(tpi, limbs) in &[(4, 36), (8, 24), (4, 64)] {
-        check_size32(tpi, limbs, 128);
+        check_size32(&gpu, tpi, limbs, 128);
     }
 }
 
