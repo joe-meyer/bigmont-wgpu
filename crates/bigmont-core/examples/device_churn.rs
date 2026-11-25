@@ -35,6 +35,19 @@ fn make_gpu(vkonly: bool) -> Gpu {
     })
 }
 
+/// Open file descriptors and threads of this process (Linux only; empty elsewhere): a per-cycle
+/// growth shows that dropping a `Gpu` does not release everything it acquired.
+fn proc_counts() -> String {
+    let fds = std::fs::read_dir("/proc/self/fd").map(|d| d.count().to_string());
+    let threads = std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("Threads:")).map(|l| l.trim_start_matches("Threads:").trim().to_string()));
+    match (fds, threads) {
+        (Ok(f), Some(t)) => format!("fds {f} threads {t}"),
+        _ => String::new(),
+    }
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let mode = args.next().expect("mode: new | reuse | keep");
@@ -48,7 +61,7 @@ fn main() {
 
     let cycle = |i: u32, gpu: &Gpu| {
         let r = run(gpu, cfg, &batch, squarings, 1).expect("run");
-        eprintln!("cycle {i}: {} limbs back, {:.4} s", r.x.len(), r.best_secs);
+        eprintln!("cycle {i}: {} limbs back, {:.4} s | {} [{:?}] | {}", r.x.len(), r.best_secs, gpu.info.name, gpu.info.backend, proc_counts());
     };
     let shared = (mode == "reuse").then(|| make_gpu(vkonly));
     let mut kept = Vec::new();

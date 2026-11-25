@@ -3,7 +3,7 @@
 use crate::kernel::KernelConfig;
 use bigmont_oracle::{LIMBS, XorShift64, neg_inv_limb, pack_limbs_n, random_below, random_odd_modulus};
 use num_bigint::BigUint;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 /// Serialises instance/adapter/device creation. Mitigation; root cause not investigated: creating
@@ -82,6 +82,22 @@ fn make_instance() -> wgpu::Instance {
     wgpu::Instance::new(wgpu::InstanceDescriptor { backends: instance_backends(), ..wgpu::InstanceDescriptor::new_without_display_handle() })
 }
 
+/// The one wgpu `Instance` of this process, created on first use and kept alive.
+///
+/// Why not one `Instance` per `Gpu::open`: each new Instance makes the Vulkan loader `dlopen` the
+/// NVIDIA driver library and dropping it `dlclose`s it again. On Linux glibc cannot give back the
+/// static thread-local storage such a library takes, so after about ten load/unload cycles in one
+/// process the next load fails with "cannot allocate memory in static TLS block", the loader
+/// silently drops the NVIDIA driver, and adapter selection finds no NVIDIA adapter (or, without a
+/// name filter, silently picks another one). Verified on the RTX 4070 laptop: 10 cycles succeed and
+/// the 11th fails; with `GLIBC_TUNABLES=glibc.rtld.optional_static_tls=65536` 40 of 40 succeed.
+/// Sharing one Instance loads the driver once. See
+/// docs/superpowers/results/2026-11-24-device-loss-investigation.md.
+fn shared_instance() -> wgpu::Instance {
+    static INSTANCE: OnceLock<wgpu::Instance> = OnceLock::new();
+    INSTANCE.get_or_init(make_instance).clone()
+}
+
 fn describe(info: &wgpu::AdapterInfo) -> String {
     format!("{} [{:?}, {:?}] subgroup {}..{}", info.name, info.backend, info.device_type, info.subgroup_min_size, info.subgroup_max_size)
 }
@@ -99,7 +115,7 @@ impl Gpu {
     pub fn open(selector: &AdapterSelector) -> Result<Gpu, String> {
         let _init = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         pollster::block_on(async {
-            let instance = make_instance();
+            let instance = shared_instance();
             let name = selector.name.as_ref().map(|s| s.to_lowercase());
             let backend = selector.backend.as_ref().map(|s| s.to_lowercase());
             let adapter = if name.is_some() || backend.is_some() || selector.index.is_some() {
@@ -144,7 +160,7 @@ impl Gpu {
 
     pub fn list_adapters() -> Vec<String> {
         pollster::block_on(async {
-            let instance = make_instance();
+            let instance = shared_instance();
             instance
                 .enumerate_adapters(wgpu::Backends::all())
                 .await
