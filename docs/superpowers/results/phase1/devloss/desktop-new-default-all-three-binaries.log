@@ -1,0 +1,6 @@
+# desktop (Windows, RX 6700 XT) loops under the new default backends (Vulkan, Dx12, Metal): sizes n=40, engine n=30, chain n=30 (exit 127 would mean 0xC0000409)
+# commit 6b8a9f4-era binaries; run 2026-11-25; the old all-backends default crashed sizes 6/60
+RESULT default_backends sizes n=40 ok=40 bad=0 [ ]
+RESULT default_backends engine n=30 ok=30 bad=0 [ ]
+RESULT default_backends chain n=30 ok=30 bad=0 [ ]
+done

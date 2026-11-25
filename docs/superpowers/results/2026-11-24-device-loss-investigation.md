@@ -70,8 +70,8 @@ So backends (GL or not), the TLS problem, the number of devices and the kernel a
 ## 5. Not verified / limits
 
 - The Xid cause is unknown; only what it is not was shown. Different driver/kernel/hardware not tried. The P4000 and the 780M were not looped for Xid-like events; the Windows desktop has no NVIDIA driver.
-- The Windows exit crash mechanism (why GL init crashes AMD's driver) is unknown; the fix is avoidance, verified on 60 runs of one test binary. The `engine` and `chain` binaries were not re-looped under the new default (the run was stopped at the user's request).
-- The TLS fix was verified on Linux only; the many-devices test was run on the laptop (named and unnamed) but not on the Windows desktop (paused).
+- The Windows exit crash mechanism (why GL init crashes AMD's driver) is unknown; the fix is avoidance, verified on 60 runs of one test binary. Update 2026-11-25: the `sizes` (40), `engine` (30) and `chain` (30) binaries were looped under the new default on the desktop: 100 runs, 0 exit crashes (`desktop-new-default-all-three-binaries.log`); the full workspace suite with the device-loss code merged passed 120 of 120 on the desktop (`desktop-full-suite-after-devloss-handling.log`).
+- The TLS fix is a Linux/glibc fix, verified on the laptop; the many-devices test also passes on the Windows desktop (where the limit does not apply).
 - All samples are single machines and small (60 to 150 processes); rates are indicative.
 
 ## 6. Raw files (`docs/superpowers/results/phase1/devloss/`)

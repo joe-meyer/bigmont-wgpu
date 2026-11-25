@@ -1,0 +1,164 @@
+# cargo test --release --workspace --no-fail-fast -- --test-threads=1 on the desktop after merging device-loss handling (commit 21b3ab5), 2026-11-25T00:03:43-05:00
+     Running unittests src\lib.rs (target\release\build\bigmont-cli/e9e73d2b1195b56b\out\bigmont_cli-e9e73d2b1195b56b.exe)
+test engine::tests::a_reopened_adapter_without_subgroups_follows_the_open_rules ... ok
+test engine::tests::the_same_adapter_keeps_its_tuning_and_a_different_one_is_retuned ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\main.rs (target\release\build\bigmont-cli/1712b09aa53e5e03\out\bigmont-1712b09aa53e5e03.exe)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\canary.rs (target\release\build\bigmont-cli/df214b0e5f37832b\out\canary-df214b0e5f37832b.exe)
+test a_cpu_run_passes_without_gpu_tests ... ok
+test a_differing_verdict_fails_and_names_the_index ... ok
+test a_gpu_run_that_tested_nothing_on_the_gpu_fails ... ok
+test a_length_mismatch_fails ... ok
+test a_lost_device_fails_the_canary_even_when_it_recovered ... ok
+test all_failing_conditions_are_reported_together ... ok
+test canary_exits_0_for_a_matching_verdict_file ... ok
+test canary_exits_1_on_a_length_mismatch ... ok
+test canary_exits_1_when_one_verdict_byte_is_flipped ... ok
+test every_gpu_disagreement_or_error_fails_even_when_the_final_verdicts_match ... ok
+test matching_verdicts_and_a_healthy_gpu_pass ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+     Running tests\cli.rs (target\release\build\bigmont-cli/652324cfca9f86f1\out\cli-652324cfca9f86f1.exe)
+test bigmont_cache_env_names_the_default_cache_and_no_cache_disables_it ... ok
+test cache_and_no_cache_together_are_a_usage_error ... ok
+test help_exits_0_and_prints_usage ... ok
+test no_arguments_is_a_usage_error_with_exit_code_2 ... ok
+test the_tune_subcommand_writes_the_cache ... ok
+test unknown_flags_and_missing_positionals_exit_2 ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.20s
+     Running tests\devloss.rs (target\release\build\bigmont-cli/6cb1401812aacbd7\out\devloss-6cb1401812aacbd7.exe)
+test a_different_adapter_after_a_reopen_is_tuned_again ... ok
+test a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu ... ok
+test a_panicking_poll_is_recovered_like_a_lost_device ... ok
+test a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu ... ok
+test more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process ... ok
+test the_default_allows_two_device_retries ... ok
+test the_lifetime_reopen_cap_makes_the_engine_cpu_only ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 46.38s
+     Running tests\engine.rs (target\release\build\bigmont-cli/bfb83bdca75695aa\out\engine-bfb83bdca75695aa.exe)
+test auto_falls_back_to_cpu_when_no_gpu_works ... ok
+test buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size ... ok
+test cpu_backend_matches_the_oracle_including_degenerate_inputs ... ok
+test every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_once ... ok
+test forced_gpu_backend_errors_when_the_adapter_is_missing ... ok
+test gpu_backend_matches_the_oracle_and_buckets_by_bit_length ... ok
+test verify_rate_rechecks_composites_without_changing_verdicts ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.45s
+     Running tests\files.rs (target\release\build\bigmont-cli/79353eb38d7cd0cf\out\files-79353eb38d7cd0cf.exe)
+test a_number_wider_than_the_container_is_not_written ... ok
+test absurd_counts_are_rejected_without_allocating ... ok
+test candidate_file_round_trips_and_has_the_beacon_layout ... ok
+test malformed_files_are_errors ... ok
+test verdict_file_layout_and_atomic_write ... ok
+test verdict_file_rejects_wrong_magic_and_length ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests\tune.rs (target\release\build\bigmont-cli/dc06ca52f420ba10\out\tune-dc06ca52f420ba10.exe)
+test a_cache_entry_naming_a_non_candidate_falls_back_to_a_retune ... ok
+test a_corrupt_cache_is_ignored_and_rewritten ... ok
+test autotune_picks_a_verified_config_and_uses_its_cache ... ok
+test autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers ... ok
+test bigmont_cache_overrides_the_default_on_every_platform ... ok
+test candidates_are_valid_and_fit_the_adapter ... ok
+test default_cache_path_elsewhere_prefers_xdg_then_home ... ok
+test default_cache_path_on_windows_is_under_localappdata ... ok
+test every_bit_length_of_a_class_builds_the_same_kernel_as_its_representative ... ok
+test limb_class_is_the_minimum_limb_count_floored_at_the_smallest_kernel ... ok
+test resolve_cache_applies_the_flags_over_the_default ... ok
+test self_test_accepts_a_good_config_at_two_sizes ... ok
+test self_test_refuses_lengths_too_small_for_a_meaningful_test_instead_of_hanging ... ok
+test self_test_rejects_a_config_too_small_for_the_numbers ... ok
+test write_cache_is_atomic_creates_parents_and_replaces_its_own_key ... ok
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.71s
+     Running unittests src\lib.rs (target\release\build\bigmont-core/bd9e7e4310c40522\out\bigmont_core-bd9e7e4310c40522.exe)
+test gpu::tests::a_first_loss_by_destroy_is_idle_and_dropped_normally ... ok
+test gpu::tests::classifies_device_level_errors ... ok
+test gpu::tests::health_reports_the_most_serious_problem_first ... ok
+test gpu::tests::parses_backend_lists ... ok
+test gpu::tests::parses_poll_timeouts ... ok
+test gpu::tests::rejects_unknown_or_empty_lists ... ok
+test gpu::tests::same_adapter_compares_identity_and_driver ... ok
+test gpu::tests::the_default_leaves_gl_out ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\browser_source.rs (target\release\build\bigmont-core/f12c3e7c4c71e77e\out\browser_source-f12c3e7c4c71e77e.exe)
+test browser_source_is_native_source_plus_the_two_directives ... ok
+test fermat_browser_source_is_native_source_plus_the_two_directives ... ok
+test wgsl_is_native ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests\chain.rs (target\release\build\bigmont-core/926bd42fdc212d46\out\chain-926bd42fdc212d46.exe)
+test tpi16_matches_oracle ... ok
+test tpi16_unrolled_matches_oracle ... ok
+test tpi1_matches_oracle ... ok
+test tpi32_matches_oracle ... ok
+test tpi32_other_workgroup_sizes_match_oracle ... ok
+test tpi32_unrolled_matches_oracle ... ok
+test tpi32_unrolled_other_workgroup_sizes_match_oracle ... ok
+test tpi4_matches_oracle ... ok
+test tpi4_unrolled_matches_oracle ... ok
+test tpi8_matches_oracle ... ok
+test tpi8_unrolled_matches_oracle ... ok
+test unrolled_long_chain_matches_oracle ... ok
+test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.32s
+     Running tests\devloss.rs (target\release\build\bigmont-core/1f51ea7a51e40b9b\out\devloss-1f51ea7a51e40b9b.exe)
+test a_destroyed_device_gives_device_lost_errors_not_panics ... ok
+test a_panicking_poll_is_a_driver_loss_and_the_device_is_leaked_on_drop ... ok
+test a_poll_that_never_returns_is_abandoned_after_the_grace_period ... ok
+test a_wait_longer_than_the_poll_timeout_is_a_timed_out_error ... ok
+test an_uncaptured_wgpu_error_is_recorded_instead_of_panicking ... ok
+test the_device_lost_callback_and_handlers_survive_from_parts ... ok
+test the_poll_panic_hook_reaches_the_entry_points ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.50s
+     Running tests\fermat.rs (target\release\build\bigmont-core/ba57e01a6be0f5d9\out\fermat-ba57e01a6be0f5d9.exe)
+test edge_lengths_around_the_word_and_limb_boundaries ... ok
+test every_cooperative_width_agrees_with_the_oracle ... ok
+test every_odd_number_from_3_to_4095_matches_the_oracle ... ok
+test mersenne_primes_and_composites_across_sizes ... ok
+test mixed_batch_at_the_beacon_size_class_spans_chunks ... ok
+test other_bit_lengths_and_workgroup_sizes ... ok
+test rejects_candidates_of_the_wrong_length_or_even ... ok
+test runner_is_reusable_across_calls ... ok
+test runner_rejects_fewer_than_two_bits ... ok
+test the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.52s
+     Running tests\many_devices.rs (target\release\build\bigmont-core/d83bc9450f56319e\out\many_devices-d83bc9450f56319e.exe)
+test opening_many_devices_keeps_the_same_adapter ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.81s
+     Running tests\sizes.rs (target\release\build\bigmont-core/7e21b4c0031f8308\out\sizes-7e21b4c0031f8308.exe)
+test batch_limb_mismatch_is_an_error_not_a_panic ... ok
+test for_bits_rounds_up_to_a_multiple_of_tpi ... ok
+test rolled_size_classes_match_oracle ... ok
+test unrolled_size_classes_long_chain_match_oracle ... ok
+test unrolled_size_classes_match_oracle ... ok
+test unrolled_tiny_limbs_per_lane_match_oracle ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.47s
+     Running unittests src\lib.rs (target\release\build\bigmont-cpu/950abee22c4e6c6b\out\bigmont_cpu-950abee22c4e6c6b.exe)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\cpu.rs (target\release\build\bigmont-cpu/66363a48d7f52bee\out\cpu-66363a48d7f52bee.exe)
+test batch_preserves_order_for_any_thread_count ... ok
+test every_odd_number_below_8192_matches_the_oracle ... ok
+test matches_the_oracle_on_small_and_edge_values ... ok
+test mersenne_numbers ... ok
+test random_numbers_at_many_sizes ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+     Running unittests src\lib.rs (target\release\build\bigmont-oracle/4bb86b6ffed2fbed\out\bigmont_oracle-4bb86b6ffed2fbed.exe)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\oracle.rs (target\release\build\bigmont-oracle/b67661d02f6d0a35\out\oracle-b67661d02f6d0a35.exe)
+test chain_composes_at_full_size ... ok
+test chain_matches_independent_small_case ... ok
+test fermat_base2_known_values ... ok
+test inv_mod_pow2_property ... ok
+test limbs_for_bits_covers_the_ladder_invariant ... ok
+test neg_inv_limb_property ... ok
+test pack_unpack_round_trip_at_other_limb_counts ... ok
+test pack_unpack_roundtrip ... ok
+test random_modulus_has_exact_size_and_is_odd ... ok
+test random_prp_passes_the_fermat_test ... ok
+test single_squaring_matches_definition_at_full_size ... ok
+test square_chain_n_satisfies_the_montgomery_relation ... ok
+test unpack_accepts_unnormalized_limbs ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+exit: 0
