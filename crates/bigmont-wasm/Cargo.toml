@@ -11,6 +11,6 @@ crate-type = ["cdylib", "rlib"]
 # Everything lives behind the wasm32 gate, so a native build of the workspace compiles an empty crate.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 bigmont-core = { path = "../bigmont-core" }
-num-bigint = "0.4"
+num-bigint = "0.5"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
