@@ -205,3 +205,463 @@ fn the_tune_subcommand_forces_a_scheme_and_prints_a_scheme_column() {
     assert!(text.lines().all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")), "{text}");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---- early exit (--ee, --bins, --chunk, --growth, --marker) and --lock ----
+
+use bigmont_cli::early_exit::schedule;
+use std::io::{BufRead, BufReader, Read};
+use std::process::Stdio;
+use std::time::{Duration, Instant};
+
+const EE_BITS: u32 = 192;
+
+/// Candidates grouped into ks by a sizes list, with the plain (no early exit) verdicts of the oracle.
+struct Data {
+    ns: Vec<BigUint>,
+    sizes: Vec<u32>,
+    plain: Vec<u8>,
+}
+
+/// Builds ks from `(size, prime positions)`: composites everywhere except at the listed positions, which
+/// hold probable primes (base-2 Fermat is the oracle). Candidate widths run through 64..=130 bits.
+fn build(spec: &[(u32, &[u32])], seed: u64) -> Data {
+    build_with(spec, seed, |i| 64 + (i * 7) % 67)
+}
+
+/// [`build`] with the bit length of candidate `i` chosen by `bits_of`.
+fn build_with(spec: &[(u32, &[u32])], seed: u64, bits_of: impl Fn(u32) -> u32) -> Data {
+    let mut rng = XorShift64::new(seed);
+    let (mut ns, mut sizes, mut i) = (Vec::new(), Vec::new(), 0u32);
+    for &(size, primes) in spec {
+        sizes.push(size);
+        for p in 0..size {
+            let bits = bits_of(i);
+            i += 1;
+            let want_prime = primes.contains(&p);
+            let n = loop {
+                let n = random_odd_modulus(&mut rng, bits);
+                if bigmont_cpu::fermat_base2(&n) == want_prime {
+                    break n;
+                }
+            };
+            ns.push(n);
+        }
+    }
+    let plain = ns.iter().map(|n| u8::from(bigmont_cpu::fermat_base2(n))).collect();
+    Data { ns, sizes, plain }
+}
+
+/// Mixed ks: no prime, an early prime, a late prime, a prime in the last position, several primes in a k,
+/// an empty k and long ks, so default early exit skips plenty and takes several waves.
+fn mixed() -> Data {
+    build(
+        &[
+            (1, &[]),
+            (3, &[0]),
+            (7, &[2]),
+            (9, &[8]),
+            (12, &[]),
+            (0, &[]),
+            (20, &[5]),
+            (20, &[6, 7, 19]),
+            (33, &[14]),
+            (40, &[]),
+            (41, &[40]),
+            (30, &[7, 25]),
+            (5, &[]),
+        ],
+        91,
+    )
+}
+
+/// What early exit must produce, worked out per k from the plain verdicts: a k is tested up to the end of
+/// the wave that holds its first prime (or to its end if it has none). Returns (verdicts, tested, waves).
+fn model(plain: &[u8], sizes: &[u32], bounds: &[u32], marker: u8) -> (Vec<u8>, u64, u32) {
+    let mut out = vec![marker; plain.len()];
+    let (mut off, mut tested, mut max_end) = (0usize, 0u64, 0u32);
+    for &size in sizes {
+        let ks = &plain[off..off + size as usize];
+        let end = match ks.iter().position(|&v| v == 1) {
+            Some(h) => bounds.iter().copied().find(|&b| b as usize > h).expect("last boundary covers every position").min(size),
+            None => size,
+        };
+        out[off..off + end as usize].copy_from_slice(&ks[..end as usize]);
+        tested += u64::from(end);
+        max_end = max_end.max(end);
+        off += size as usize;
+    }
+    let waves = bounds.iter().filter(|&&b| b < max_end).count() as u32;
+    (out, tested, waves)
+}
+
+fn s(p: &Path) -> &str {
+    p.to_str().unwrap()
+}
+
+fn s_max(sizes: &[u32]) -> u32 {
+    sizes.iter().copied().max().unwrap_or(0)
+}
+
+/// A scratch directory holding `cand.bin` and `sizes.bin` for `d`.
+fn ee_dir(tag: &str, d: &Data) -> PathBuf {
+    let dir = tmp_dir(tag);
+    formats::write_candidates(&dir.join("cand.bin"), EE_BITS, &d.ns).unwrap();
+    formats::write_sizes(&dir.join("sizes.bin"), &d.sizes).unwrap();
+    dir
+}
+
+/// `bigmont cand.bin out.bin --backend cpu --no-cache <extra>` in `dir`.
+fn ee_run(dir: &Path, out_name: &str, extra: &[&str]) -> Output {
+    let mut args = vec![s(&dir.join("cand.bin")).to_string(), s(&dir.join(out_name)).to_string(), "--backend".into(), "cpu".into(), "--no-cache".into()];
+    args.extend(extra.iter().map(|a| a.to_string()));
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run(bigmont(&refs))
+}
+
+fn ok(out: &Output) {
+    assert_eq!(code(out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+fn verdicts_of(path: &Path) -> Vec<u8> {
+    let (bits, v) = formats::read_verdicts(path).unwrap();
+    assert_eq!(bits, EE_BITS, "the verdict header carries the candidates' container width");
+    v
+}
+
+/// The `key=value` fields of the `g1_fermat[EE]:` line.
+fn summary(out: &Output) -> Vec<(String, String)> {
+    let err = String::from_utf8_lossy(&out.stderr);
+    let line = err.lines().find(|l| l.starts_with("g1_fermat[EE]: bits=")).unwrap_or_else(|| panic!("no summary line in: {err}"));
+    line.split_whitespace().filter_map(|t| t.split_once('=')).map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+fn field(sum: &[(String, String)], key: &str) -> String {
+    sum.iter().find(|(k, _)| k == key).unwrap_or_else(|| panic!("no {key}= in {sum:?}")).1.clone()
+}
+
+#[test]
+fn the_oracle_data_has_what_the_ee_tests_need() {
+    let d = mixed();
+    let b = schedule(6, 1.15, s_max(&d.sizes));
+    let (v, tested, waves) = model(&d.plain, &d.sizes, &b, 3);
+    assert!(v.contains(&3), "some positions are skipped");
+    assert!(d.plain.iter().filter(|&&x| x == 1).count() >= 8);
+    assert!(tested < d.ns.len() as u64 && waves >= 3, "tested {tested} of {}, {waves} waves", d.ns.len());
+}
+
+#[test]
+fn ee_matches_a_plain_run_where_tested_and_writes_the_marker_where_skipped() {
+    let d = mixed();
+    let dir = ee_dir("ee-basic", &d);
+    ok(&ee_run(&dir, "plain.bin", &[]));
+    let plain_v = verdicts_of(&dir.join("plain.bin"));
+    assert_eq!(plain_v, d.plain, "the plain run agrees with the oracle");
+
+    let out = ee_run(&dir, "ee.bin", &["--ee", s(&dir.join("sizes.bin"))]);
+    ok(&out);
+    let got = verdicts_of(&dir.join("ee.bin"));
+    assert_eq!(got.len(), d.ns.len());
+    let (want, _, _) = model(&d.plain, &d.sizes, &schedule(6, 1.15, s_max(&d.sizes)), 3);
+    assert_eq!(got, want);
+    // And the properties that define it, position by position.
+    let mut off = 0usize;
+    for &size in &d.sizes {
+        let k = off..off + size as usize;
+        match got[k.clone()].iter().position(|&v| v == 3) {
+            None => assert_eq!(got[k.clone()], plain_v[k.clone()], "a k that is never cut short equals the plain run"),
+            Some(first_skipped) => {
+                let cut = k.start + first_skipped;
+                assert_eq!(got[k.start..cut], plain_v[k.start..cut], "the tested part equals the plain run");
+                assert!(got[cut..k.end].iter().all(|&v| v == 3), "everything after the first skip is skipped");
+                assert!(plain_v[k.start..cut].contains(&1), "only a k with a prime in its tested part is cut short");
+            }
+        }
+        off += size as usize;
+    }
+    assert!(!dir.join("ee.bin.tmp").exists());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn bins_list_with_crlf_equals_the_concatenation_run_as_one_file() {
+    let d = mixed();
+    let dir = ee_dir("ee-bins", &d);
+    // Split in the middle of a k on purpose: the files are one array.
+    let cut = d.ns.len() / 3 + 1;
+    formats::write_candidates(&dir.join("a.bin"), EE_BITS, &d.ns[..cut]).unwrap();
+    formats::write_candidates(&dir.join("b.bin"), EE_BITS, &d.ns[cut..]).unwrap();
+    let list = format!("{}  \r\n\r\n{}\r\n", s(&dir.join("a.bin")), s(&dir.join("b.bin")));
+    std::fs::write(dir.join("list.txt"), list).unwrap();
+    let sizes = s(&dir.join("sizes.bin")).to_string();
+
+    ok(&ee_run(&dir, "one.bin", &["--ee", &sizes]));
+    let out = run(bigmont(&[s(&dir.join("list.txt")), s(&dir.join("list-out.bin")), "--backend", "cpu", "--no-cache", "--bins", "--ee", &sizes]));
+    ok(&out);
+    assert_eq!(verdicts_of(&dir.join("list-out.bin")), verdicts_of(&dir.join("one.bin")));
+    assert_eq!(field(&summary(&out), "count"), d.ns.len().to_string());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn marker_chunk_and_growth_change_the_output_as_the_semantics_require() {
+    let d = mixed();
+    let dir = ee_dir("ee-flags", &d);
+    let sizes = s(&dir.join("sizes.bin")).to_string();
+    let top = s_max(&d.sizes);
+
+    // (flags, chunk, growth, marker)
+    let cases: [(&[&str], i32, f64, u8); 5] = [
+        (&["--marker", "7"], 6, 1.15, 7),
+        (&["--marker", "0"], 6, 1.15, 0),
+        (&["--chunk", "1", "--growth", "1.0"], 1, 1.0, 3),
+        (&["--chunk", "2", "--growth", "1.0", "--marker", "255"], 2, 1.0, 255),
+        (&["--chunk", "0", "--growth", "1.5"], 0, 1.5, 3), // chunk <= 0 steps by one position at a time
+    ];
+    for (i, (flags, chunk, growth, marker)) in cases.iter().enumerate() {
+        let mut args = vec!["--ee", sizes.as_str()];
+        args.extend_from_slice(flags);
+        let name = format!("o{i}.bin");
+        let out = ee_run(&dir, &name, &args);
+        ok(&out);
+        let (want, tested, waves) = model(&d.plain, &d.sizes, &schedule(*chunk, *growth, top), *marker);
+        assert_eq!(verdicts_of(&dir.join(&name)), want, "{flags:?}");
+        let sum = summary(&out);
+        assert_eq!(field(&sum, "tested"), tested.to_string(), "{flags:?}");
+        assert_eq!(field(&sum, "waves"), waves.to_string(), "{flags:?}");
+    }
+    // One huge chunk is a single wave with nothing skipped: equal to a plain run.
+    let out = ee_run(&dir, "big.bin", &["--ee", &sizes, "--chunk", "1000000", "--growth", "1.0"]);
+    ok(&out);
+    assert_eq!(verdicts_of(&dir.join("big.bin")), d.plain);
+    assert_eq!(field(&summary(&out), "waves"), "1");
+    assert_eq!(field(&summary(&out), "tested"), d.ns.len().to_string());
+    // chunk 1 retires as early as possible: strictly fewer tests than the default, more waves.
+    let tiny = summary(&ee_run(&dir, "tiny.bin", &["--ee", &sizes, "--chunk", "1", "--growth", "1.0"]));
+    let default = summary(&ee_run(&dir, "def.bin", &["--ee", &sizes]));
+    assert!(field(&tiny, "tested").parse::<u64>().unwrap() < field(&default, "tested").parse::<u64>().unwrap());
+    assert!(field(&tiny, "waves").parse::<u32>().unwrap() > field(&default, "waves").parse::<u32>().unwrap());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_summary_line_has_the_documented_format_and_the_independently_computed_waves() {
+    let d = mixed();
+    let dir = ee_dir("ee-summary", &d);
+    let out = ee_run(&dir, "o.bin", &["--ee", s(&dir.join("sizes.bin"))]);
+    ok(&out);
+    let err = String::from_utf8_lossy(&out.stderr);
+    let line = err.lines().find(|l| l.starts_with("g1_fermat[EE]: bits=")).expect("summary line");
+    let (want_v, tested, waves) = model(&d.plain, &d.sizes, &schedule(6, 1.15, s_max(&d.sizes)), 3);
+    let count = d.ns.len();
+    let prp = want_v.iter().filter(|&&v| v == 1).count();
+    let head = format!("g1_fermat[EE]: bits={EE_BITS} count={count} ks={} tested={tested} ({:.3}) waves={waves} | ", d.sizes.len(), tested as f64 / count as f64);
+    assert!(line.starts_with(&head), "{line}\nwanted a line starting {head}");
+    assert!(line.contains("s gpu-phase (lock wait 0.00s) | ") && line.contains(" tests/s | "), "{line}");
+    assert!(line.ends_with(&format!("prp={prp} gec_alarm=0")), "{line}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Runs `args`; asserts exit status 2, `needle` on stderr and that `out_name` (and its temporary) do not
+/// exist in `dir` afterwards.
+fn expect_input_error(dir: &Path, args: &[&str], out_name: &str, needle: &str) {
+    let out = run(bigmont(args));
+    assert_eq!(code(&out), Some(2), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains(needle), "{args:?}: wanted {needle:?} in {err}");
+    assert!(!dir.join(out_name).exists() && !dir.join(format!("{out_name}.tmp")).exists(), "{args:?}: an output file was left behind");
+}
+
+#[test]
+fn ee_input_errors_exit_2_with_a_message_and_leave_no_output() {
+    let d = mixed();
+    let dir = ee_dir("ee-errors", &d);
+    let (cand, sizes, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("sizes.bin")).to_string(), s(&dir.join("o.bin")).to_string());
+    // `bigmont <input> o.bin --backend cpu --no-cache <extra>` must fail with `needle`.
+    let fails = |input: &str, extra: &[&str], needle: &str| {
+        let mut a = vec![input, out.as_str(), "--backend", "cpu", "--no-cache"];
+        a.extend_from_slice(extra);
+        expect_input_error(&dir, &a, "o.bin", needle);
+    };
+
+    fails(&cand, &["--bins"], "--bins requires --ee");
+    fails(&cand, &["--ee", &sizes, "--marker", "256"], "--marker");
+    fails(&cand, &["--ee", &sizes, "--chunk", "many"], "--chunk");
+    fails(&cand, &["--ee", &sizes, "--growth", "nan"], "--growth");
+
+    // Sizes that do not add up to the candidate count.
+    let mut wrong = d.sizes.clone();
+    wrong[0] += 1;
+    formats::write_sizes(&dir.join("wrong.bin"), &wrong).unwrap();
+    fails(&cand, &["--ee", s(&dir.join("wrong.bin"))], "sizes sum");
+
+    // Bad magic, truncated, and missing sizes files.
+    let good = std::fs::read(dir.join("sizes.bin")).unwrap();
+    let mut bad = good.clone();
+    bad[0] ^= 0xFF;
+    std::fs::write(dir.join("badmagic.bin"), &bad).unwrap();
+    fails(&cand, &["--ee", s(&dir.join("badmagic.bin"))], "magic");
+    std::fs::write(dir.join("short.bin"), &good[..good.len() - 2]).unwrap();
+    fails(&cand, &["--ee", s(&dir.join("short.bin"))], "short.bin");
+    fails(&cand, &["--ee", s(&dir.join("absent.bin"))], "absent.bin");
+
+    // A missing candidate file, directly and through a list; mixed container widths; an empty list.
+    let absent = s(&dir.join("nope.bin")).to_string();
+    fails(&absent, &["--ee", &sizes], "nope.bin");
+    std::fs::write(dir.join("missing.txt"), format!("{cand}\n{absent}\n")).unwrap();
+    fails(s(&dir.join("missing.txt")), &["--bins", "--ee", &sizes], "nope.bin");
+    formats::write_candidates(&dir.join("wide.bin"), EE_BITS + 32, &d.ns[..1]).unwrap();
+    std::fs::write(dir.join("mixed.txt"), format!("{cand}\n{}\n", s(&dir.join("wide.bin")))).unwrap();
+    fails(s(&dir.join("mixed.txt")), &["--bins", "--ee", &sizes], "mixed bits");
+    std::fs::write(dir.join("empty.txt"), "\r\n  \r\n").unwrap();
+    fails(s(&dir.join("empty.txt")), &["--bins", "--ee", &sizes], "empty.txt");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_absurd_schedule_is_refused_before_anything_is_allocated() {
+    let d = build(&[(3, &[1])], 5);
+    let dir = ee_dir("ee-absurd", &d);
+    // One k of 4 billion candidates with a step of 1 would be 4 billion boundaries (16 GB of schedule).
+    formats::write_sizes(&dir.join("huge.bin"), &[u32::MAX]).unwrap();
+    let (cand, huge, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("huge.bin")).to_string(), s(&dir.join("o.bin")).to_string());
+    for flags in [&["--chunk", "1", "--growth", "1.0"][..], &["--chunk", "0", "--growth", "1.0"], &["--chunk", "-5"]] {
+        let mut a = vec![cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", huge.as_str()];
+        a.extend_from_slice(flags);
+        let started = Instant::now();
+        expect_input_error(&dir, &a, "o.bin", "waves");
+        assert!(started.elapsed() < Duration::from_secs(20), "{flags:?}: refused quickly");
+    }
+    // A growing schedule over the same k is short, so it is not refused for its length (it fails the
+    // sizes-sum check instead, because the file does not hold 4 billion candidates).
+    let a = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", huge.as_str()];
+    expect_input_error(&dir, &a, "o.bin", "sizes sum");
+    let a = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", huge.as_str(), "--chunk", "1"];
+    expect_input_error(&dir, &a, "o.bin", "sizes sum");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn inject_is_still_refused_and_the_ee_flags_are_rejected_by_other_subcommands() {
+    let out = run(bigmont(&["a", "b", "--inject", "1", "2"]));
+    assert_eq!(code(&out), Some(2));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("--inject") && err.contains("not supported"), "{err}");
+    for sub in ["canary", "tune"] {
+        let out = run(bigmont(&[sub, "a", "b", "--ee", "sizes.bin"]));
+        assert_eq!(code(&out), Some(2), "{sub}");
+        assert!(String::from_utf8_lossy(&out.stderr).contains("--ee"), "{sub}");
+    }
+}
+
+/// Runs bigmont with `args` while this test holds an exclusive lock on `lock`, releasing it `hold` after
+/// the child reports that it is waiting for it. Returns the child's output.
+fn run_while_locked(args: &[&str], lock: &Path, hold: Duration) -> Output {
+    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(lock).unwrap();
+    file.lock().unwrap();
+    let mut child = bigmont(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().expect("spawn bigmont");
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut seen = String::new();
+    loop {
+        let mut line = String::new();
+        let n = stderr.read_line(&mut line).expect("read the child's stderr");
+        assert!(n > 0, "the child exited without waiting for the lock: {seen}");
+        seen.push_str(&line);
+        if line.contains("waiting for the lock") {
+            break;
+        }
+    }
+    std::thread::sleep(hold);
+    file.unlock().unwrap();
+    let mut rest = String::new();
+    stderr.read_to_string(&mut rest).unwrap();
+    let mut stdout = String::new();
+    child.stdout.take().unwrap().read_to_string(&mut stdout).unwrap();
+    let status = child.wait().unwrap();
+    Output { status, stdout: stdout.into_bytes(), stderr: (seen + &rest).into_bytes() }
+}
+
+#[test]
+fn lock_waits_for_the_holder_and_the_ee_summary_reports_the_wait() {
+    let d = mixed();
+    let dir = ee_dir("ee-lock", &d);
+    let lock = dir.join("gpu.lock");
+    assert!(!lock.exists());
+    let (cand, sizes, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("sizes.bin")).to_string(), s(&dir.join("o.bin")).to_string());
+    let args = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--ee", sizes.as_str(), "--lock", s(&lock)];
+    let hold = Duration::from_millis(500);
+    let o = run_while_locked(&args, &lock, hold);
+    ok(&o);
+    let err = String::from_utf8_lossy(&o.stderr);
+    let after = err.split("lock wait ").nth(1).expect("lock wait in the summary");
+    let waited: f64 = after.split('s').next().unwrap().parse().unwrap();
+    assert!(waited >= hold.as_secs_f64() - 0.01, "reported a lock wait of {waited}s for a {hold:?} hold: {err}"); // %.2f rounds
+    let (want, _, _) = model(&d.plain, &d.sizes, &schedule(6, 1.15, s_max(&d.sizes)), 3);
+    assert_eq!(verdicts_of(&dir.join("o.bin")), want);
+    assert!(lock.exists());
+    let again = std::fs::OpenOptions::new().read(true).write(true).open(&lock).unwrap();
+    again.try_lock().expect("the child released the lock when it exited");
+    again.unlock().unwrap();
+
+    // Uncontended: no waiting message and a near-zero wait.
+    let o = ee_run(&dir, "o2.bin", &["--ee", &sizes, "--lock", s(&lock)]);
+    ok(&o);
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(!err.contains("waiting for the lock"), "{err}");
+    assert!(err.contains("(lock wait 0.0"), "{err}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn lock_works_in_plain_mode_too_and_is_no_longer_ignored() {
+    let d = mixed();
+    let dir = ee_dir("plain-lock", &d);
+    let lock = dir.join("plain.lock");
+    let (cand, out) = (s(&dir.join("cand.bin")).to_string(), s(&dir.join("o.bin")).to_string());
+    let args = [cand.as_str(), out.as_str(), "--backend", "cpu", "--no-cache", "--lock", s(&lock)];
+
+    let started = Instant::now();
+    let o = run_while_locked(&args, &lock, Duration::from_millis(500));
+    ok(&o);
+    assert!(started.elapsed() >= Duration::from_millis(500));
+    assert_eq!(verdicts_of(&dir.join("o.bin")), d.plain);
+    assert!(!String::from_utf8_lossy(&o.stderr).contains("accepted and ignored"), "--lock is real now");
+
+    let fresh = dir.join("fresh.lock");
+    let o = ee_run(&dir, "o2.bin", &["--lock", s(&fresh)]);
+    ok(&o);
+    assert!(fresh.exists(), "the lock file is created");
+    assert!(!String::from_utf8_lossy(&o.stderr).contains("accepted and ignored"));
+    assert_eq!(verdicts_of(&dir.join("o2.bin")), d.plain);
+    // --repeat is still accepted and ignored.
+    let o = ee_run(&dir, "o3.bin", &["--repeat", "2"]);
+    ok(&o);
+    assert!(String::from_utf8_lossy(&o.stderr).contains("--repeat is accepted and ignored"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn ee_runs_end_to_end_on_the_gpu() {
+    if !gpu_available() {
+        return;
+    }
+    // 50 ks of 12, all 190-bit (the engine batches by exact bit length and sends 64 or more to the GPU):
+    // the first wave (6 per k) is 300 candidates.
+    let primes: Vec<Vec<u32>> = (0..50u32).map(|k| if k % 3 == 0 { vec![] } else { vec![k % 11] }).collect();
+    let spec: Vec<(u32, &[u32])> = primes.iter().map(|p| (12u32, p.as_slice())).collect();
+    let d = build_with(&spec, 4242, |_| 190);
+    let dir = ee_dir("ee-gpu", &d);
+    let cache = dir.join("tune.cache");
+    let sizes = s(&dir.join("sizes.bin")).to_string();
+    let (cand, out_path) = (dir.join("cand.bin"), dir.join("o.bin"));
+    let args = [s(&cand), s(&out_path), "--backend", "gpu", "--cache", s(&cache), "--ee", sizes.as_str()];
+    let out = run(bigmont(&args));
+    ok(&out);
+    let (want, tested, waves) = model(&d.plain, &d.sizes, &schedule(6, 1.15, 12), 3);
+    assert_eq!(verdicts_of(&dir.join("o.bin")), want);
+    let sum = summary(&out);
+    assert_eq!(field(&sum, "tested"), tested.to_string());
+    assert_eq!(field(&sum, "waves"), waves.to_string());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("GPU:") && !err.contains("(gpu 0,"), "the waves ran on the GPU: {err}");
+    let _ = std::fs::remove_dir_all(dir);
+}
