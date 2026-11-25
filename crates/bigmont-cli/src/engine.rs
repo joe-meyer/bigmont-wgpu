@@ -349,10 +349,10 @@ impl Engine {
 
     /// Verdicts (0 composite, 1 probable prime) for `ns`, in input order.
     pub fn verdicts(&mut self, ns: &[BigUint]) -> Result<Vec<u8>, String> {
-        if self.opts.backend == Backend::Gpu {
-            if let Some(why) = &self.gpu_err {
-                return Err(format!("GPU backend requested but unavailable: {why}"));
-            }
+        if self.opts.backend == Backend::Gpu
+            && let Some(why) = &self.gpu_err
+        {
+            return Err(format!("GPU backend requested but unavailable: {why}"));
         }
         self.reopens_left = self.opts.device_retries;
         let two = BigUint::from(2u32);
@@ -575,7 +575,7 @@ impl Engine {
             } else {
                 *composites_seen += 1;
                 if self.opts.verify_rate > 0
-                    && *composites_seen % u64::from(self.opts.verify_rate) == 0
+                    && (*composites_seen).is_multiple_of(u64::from(self.opts.verify_rate))
                 {
                     recheck.push(i);
                 }

@@ -42,7 +42,10 @@ fn caps_missing_and_satisfies() {
         int64: false
     }));
     assert_eq!(none.missing(both), vec!["subgroups", "int64"]);
-    assert!(Caps::BROWSER.subgroups && !Caps::BROWSER.int64);
+    assert_eq!(
+        (Caps::BROWSER.subgroups, Caps::BROWSER.int64),
+        (true, false)
+    );
 }
 
 #[test]

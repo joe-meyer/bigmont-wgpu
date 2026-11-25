@@ -26,11 +26,11 @@ pub fn open_gpu(cfg: KernelConfig) -> Option<Gpu> {
             return None;
         }
     };
-    if cfg.needs_subgroups() {
-        if let Err(e) = gpu.check_subgroups(cfg.tpi) {
-            skip(format!("{cfg:?}: {e}"));
-            return None;
-        }
+    if cfg.needs_subgroups()
+        && let Err(e) = gpu.check_subgroups(cfg.tpi)
+    {
+        skip(format!("{cfg:?}: {e}"));
+        return None;
     }
     eprintln!(
         "adapter: {} ({:?}), config {cfg:?}",

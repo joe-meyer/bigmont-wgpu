@@ -75,8 +75,10 @@ pub fn read_candidates(path: &Path) -> Result<CandidateFile, String> {
         .map(|i| {
             let rec = &raw[HEADER + i * stride..HEADER + (i + 1) * stride];
             let limbs: Vec<u32> = rec
-                .chunks_exact(4)
-                .map(|c| u32::from_le_bytes(c.try_into().expect("4 bytes")))
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| u32::from_le_bytes(*c))
                 .collect();
             BigUint::new(limbs)
         })

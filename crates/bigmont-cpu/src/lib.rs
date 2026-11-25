@@ -29,10 +29,10 @@ impl Mont {
     pub fn mul(&self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]) {
         let w = self.w;
         t.iter_mut().for_each(|v| *v = 0);
-        for i in 0..w {
+        for &bi in &b[..w] {
             let mut c: u128 = 0;
             for j in 0..w {
-                let s = u128::from(t[j]) + u128::from(a[j]) * u128::from(b[i]) + c;
+                let s = u128::from(t[j]) + u128::from(a[j]) * u128::from(bi) + c;
                 t[j] = s as u64;
                 c = s >> 64;
             }

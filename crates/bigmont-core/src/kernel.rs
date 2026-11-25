@@ -177,13 +177,13 @@ impl KernelConfig {
         if !matches!(self.tpi, 1 | 4 | 8 | 16 | 32) {
             return Err(format!("tpi {} not supported (1, 4, 8, 16, 32)", self.tpi));
         }
-        if self.limbs < self.tpi || self.limbs % self.tpi != 0 || self.limbs > 1024 {
+        if self.limbs < self.tpi || !self.limbs.is_multiple_of(self.tpi) || self.limbs > 1024 {
             return Err(format!(
                 "{} limbs must be a multiple of tpi {} and at most 1024",
                 self.limbs, self.tpi
             ));
         }
-        if self.wg == 0 || self.wg % self.tpi != 0 || self.wg > 256 {
+        if self.wg == 0 || !self.wg.is_multiple_of(self.tpi) || self.wg > 256 {
             return Err(format!(
                 "workgroup size {} must be a multiple of tpi {} and at most 256",
                 self.wg, self.tpi

@@ -20,12 +20,8 @@ env:
   BIGMONT_ALLOW_SKIP: "1"
 
 jobs:
-  # TODO: make blocking. At the time this workflow was added the tree was not
-  # yet rustfmt-clean (hundreds of hunks) and had a handful of clippy
-  # warnings; fixing them is a separate, mechanical PR so it stays reviewable.
   lint:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
