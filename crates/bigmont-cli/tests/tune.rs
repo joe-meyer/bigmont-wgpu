@@ -361,15 +361,21 @@ fn a_forced_scheme_has_its_own_cache_key_and_never_touches_the_auto_entry() {
     let dir = std::env::temp_dir().join(format!("bigmont-key-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let cache = dir.join("tune.cache");
+    tune::write_cache(&cache, &legacy, "unrolled 8 64|9");
     tune::write_cache(&cache, &auto, "unrolled 8 64|1");
     tune::write_cache(&cache, &f32, "unrolled32 8 64|2");
     tune::write_cache(&cache, &f13, "unrolled 4 64|3");
-    // Rewriting each key replaces only its own line.
+    // Rewriting each key replaces only its own line; a legacy line survives every write.
     tune::write_cache(&cache, &auto, "unrolled 16 64|4");
     tune::write_cache(&cache, &f32, "unrolled32 16 64|5");
     let mut lines: Vec<String> = std::fs::read_to_string(&cache).unwrap().lines().map(str::to_string).collect();
     lines.sort();
-    let mut want = vec![format!("{auto}|unrolled 16 64|4"), format!("{f32}|unrolled32 16 64|5"), format!("{f13}|unrolled 4 64|3")];
+    let mut want = vec![
+        format!("{legacy}|unrolled 8 64|9"),
+        format!("{auto}|unrolled 16 64|4"),
+        format!("{f32}|unrolled32 16 64|5"),
+        format!("{f13}|unrolled 4 64|3"),
+    ];
     want.sort();
     assert_eq!(lines, want);
     let _ = std::fs::remove_dir_all(dir);

@@ -196,14 +196,17 @@ fn retarget_check(
         return known.clone();
     }
     let test_bits = tune::class_bits(class).min(cfg.r_bits().saturating_sub(4));
-    report.retarget_self_tests += 1;
     let outcome = tune::self_test(gpu, *cfg, test_bits);
     if let Err(e) = &outcome {
+        // A device-level failure says nothing about `cfg`: not a verdict, not counted (the bucket is
+        // redone after recovery and this check runs again).
         if device_failure(gpu, e) {
             return outcome;
         }
-        eprintln!("bigmont: the retargeted kernel {cfg:?} failed its self-test at {test_bits} bits: {e}");
+        // `e` already names the configuration (see `tune::self_test`).
+        eprintln!("bigmont: a retargeted kernel failed its self-test at {test_bits} bits: {e}");
     }
+    report.retarget_self_tests += 1;
     done.insert((class, cfg.limbs), outcome.clone());
     outcome
 }

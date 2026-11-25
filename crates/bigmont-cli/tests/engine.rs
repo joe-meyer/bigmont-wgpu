@@ -110,7 +110,8 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
 // ---- small bit lengths run on the GPU; a bucket skips the GPU only for size (min_gpu_batch), besides a failed autotune or Runner Err ----
 
 /// The limb-class field of every line of a tuning cache file, sorted (the line format is
-/// `name|backend|driver|class|unrolled tpi wg|rate`). Read from the file, independent of the engine's
+/// `name|backend|driver|any|class|unrolled tpi wg|rate`; a forced scheme has `only-13`/`only-32` in
+/// place of `any`, and a 32-bit winner `unrolled32`). Read from the file, independent of the engine's
 /// own counters.
 fn cache_classes(path: &std::path::Path) -> Vec<String> {
     let text = std::fs::read_to_string(path).unwrap_or_default();
@@ -286,7 +287,7 @@ fn the_engine_matches_the_oracle_with_the_32_bit_scheme_forced() {
 fn the_engine_matches_the_oracle_with_the_scheme_chosen_by_measurement() {
     let Some((cache, _cleanup)) = run_with_scheme(bigmont_cli::tune::SchemeChoice::Auto, "schemeauto") else { return };
     let text = std::fs::read_to_string(&cache).unwrap();
-    assert!(text.lines().all(|l| !l.contains("only-")), "Auto uses the plain key: {text}");
+    assert!(text.lines().all(|l| l.contains("|any|") && !l.contains("only-")), "Auto uses the `any` key, not a forced or legacy one: {text}");
 }
 
 // ---- a 32-bit kernel's limb count can shrink inside one 13-bit tuning class ----
