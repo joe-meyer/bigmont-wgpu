@@ -1,0 +1,77 @@
+   Compiling bigmont-core v0.1.0 (N:\Programming\bigmont-wgpu\.claude\worktrees\agent-a190d857c66461b4e\crates\bigmont-core)
+    Finished `release` profile [optimized] target(s) in 2.33s
+     Running `target\release\examples\coop_bench.exe --bits 2029 --count 65536 --runs 3 --tpis 4,8,16 --wgs 64,128,256`
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+driver: AMD proprietary driver 26.10.1 (AMD proprietary shader compiler)
+SHADER_INT64: true, subgroups: true
+bits 2029, instances 65536, runs 3
+
+| kernel | limbs | tpi | wg | run | slope sq/s | long sq | long ms | verified |
+|---|---|---|---|---|---|---|---|---|
+| 13-bit | 160 | 4 | 64 | 0 | 9.5975e7 | 512 | 350.1 | sample, 5 sq |
+| 13-bit | 160 | 4 | 64 | 1 | 9.6023e7 | 512 | 349.9 | sample, 5 sq |
+| 13-bit | 160 | 4 | 64 | 2 | 9.6043e7 | 512 | 349.8 | sample, 5 sq |
+| 13-bit | 160 | 4 | 128 | 0 | 9.5347e7 | 512 | 352.4 | sample, 5 sq |
+| 13-bit | 160 | 4 | 128 | 1 | 9.5272e7 | 512 | 352.6 | sample, 5 sq |
+| 13-bit | 160 | 4 | 128 | 2 | 9.5479e7 | 512 | 351.9 | sample, 5 sq |
+| 13-bit | 160 | 4 | 256 | 0 | 9.5284e7 | 512 | 352.6 | sample, 5 sq |
+| 13-bit | 160 | 4 | 256 | 1 | 9.5319e7 | 512 | 352.5 | sample, 5 sq |
+| 13-bit | 160 | 4 | 256 | 2 | 9.5420e7 | 512 | 352.1 | sample, 5 sq |
+| 13-bit | 160 | 8 | 64 | 0 | 8.6609e7 | 512 | 387.9 | sample, 5 sq |
+| 13-bit | 160 | 8 | 64 | 1 | 8.6802e7 | 512 | 387.0 | sample, 5 sq |
+| 13-bit | 160 | 8 | 64 | 2 | 8.6898e7 | 512 | 386.7 | sample, 5 sq |
+| 13-bit | 160 | 8 | 128 | 0 | 8.6605e7 | 512 | 387.9 | sample, 5 sq |
+| 13-bit | 160 | 8 | 128 | 1 | 8.6476e7 | 512 | 388.5 | sample, 5 sq |
+| 13-bit | 160 | 8 | 128 | 2 | 8.6687e7 | 512 | 387.6 | sample, 5 sq |
+| 13-bit | 160 | 8 | 256 | 0 | 8.5850e7 | 512 | 391.3 | sample, 5 sq |
+| 13-bit | 160 | 8 | 256 | 1 | 8.5958e7 | 512 | 390.8 | sample, 5 sq |
+| 13-bit | 160 | 8 | 256 | 2 | 8.5933e7 | 512 | 390.9 | sample, 5 sq |
+| 13-bit | 160 | 16 | 64 | 0 | 6.8197e7 | 256 | 246.5 | sample, 5 sq |
+| 13-bit | 160 | 16 | 64 | 1 | 6.8171e7 | 256 | 246.6 | sample, 5 sq |
+| 13-bit | 160 | 16 | 64 | 2 | 6.8173e7 | 256 | 246.6 | sample, 5 sq |
+| 13-bit | 160 | 16 | 128 | 0 | 6.8170e7 | 256 | 246.6 | sample, 5 sq |
+| 13-bit | 160 | 16 | 128 | 1 | 6.8187e7 | 256 | 246.5 | sample, 5 sq |
+| 13-bit | 160 | 16 | 128 | 2 | 6.8209e7 | 256 | 246.5 | sample, 5 sq |
+| 13-bit | 160 | 16 | 256 | 0 | 6.7952e7 | 256 | 247.4 | sample, 5 sq |
+| 13-bit | 160 | 16 | 256 | 1 | 6.7959e7 | 256 | 247.4 | sample, 5 sq |
+| 13-bit | 160 | 16 | 256 | 2 | 6.7990e7 | 256 | 247.3 | sample, 5 sq |
+| 32-bit | 64 | 4 | 64 | 0 | 5.9805e7 | 256 | 281.0 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 64 | 1 | 5.9794e7 | 256 | 281.1 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 64 | 2 | 5.9795e7 | 256 | 281.1 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 128 | 0 | 5.9376e7 | 256 | 283.1 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 128 | 1 | 5.9229e7 | 256 | 283.8 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 128 | 2 | 5.9271e7 | 256 | 283.6 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 256 | 0 | 5.9263e7 | 256 | 283.6 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 256 | 1 | 5.9276e7 | 256 | 283.6 | 27 inst x 1534 sq |
+| 32-bit | 64 | 4 | 256 | 2 | 5.9284e7 | 256 | 283.6 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 64 | 0 | 5.4881e7 | 256 | 306.2 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 64 | 1 | 5.4854e7 | 256 | 306.4 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 64 | 2 | 5.4860e7 | 256 | 306.4 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 128 | 0 | 5.4613e7 | 256 | 307.7 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 128 | 1 | 5.4621e7 | 256 | 307.7 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 128 | 2 | 5.4630e7 | 256 | 307.6 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 256 | 0 | 5.4112e7 | 256 | 310.6 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 256 | 1 | 5.4139e7 | 256 | 310.5 | 27 inst x 1534 sq |
+| 32-bit | 64 | 8 | 256 | 2 | 5.4135e7 | 256 | 310.5 | 27 inst x 1534 sq |
+| 32-bit | 64 | 16 | 64 | 0 | 4.6641e7 | 256 | 360.2 | 26 inst x 1534 sq |
+| 32-bit | 64 | 16 | 64 | 1 | 4.6764e7 | 256 | 359.3 | 26 inst x 1534 sq |
+| 32-bit | 64 | 16 | 64 | 2 | 4.6766e7 | 256 | 359.3 | 26 inst x 1534 sq |
+| 32-bit | 64 | 16 | 128 | 0 | 4.6645e7 | 256 | 360.1 | 27 inst x 1534 sq |
+| 32-bit | 64 | 16 | 128 | 1 | 4.6755e7 | 256 | 359.4 | 27 inst x 1534 sq |
+| 32-bit | 64 | 16 | 128 | 2 | 4.6787e7 | 256 | 359.2 | 27 inst x 1534 sq |
+| 32-bit | 64 | 16 | 256 | 0 | 4.6557e7 | 256 | 360.8 | 27 inst x 1534 sq |
+| 32-bit | 64 | 16 | 256 | 1 | 4.6557e7 | 256 | 360.9 | 27 inst x 1534 sq |
+| 32-bit | 64 | 16 | 256 | 2 | 4.6430e7 | 256 | 361.9 | 27 inst x 1534 sq |
+
+Summary: median squarings/s at the best workgroup per (kernel, tpi).
+
+| kernel | tpi | best wg | sq/s median | 32-bit / 13-bit at this tpi |
+|---|---|---|---|---|
+| 13-bit | 4 | 64 | 9.6023e7 |  |
+| 13-bit | 8 | 64 | 8.6802e7 |  |
+| 13-bit | 16 | 128 | 6.8187e7 |  |
+| 32-bit | 4 | 64 | 5.9795e7 | 0.62 |
+| 32-bit | 8 | 64 | 5.4860e7 | 0.63 |
+| 32-bit | 16 | 64 | 4.6764e7 | 0.69 |
+
+best 32-bit / best 13-bit: 0.62

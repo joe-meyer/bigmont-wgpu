@@ -1,0 +1,352 @@
+# command: cd ~/bigmont-scheme && BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=~/bigmont-scheme-target cargo test --release --workspace --no-fail-fast -- --test-threads=1
+# host: test-laptop; adapter: BIGMONT_ADAPTER=4070 (RTX 4070 Laptop, NVIDIA 580.178.04); commit: bbab9d1; date: 2026-11-24T20:51:34-05:00
+# note: a first run without --no-fail-fast stopped at tests/chain.rs with the same 4 failures (no adapter matches 4070); the base commit b53acef fails the same 4 tests the same way (checked twice), and they pass when run on their own.
+    Finished `release` profile [optimized] target(s) in 0.05s
+     Running unittests src/lib.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/3b435291acf84588/out/bigmont_cli-3b435291acf84588)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/0ee857c94b682f02/out/bigmont-0ee857c94b682f02)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/canary.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
+
+running 10 tests
+test a_cpu_run_passes_without_gpu_tests ... ok
+test a_differing_verdict_fails_and_names_the_index ... ok
+test a_gpu_run_that_tested_nothing_on_the_gpu_fails ... ok
+test a_length_mismatch_fails ... ok
+test all_failing_conditions_are_reported_together ... ok
+test canary_exits_0_for_a_matching_verdict_file ... ok
+test canary_exits_1_on_a_length_mismatch ... ok
+test canary_exits_1_when_one_verdict_byte_is_flipped ... ok
+test every_gpu_disagreement_or_error_fails_even_when_the_final_verdicts_match ... ok
+test matching_verdicts_and_a_healthy_gpu_pass ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/cli.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/2d0d45a3cc69795d/out/cli-2d0d45a3cc69795d)
+
+running 6 tests
+test bigmont_cache_env_names_the_default_cache_and_no_cache_disables_it ... ok
+test cache_and_no_cache_together_are_a_usage_error ... ok
+test help_exits_0_and_prints_usage ... ok
+test no_arguments_is_a_usage_error_with_exit_code_2 ... ok
+test the_tune_subcommand_writes_the_cache ... ok
+test unknown_flags_and_missing_positionals_exit_2 ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.42s
+
+     Running tests/engine.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/dbf764f259c3e1ce/out/engine-dbf764f259c3e1ce)
+
+running 7 tests
+test auto_falls_back_to_cpu_when_no_gpu_works ... ok
+test buckets_under_64_bits_run_on_the_gpu_at_the_default_batch_size ... ok
+test cpu_backend_matches_the_oracle_including_degenerate_inputs ... ok
+test every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_once ... ok
+test forced_gpu_backend_errors_when_the_adapter_is_missing ... ok
+test gpu_backend_matches_the_oracle_and_buckets_by_bit_length ... ok
+test verify_rate_rechecks_composites_without_changing_verdicts ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.06s
+
+     Running tests/files.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/ddc01598d9762c0c/out/files-ddc01598d9762c0c)
+
+running 6 tests
+test a_number_wider_than_the_container_is_not_written ... ok
+test absurd_counts_are_rejected_without_allocating ... ok
+test candidate_file_round_trips_and_has_the_beacon_layout ... ok
+test malformed_files_are_errors ... ok
+test verdict_file_layout_and_atomic_write ... ok
+test verdict_file_rejects_wrong_magic_and_length ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/tune.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cli/06063a430a59208d/out/tune-06063a430a59208d)
+
+running 15 tests
+test a_cache_entry_naming_a_non_candidate_falls_back_to_a_retune ... ok
+test a_corrupt_cache_is_ignored_and_rewritten ... ok
+test autotune_picks_a_verified_config_and_uses_its_cache ... ok
+test autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers ... ok
+test bigmont_cache_overrides_the_default_on_every_platform ... ok
+test candidates_are_valid_and_fit_the_adapter ... ok
+test default_cache_path_elsewhere_prefers_xdg_then_home ... ok
+test default_cache_path_on_windows_is_under_localappdata ... ok
+test every_bit_length_of_a_class_builds_the_same_kernel_as_its_representative ... ok
+test limb_class_is_the_minimum_limb_count_floored_at_the_smallest_kernel ... ok
+test resolve_cache_applies_the_flags_over_the_default ... ok
+test self_test_accepts_a_good_config_at_two_sizes ... ok
+test self_test_refuses_lengths_too_small_for_a_meaningful_test_instead_of_hanging ... ok
+test self_test_rejects_a_config_too_small_for_the_numbers ... ok
+test write_cache_is_atomic_creates_parents_and_replaces_its_own_key ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.55s
+
+     Running unittests src/lib.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-core/4000a2deb77d063f/out/bigmont_core-4000a2deb77d063f)
+
+running 7 tests
+test gpu::tests::parses_backend_lists ... ok
+test gpu::tests::rejects_unknown_or_empty_lists ... ok
+test gpu::tests::the_default_leaves_gl_out ... ok
+test onethread::tests::every_kernel_validates_in_naga ... ok
+test onethread::tests::limb13_light_passes_every_20_steps ... ok
+test onethread::tests::limb_counts_and_radices ... ok
+test onethread::tests::wide_kernels_need_the_int64_capability_and_the_13_bit_kernel_does_not ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.20s
+
+     Running tests/browser_source.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-core/ef3a547c45561a46/out/browser_source-ef3a547c45561a46)
+
+running 3 tests
+test browser_source_is_native_source_plus_the_two_directives ... ok
+test fermat_browser_source_is_native_source_plus_the_two_directives ... ok
+test wgsl_is_native ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/chain.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-core/d30c47bf2b0b2349/out/chain-d30c47bf2b0b2349)
+
+running 13 tests
+test tpi16_matches_oracle ... ok
+test tpi16_unrolled_matches_oracle ... ok
+test tpi1_matches_oracle ... ok
+test tpi32_matches_oracle ... ok
+test tpi32_other_workgroup_sizes_match_oracle ... ok
+test tpi32_unrolled_matches_oracle ... ok
+test tpi32_unrolled_other_workgroup_sizes_match_oracle ... ok
+test tpi4_matches_oracle ... ok
+test tpi4_unrolled_matches_oracle ... FAILED
+test tpi8_matches_oracle ... FAILED
+test tpi8_unrolled_matches_oracle ... FAILED
+test unrolled_long_chain_matches_oracle ... FAILED
+test unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths ... ok
+
+failures:
+
+---- tpi4_unrolled_matches_oracle stdout ----
+
+thread 'tpi4_unrolled_matches_oracle' (368487) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tpi8_matches_oracle stdout ----
+
+thread 'tpi8_matches_oracle' (368490) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Rolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- tpi8_unrolled_matches_oracle stdout ----
+
+thread 'tpi8_unrolled_matches_oracle' (368493) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- unrolled_long_chain_matches_oracle stdout ----
+
+thread 'unrolled_long_chain_matches_oracle' (368496) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+
+failures:
+    tpi4_unrolled_matches_oracle
+    tpi8_matches_oracle
+    tpi8_unrolled_matches_oracle
+    unrolled_long_chain_matches_oracle
+
+test result: FAILED. 9 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.35s
+
+error: test failed, to rerun pass `-p bigmont-core --test chain`
+     Running tests/fermat.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-core/4cd3c14d6cbceb1c/out/fermat-4cd3c14d6cbceb1c)
+
+running 10 tests
+test edge_lengths_around_the_word_and_limb_boundaries ... ok
+test every_cooperative_width_agrees_with_the_oracle ... ok
+test every_odd_number_from_3_to_4095_matches_the_oracle ... ok
+test mersenne_primes_and_composites_across_sizes ... FAILED
+test mixed_batch_at_the_beacon_size_class_spans_chunks ... FAILED
+test other_bit_lengths_and_workgroup_sizes ... FAILED
+test rejects_candidates_of_the_wrong_length_or_even ... FAILED
+test runner_is_reusable_across_calls ... FAILED
+test runner_rejects_fewer_than_two_bits ... FAILED
+test the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu ... FAILED
+
+failures:
+
+---- mersenne_primes_and_composites_across_sizes stdout ----
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 16 }
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 48 }
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 104 }
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 176 }
+
+thread 'mersenne_primes_and_composites_across_sizes' (369348) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- mixed_batch_at_the_beacon_size_class_spans_chunks stdout ----
+
+thread 'mixed_batch_at_the_beacon_size_class_spans_chunks' (369395) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- other_bit_lengths_and_workgroup_sizes stdout ----
+
+thread 'other_bit_lengths_and_workgroup_sizes' (369398) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 8 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- rejects_candidates_of_the_wrong_length_or_even stdout ----
+
+thread 'rejects_candidates_of_the_wrong_length_or_even' (369401) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- runner_is_reusable_across_calls stdout ----
+
+thread 'runner_is_reusable_across_calls' (369404) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- runner_rejects_fewer_than_two_bits stdout ----
+
+thread 'runner_rejects_fewer_than_two_bits' (369407) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 8 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+---- the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu stdout ----
+
+thread 'the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu' (369410) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 8 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+
+failures:
+    mersenne_primes_and_composites_across_sizes
+    mixed_batch_at_the_beacon_size_class_spans_chunks
+    other_bit_lengths_and_workgroup_sizes
+    rejects_candidates_of_the_wrong_length_or_even
+    runner_is_reusable_across_calls
+    runner_rejects_fewer_than_two_bits
+    the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu
+
+test result: FAILED. 3 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.42s
+
+error: test failed, to rerun pass `-p bigmont-core --test fermat`
+     Running tests/onethread.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-core/2045580ef5a181cc/out/onethread-2045580ef5a181cc)
+
+running 6 tests
+test limb13_matches_oracle_at_all_sizes ... ok
+test single_instance_and_long_chain ... ok
+test wide32_matches_oracle_at_all_sizes ... ok
+test wide32_split_matches_oracle_at_all_sizes ... ok
+test wide32_without_int64_is_an_error_not_a_panic ... ok
+test zero_squarings_return_the_input ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.84s
+
+     Running tests/sizes.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-core/c93c259009a47115/out/sizes-c93c259009a47115)
+
+running 6 tests
+test batch_limb_mismatch_is_an_error_not_a_panic ... ok
+test for_bits_rounds_up_to_a_multiple_of_tpi ... ok
+test rolled_size_classes_match_oracle ... ok
+test unrolled_size_classes_long_chain_match_oracle ... ok
+test unrolled_size_classes_match_oracle ... FAILED
+test unrolled_tiny_limbs_per_lane_match_oracle ... FAILED
+
+failures:
+
+---- unrolled_size_classes_match_oracle stdout ----
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }
+
+thread 'unrolled_size_classes_match_oracle' (369613) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- unrolled_tiny_limbs_per_lane_match_oracle stdout ----
+
+thread 'unrolled_tiny_limbs_per_lane_match_oracle' (369638) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:
+KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 32 }: no adapter: no adapter matches AdapterSelector { name: Some("4070"), backend: None, index: None } (set BIGMONT_ALLOW_SKIP=1 to allow skips)
+
+
+failures:
+    unrolled_size_classes_match_oracle
+    unrolled_tiny_limbs_per_lane_match_oracle
+
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.37s
+
+error: test failed, to rerun pass `-p bigmont-core --test sizes`
+     Running unittests src/lib.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cpu/b58f01196fb00146/out/bigmont_cpu-b58f01196fb00146)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cpu.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-cpu/259aff3da7e00ddb/out/cpu-259aff3da7e00ddb)
+
+running 5 tests
+test batch_preserves_order_for_any_thread_count ... ok
+test every_odd_number_below_8192_matches_the_oracle ... ok
+test matches_the_oracle_on_small_and_edge_values ... ok
+test mersenne_numbers ... ok
+test random_numbers_at_many_sizes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.13s
+
+     Running unittests src/lib.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-oracle/46c462351509909b/out/bigmont_oracle-46c462351509909b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/oracle.rs (/home/<user>/bigmont-scheme-target/release/build/bigmont-oracle/2d5abee3f6e1207b/out/oracle-2d5abee3f6e1207b)
+
+running 18 tests
+test chain_bits_matches_chain_n_at_13_bit_radices ... ok
+test chain_bits_satisfies_the_montgomery_relation_at_32_bit_radices ... ok
+test chain_composes_at_full_size ... ok
+test chain_matches_independent_small_case ... ok
+test fermat_base2_known_values ... ok
+test inv_mod_pow2_property ... ok
+test limbs_for_bits_covers_the_ladder_invariant ... ok
+test neg_inv_limb_property ... ok
+test neg_inv_u32_property ... ok
+test pack_u32_limbs_rejects_values_that_do_not_fit - should panic ... ok
+test pack_unpack_round_trip_at_other_limb_counts ... ok
+test pack_unpack_roundtrip ... ok
+test pack_unpack_u32_limbs_round_trip ... ok
+test random_modulus_has_exact_size_and_is_odd ... ok
+test random_prp_passes_the_fermat_test ... ok
+test single_squaring_matches_definition_at_full_size ... ok
+test square_chain_n_satisfies_the_montgomery_relation ... ok
+test unpack_accepts_unnormalized_limbs ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_cpu
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests bigmont_oracle
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 3 targets failed:
+    `-p bigmont-core --test chain`
+    `-p bigmont-core --test fermat`
+    `-p bigmont-core --test sizes`
+# exit status: 101

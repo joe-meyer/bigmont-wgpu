@@ -1,0 +1,1039 @@
+# pipeline_stats onethread raw output (VK_KHR_pipeline_executable_properties)
+# command: cd ~/bigmont-scheme && for d in 4070 780M; for s in A B B2; for b in 256 384 512 1024; for wg in 64 256: ~/bigmont-scheme-target/release/examples/pipeline_stats onethread $s $b $wg $d | grep -v 'saved /'
+# host: test-laptop (user@test-laptop), Ubuntu 26.04
+# adapters: NVIDIA GeForce RTX 4070 Laptop GPU (driver 580.178.04), AMD Radeon 780M Graphics (RADV PHOENIX)
+# commit: bbab9d1
+# date: 2026-11-24
+# note: NVIDIA's 'Local Memory Size' carries a constant 2^36 = 68719476736 in every kernel here; the excess is per-thread local memory (A 1024: 560 bytes). 'exit=' lines are grep's status.
+### device=4070 scheme=A bits=256 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 256 bits, 20 limbs, wg 64, mode wgpu
+spirv: 20743 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   96
+   Binary Size                      23296
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               7936
+exit=0
+### device=4070 scheme=A bits=256 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 256 bits, 20 limbs, wg 256, mode wgpu
+spirv: 20743 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   128
+   Binary Size                      22272
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               0
+exit=0
+### device=4070 scheme=A bits=384 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 384 bits, 30 limbs, wg 64, mode wgpu
+spirv: 44032 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   128
+   Binary Size                      45312
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               9472
+exit=0
+### device=4070 scheme=A bits=384 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 384 bits, 30 limbs, wg 256, mode wgpu
+spirv: 44032 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   128
+   Binary Size                      45312
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               37888
+exit=0
+### device=4070 scheme=A bits=512 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 512 bits, 40 limbs, wg 64, mode wgpu
+spirv: 74922 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   168
+   Binary Size                      73856
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               16640
+exit=0
+### device=4070 scheme=A bits=512 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 512 bits, 40 limbs, wg 256, mode wgpu
+spirv: 74922 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   247
+   Binary Size                      71680
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               0
+exit=0
+### device=4070 scheme=A bits=1024 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 1024 bits, 80 limbs, wg 64, mode wgpu
+spirv: 285156 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   255
+   Binary Size                      258304
+   Stack Size                       0
+   Local Memory Size                68719477296
+   Shared Memory Size               25344
+exit=0
+### device=4070 scheme=A bits=1024 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Limb13, 1024 bits, 80 limbs, wg 256, mode wgpu
+spirv: 285160 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   255
+   Binary Size                      258304
+   Stack Size                       0
+   Local Memory Size                68719477504
+   Shared Memory Size               48128
+exit=0
+### device=4070 scheme=B bits=256 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 256 bits, 9 limbs, wg 64, mode wgpu
+spirv: 12276 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   64
+   Binary Size                      13312
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               0
+exit=0
+### device=4070 scheme=B bits=256 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 256 bits, 9 limbs, wg 256, mode wgpu
+spirv: 12276 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   60
+   Binary Size                      13440
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               0
+exit=0
+### device=4070 scheme=B bits=384 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 384 bits, 13 limbs, wg 64, mode wgpu
+spirv: 23604 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      26240
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               1280
+exit=0
+### device=4070 scheme=B bits=384 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 384 bits, 13 limbs, wg 256, mode wgpu
+spirv: 23604 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      26112
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               5120
+exit=0
+### device=4070 scheme=B bits=512 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 512 bits, 17 limbs, wg 64, mode wgpu
+spirv: 38708 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      43776
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               6912
+exit=0
+### device=4070 scheme=B bits=512 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 512 bits, 17 limbs, wg 256, mode wgpu
+spirv: 38708 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      43776
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               27648
+exit=0
+### device=4070 scheme=B bits=1024 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 1024 bits, 33 limbs, wg 64, mode wgpu
+spirv: 136880 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   168
+   Binary Size                      151808
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               2304
+exit=0
+### device=4070 scheme=B bits=1024 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32, 1024 bits, 33 limbs, wg 256, mode wgpu
+spirv: 136880 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   128
+   Binary Size                      161024
+   Stack Size                       0
+   Local Memory Size                68719477120
+   Shared Memory Size               48128
+exit=0
+### device=4070 scheme=B2 bits=256 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 256 bits, 9 limbs, wg 64, mode wgpu
+spirv: 11772 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   66
+   Binary Size                      13312
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               0
+exit=0
+### device=4070 scheme=B2 bits=256 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 256 bits, 9 limbs, wg 256, mode wgpu
+spirv: 11772 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   58
+   Binary Size                      13312
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               0
+exit=0
+### device=4070 scheme=B2 bits=384 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 384 bits, 13 limbs, wg 64, mode wgpu
+spirv: 22512 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      26112
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               768
+exit=0
+### device=4070 scheme=B2 bits=384 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 384 bits, 13 limbs, wg 256, mode wgpu
+spirv: 22512 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      26112
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               3072
+exit=0
+### device=4070 scheme=B2 bits=512 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 512 bits, 17 limbs, wg 64, mode wgpu
+spirv: 36804 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      43776
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               7424
+exit=0
+### device=4070 scheme=B2 bits=512 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 512 bits, 17 limbs, wg 256, mode wgpu
+spirv: 36804 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   80
+   Binary Size                      43776
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               29696
+exit=0
+### device=4070 scheme=B2 bits=1024 wg=64
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 1024 bits, 33 limbs, wg 64, mode wgpu
+spirv: 129488 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   168
+   Binary Size                      151680
+   Stack Size                       0
+   Local Memory Size                68719476736
+   Shared Memory Size               2816
+exit=0
+### device=4070 scheme=B2 bits=1024 wg=256
+device: NVIDIA GeForce RTX 4070 Laptop GPU
+config: onethread Wide32Split, 1024 bits, 33 limbs, wg 256, mode wgpu
+spirv: 129488 words, version 0x10600
+== main: CS (subgroup size 32)
+   Register Count                   128
+   Binary Size                      160768
+   Stack Size                       0
+   Local Memory Size                68719477104
+   Shared Memory Size               48128
+exit=0
+### device=780M scheme=A bits=256 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 256 bits, 20 limbs, wg 64, mode wgpu
+spirv: 20743 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             10797131624514245433
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        7568
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             4212107276
+   Instructions                     1388
+   Copies                           11
+   Branches                         3
+   Latency                          20774
+   Inverse Throughput               18298
+   VMEM Clause                      6
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  192
+   VALU                             1236
+   SALU                             25
+   VMEM                             61
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=256 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 256 bits, 20 limbs, wg 256, mode wgpu
+spirv: 20743 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             2832695127948186241
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        7568
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1285061487
+   Instructions                     1388
+   Copies                           11
+   Branches                         3
+   Latency                          20774
+   Inverse Throughput               18298
+   VMEM Clause                      6
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  192
+   VALU                             1236
+   SALU                             25
+   VMEM                             61
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=384 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 384 bits, 30 limbs, wg 64, mode wgpu
+spirv: 44032 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             8873721014552355484
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    106
+   Code size                        18128
+   LDS size                         0
+   Scratch size                     27136
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1552099918
+   Instructions                     3232
+   Copies                           12
+   Branches                         3
+   Latency                          67633
+   Inverse Throughput               40414
+   VMEM Clause                      108
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  362
+   VALU                             2662
+   SALU                             26
+   VMEM                             311
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=384 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 384 bits, 30 limbs, wg 256, mode wgpu
+spirv: 44032 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             9804422006344752342
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    106
+   Code size                        18128
+   LDS size                         0
+   Scratch size                     27136
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             662589510
+   Instructions                     3232
+   Copies                           12
+   Branches                         3
+   Latency                          67633
+   Inverse Throughput               40414
+   VMEM Clause                      108
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  362
+   VALU                             2662
+   SALU                             26
+   VMEM                             311
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=512 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 512 bits, 40 limbs, wg 64, mode wgpu
+spirv: 74922 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             2642065102646006356
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    364
+   Code size                        35080
+   LDS size                         0
+   Scratch size                     93184
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             4218234229
+   Instructions                     6179
+   Copies                           12
+   Branches                         3
+   Latency                          141410
+   Inverse Throughput               70705
+   VMEM Clause                      585
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  619
+   VALU                             4547
+   SALU                             26
+   VMEM                             866
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=512 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 512 bits, 40 limbs, wg 256, mode wgpu
+spirv: 74922 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             4520489450338303645
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    364
+   Code size                        35080
+   LDS size                         0
+   Scratch size                     93184
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1363829140
+   Instructions                     6179
+   Copies                           12
+   Branches                         3
+   Latency                          141410
+   Inverse Throughput               70705
+   VMEM Clause                      585
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  619
+   VALU                             4547
+   SALU                             26
+   VMEM                             866
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=1024 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 1024 bits, 80 limbs, wg 64, mode wgpu
+spirv: 285156 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             2031533119520073428
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    2832
+   Code size                        166596
+   LDS size                         0
+   Scratch size                     456704
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1999645745
+   Instructions                     28861
+   Copies                           12
+   Branches                         3
+   Latency                          4917867
+   Inverse Throughput               2458933
+   VMEM Clause                      5117
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  2039
+   VALU                             17409
+   SALU                             26
+   VMEM                             5977
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=A bits=1024 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Limb13, 1024 bits, 80 limbs, wg 256, mode wgpu
+spirv: 285160 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             6874422983616184083
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    2832
+   Code size                        166596
+   LDS size                         0
+   Scratch size                     456704
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             2963819596
+   Instructions                     28861
+   Copies                           12
+   Branches                         3
+   Latency                          4917867
+   Inverse Throughput               2458933
+   VMEM Clause                      5117
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  2039
+   VALU                             17409
+   SALU                             26
+   VMEM                             5977
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=256 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 256 bits, 9 limbs, wg 64, mode wgpu
+spirv: 12276 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             6572107804860996540
+   SGPRs                            108
+   VGPRs                            80
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        10240
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               12
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             4172869355
+   Instructions                     1791
+   Copies                           158
+   Branches                         3
+   Latency                          42453
+   Inverse Throughput               33140
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  79
+   VALU                             1257
+   SALU                             25
+   VMEM                             28
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=256 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 256 bits, 9 limbs, wg 256, mode wgpu
+spirv: 12276 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             10727655428083625813
+   SGPRs                            108
+   VGPRs                            80
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        10240
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               12
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1747052521
+   Instructions                     1791
+   Copies                           158
+   Branches                         3
+   Latency                          42453
+   Inverse Throughput               33140
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  79
+   VALU                             1257
+   SALU                             25
+   VMEM                             28
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=384 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 384 bits, 13 limbs, wg 64, mode wgpu
+spirv: 23604 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             8396908268700338565
+   SGPRs                            108
+   VGPRs                            168
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        20860
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               6
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             2018571232
+   Instructions                     3638
+   Copies                           331
+   Branches                         3
+   Latency                          88587
+   Inverse Throughput               68714
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  137
+   VALU                             2598
+   SALU                             25
+   VMEM                             40
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=384 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 384 bits, 13 limbs, wg 256, mode wgpu
+spirv: 23604 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             12800051273358899650
+   SGPRs                            108
+   VGPRs                            168
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        20860
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               6
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             873194617
+   Instructions                     3638
+   Copies                           331
+   Branches                         3
+   Latency                          88587
+   Inverse Throughput               68714
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  137
+   VALU                             2598
+   SALU                             25
+   VMEM                             40
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=512 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 512 bits, 17 limbs, wg 64, mode wgpu
+spirv: 38708 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             3468716686431307754
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        35180
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             3534261842
+   Instructions                     6122
+   Copies                           565
+   Branches                         3
+   Latency                          151403
+   Inverse Throughput               117052
+   VMEM Clause                      6
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  211
+   VALU                             4416
+   SALU                             25
+   VMEM                             52
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=512 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 512 bits, 17 limbs, wg 256, mode wgpu
+spirv: 38708 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             17298055588087619500
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        35180
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             2413659862
+   Instructions                     6122
+   Copies                           565
+   Branches                         3
+   Latency                          151403
+   Inverse Throughput               117052
+   VMEM Clause                      6
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  211
+   VALU                             4416
+   SALU                             25
+   VMEM                             52
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=1024 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 1024 bits, 33 limbs, wg 64, mode wgpu
+spirv: 136880 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             18290639303233863925
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    411
+   Code size                        148332
+   LDS size                         0
+   Scratch size                     105216
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1876153029
+   Instructions                     25466
+   Copies                           2179
+   Branches                         3
+   Latency                          2182136
+   Inverse Throughput               1091068
+   VMEM Clause                      1136
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  667
+   VALU                             16524
+   SALU                             27
+   VMEM                             1583
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B bits=1024 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32, 1024 bits, 33 limbs, wg 256, mode wgpu
+spirv: 136880 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             9485010900211772509
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    411
+   Code size                        148332
+   LDS size                         0
+   Scratch size                     105216
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1533162879
+   Instructions                     25466
+   Copies                           2179
+   Branches                         3
+   Latency                          2182136
+   Inverse Throughput               1091068
+   VMEM Clause                      1136
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  667
+   VALU                             16524
+   SALU                             27
+   VMEM                             1583
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=256 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 256 bits, 9 limbs, wg 64, mode wgpu
+spirv: 11772 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             9217180928922559295
+   SGPRs                            108
+   VGPRs                            80
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        10112
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               12
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             3564402529
+   Instructions                     1759
+   Copies                           161
+   Branches                         3
+   Latency                          40693
+   Inverse Throughput               33164
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  79
+   VALU                             1260
+   SALU                             25
+   VMEM                             28
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=256 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 256 bits, 9 limbs, wg 256, mode wgpu
+spirv: 11772 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             1333815396476098304
+   SGPRs                            108
+   VGPRs                            80
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        10112
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               12
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             4287431257
+   Instructions                     1759
+   Copies                           161
+   Branches                         3
+   Latency                          40693
+   Inverse Throughput               33164
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  79
+   VALU                             1260
+   SALU                             25
+   VMEM                             28
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=384 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 384 bits, 13 limbs, wg 64, mode wgpu
+spirv: 22512 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             9600735665113167175
+   SGPRs                            108
+   VGPRs                            168
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        20784
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               6
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             1976867590
+   Instructions                     3615
+   Copies                           333
+   Branches                         3
+   Latency                          82835
+   Inverse Throughput               68730
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  137
+   VALU                             2600
+   SALU                             25
+   VMEM                             40
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=384 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 384 bits, 13 limbs, wg 256, mode wgpu
+spirv: 22512 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             6362057990041427668
+   SGPRs                            108
+   VGPRs                            168
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        20784
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               6
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             790455248
+   Instructions                     3615
+   Copies                           333
+   Branches                         3
+   Latency                          82835
+   Inverse Throughput               68730
+   VMEM Clause                      4
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  137
+   VALU                             2600
+   SALU                             25
+   VMEM                             40
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=512 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 512 bits, 17 limbs, wg 64, mode wgpu
+spirv: 36804 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             6839918789401485733
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        35140
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             3287411416
+   Instructions                     6112
+   Copies                           566
+   Branches                         3
+   Latency                          140363
+   Inverse Throughput               117092
+   VMEM Clause                      6
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  211
+   VALU                             4417
+   SALU                             25
+   VMEM                             52
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=512 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 512 bits, 17 limbs, wg 256, mode wgpu
+spirv: 36804 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             18370966595353129579
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    0
+   Code size                        35140
+   LDS size                         0
+   Scratch size                     0
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             136354097
+   Instructions                     6112
+   Copies                           566
+   Branches                         3
+   Latency                          140363
+   Inverse Throughput               117092
+   VMEM Clause                      6
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  211
+   VALU                             4417
+   SALU                             25
+   VMEM                             52
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=1024 wg=64
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 1024 bits, 33 limbs, wg 64, mode wgpu
+spirv: 129488 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             12060807563677498237
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    411
+   Code size                        148280
+   LDS size                         0
+   Scratch size                     105216
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             565024866
+   Instructions                     25223
+   Copies                           2172
+   Branches                         3
+   Latency                          1795312
+   Inverse Throughput               897656
+   VMEM Clause                      1042
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  667
+   VALU                             16517
+   SALU                             27
+   VMEM                             1724
+   SMEM                             3
+   VOPD                             0
+exit=0
+### device=780M scheme=B2 bits=1024 wg=256
+device: AMD Radeon 780M Graphics (RADV PHOENIX)
+config: onethread Wide32Split, 1024 bits, 33 limbs, wg 256, mode wgpu
+spirv: 129488 words, version 0x10600
+== main: compute (subgroup size 64)
+   Driver pipeline hash             1188889409630241888
+   SGPRs                            108
+   VGPRs                            256
+   Spilled SGPRs                    0
+   Spilled VGPRs                    411
+   Code size                        148280
+   LDS size                         0
+   Scratch size                     105216
+   Subgroups per SIMD               4
+   Combined inputs                  0
+   Combined outputs                 0
+   Hash                             592961510
+   Instructions                     25223
+   Copies                           2172
+   Branches                         3
+   Latency                          1795312
+   Inverse Throughput               897656
+   VMEM Clause                      1042
+   SMEM Clause                      3
+   Pre-Sched SGPRs                  19
+   Pre-Sched VGPRs                  667
+   VALU                             16517
+   SALU                             27
+   VMEM                             1724
+   SMEM                             3
+   VOPD                             0
+exit=0

@@ -123,6 +123,46 @@ pub fn inv_mod_pow2(n: &BigUint, bits: u32) -> BigUint {
     inv
 }
 
+/// -n^-1 mod 2^32 for odd n: the Montgomery factor for 32-bit limbs.
+pub fn neg_inv_u32(n: &BigUint) -> u32 {
+    let n0 = n.to_u32_digits().first().copied().unwrap_or(0);
+    assert!(n0 & 1 == 1, "modulus must be odd");
+    let mut inv = n0; // correct to 3 bits
+    for _ in 0..4 {
+        inv = inv.wrapping_mul(2u32.wrapping_sub(n0.wrapping_mul(inv)));
+    }
+    inv.wrapping_neg()
+}
+
+/// Split x into `limbs` 32-bit limbs (little-endian).
+pub fn pack_u32_limbs(x: &BigUint, limbs: usize) -> Vec<u32> {
+    assert!(x.bits() <= 32 * limbs as u64, "value does not fit in {limbs} 32-bit limbs");
+    let mut d = x.to_u32_digits();
+    d.resize(limbs, 0);
+    d
+}
+
+/// Inverse of `pack_u32_limbs`.
+pub fn unpack_u32_limbs(limbs: &[u32]) -> BigUint {
+    BigUint::new(limbs.to_vec())
+}
+
+/// x <- x^2 * R^-1 mod n, `squarings` times, with R = 2^r_bits. `n` must be odd. The result is in
+/// [0, n); with `squarings == 0` it is `x0 % n`.
+pub fn mont_square_chain_bits(n: &BigUint, x0: &BigUint, squarings: u32, r_bits: u32) -> BigUint {
+    assert!(n.bit(0), "modulus must be odd");
+    let mask = (BigUint::one() << r_bits) - 1u32;
+    let ninv = inv_mod_pow2(n, r_bits);
+    let mut x = x0 % n;
+    for _ in 0..squarings {
+        let x2 = &x * &x;
+        // m = -x2 * n^-1 mod R, so that x2 + m*n is divisible by R
+        let m = ((&mask + 1u32) - ((&x2 * &ninv) & &mask)) & &mask;
+        x = ((x2 + m * n) >> r_bits) % n;
+    }
+    x
+}
+
 /// x <- x^2 * R^-1 mod n, `squarings` times, with R = 2^(13*limbs). `n` must be odd. The result is in
 /// [0, n); with `squarings == 0` it is `x0 % n`.
 pub fn mont_square_chain_n(n: &BigUint, x0: &BigUint, squarings: u32, limbs: usize) -> BigUint {

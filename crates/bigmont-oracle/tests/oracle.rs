@@ -154,6 +154,71 @@ fn square_chain_n_satisfies_the_montgomery_relation() {
 }
 
 #[test]
+fn chain_bits_matches_chain_n_at_13_bit_radices() {
+    let mut rng = XorShift64::new(21);
+    for limbs in [6usize, 20, 80] {
+        let bits = (limbs as u32) * 13 - 4;
+        let n = random_odd_modulus(&mut rng, bits);
+        let x = random_below(&mut rng, &n);
+        for sq in [0u32, 1, 5] {
+            assert_eq!(mont_square_chain_bits(&n, &x, sq, 13 * limbs as u32), mont_square_chain_n(&n, &x, sq, limbs));
+        }
+    }
+}
+
+#[test]
+fn chain_bits_satisfies_the_montgomery_relation_at_32_bit_radices() {
+    // Independent of the m-based reduction: y = x^2 R^-1 mod n  <=>  y R = x^2 mod n.
+    let mut rng = XorShift64::new(22);
+    for (bits, words) in [(64u32, 3u32), (256, 9), (1024, 33)] {
+        let n = random_odd_modulus(&mut rng, bits);
+        let x = random_below(&mut rng, &n);
+        let r_bits = 32 * words;
+        let y = mont_square_chain_bits(&n, &x, 1, r_bits);
+        assert!(y < n);
+        assert_eq!((&y << r_bits) % &n, (&x * &x) % &n, "bits={bits}");
+        // composition
+        let three = mont_square_chain_bits(&n, &x, 3, r_bits);
+        assert_eq!(three, mont_square_chain_bits(&n, &mont_square_chain_bits(&n, &x, 1, r_bits), 2, r_bits));
+    }
+    // u128 cross-check at a small modulus, R = 2^96.
+    let (n, x0) = (1_000_003u128, 777_777u128);
+    let rinv = inv_u128(modpow_u128(2, 96, n), n);
+    let one = x0 * x0 % n * rinv % n;
+    assert_eq!(mont_square_chain_bits(&BigUint::from(n), &BigUint::from(x0), 1, 96), BigUint::from(one));
+}
+
+#[test]
+fn pack_unpack_u32_limbs_round_trip() {
+    let mut rng = XorShift64::new(23);
+    for (bits, limbs) in [(1u32, 1usize), (32, 1), (33, 2), (64, 3), (258, 9), (1056, 33)] {
+        let x = random_bits(&mut rng, bits);
+        let packed = pack_u32_limbs(&x, limbs);
+        assert_eq!(packed.len(), limbs);
+        assert_eq!(unpack_u32_limbs(&packed), x, "bits={bits}");
+    }
+    assert_eq!(pack_u32_limbs(&BigUint::from(0x1_0000_0002u64), 3), vec![2, 1, 0]);
+    assert_eq!(unpack_u32_limbs(&[0xffff_ffff, 0xffff_ffff]), BigUint::from(u64::MAX));
+    assert_eq!(unpack_u32_limbs(&[]), BigUint::from(0u32));
+}
+
+#[test]
+#[should_panic]
+fn pack_u32_limbs_rejects_values_that_do_not_fit() {
+    pack_u32_limbs(&(BigUint::one() << 64u32), 2);
+}
+
+#[test]
+fn neg_inv_u32_property() {
+    let mut rng = XorShift64::new(24);
+    for _ in 0..50 {
+        let n = random_odd_modulus(&mut rng, 300);
+        let n0 = n.to_u32_digits()[0];
+        assert_eq!(n0.wrapping_mul(neg_inv_u32(&n)), u32::MAX, "n * ninv must be -1 mod 2^32");
+    }
+}
+
+#[test]
 fn fermat_base2_known_values() {
     let mersenne = |p: u32| (BigUint::one() << p) - 1u32;
     assert!(fermat_base2(&mersenne(127)));
