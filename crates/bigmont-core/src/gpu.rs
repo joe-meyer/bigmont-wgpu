@@ -520,6 +520,11 @@ impl Gpu {
 }
 
 /// Input arrays, one entry per instance: moduli, -n^-1 mod 2^limb_bits, and starting values, as limbs.
+///
+/// A `Batch` does not record which [`LimbScheme`] packed it: [`run`] only checks that the limb count
+/// matches the configuration's. A batch packed for one scheme and run with a configuration of the
+/// other scheme (with the same limb count) gives garbage without an error. Build the batch for the
+/// configuration you run it with (`Batch::from_values_cfg`).
 pub struct Batch {
     pub count: u32,
     /// Limbs per number.
@@ -594,6 +599,9 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> 
 /// Uploads `batch`, runs `repeats` dispatches of `squarings` Montgomery squarings each (every
 /// dispatch continues from the previous one's output), and reads the result back. A lost device, a
 /// timed-out wait or an uncaptured wgpu error is an `Err` (see [`Gpu::check_health`]).
+///
+/// `batch` must have been packed for `cfg`'s limb scheme (see the warning on [`Batch`]): only the
+/// limb count is checked.
 pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
     cfg.validate()?;
     cfg.check_caps(gpu.caps())?;
@@ -663,8 +671,9 @@ fn run_on_device(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, re
         (params, n_buf, ninv_buf, x_buf, staging)
     })?;
 
+    let source = cfg.try_wgsl_for(crate::kernel::Target::Native)?;
     let module = guarded(device, &format!("shader module for {cfg:?}"), || {
-        device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mont"), source: wgpu::ShaderSource::Wgsl(cfg.wgsl().into()) })
+        device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mont"), source: wgpu::ShaderSource::Wgsl(source.into()) })
     })?;
     let pipeline = guarded(device, &format!("compute pipeline for {cfg:?}"), || {
         device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {

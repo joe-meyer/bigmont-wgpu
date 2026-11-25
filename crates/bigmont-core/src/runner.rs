@@ -24,7 +24,8 @@ pub struct RunStats {
 
 /// The smallest bit length a [`Runner`] accepts: 2, the length of n = 3, the smallest odd number
 /// the Fermat test applies to. Every length from here up is supported (the kernel arithmetic needs
-/// only R = 2^(limb_bits * limbs) > 16n, which `KernelConfig::for_bits` guarantees at any size).
+/// only R = 2^(limb_bits * limbs) > 16n, which `KernelConfig::for_bits_scheme` and
+/// `KernelConfig::retarget` guarantee at any size).
 pub const MIN_BITS: u32 = 2;
 
 pub struct Runner {

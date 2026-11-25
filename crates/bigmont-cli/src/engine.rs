@@ -112,6 +112,10 @@ pub struct EngineReport {
     pub gpu_errors: u64,
     /// Seconds spent in autotuning (inside `verdicts`).
     pub tune_secs: f64,
+    /// Extra self-tests of a retargeted kernel: the tuner self-tests a shape at its class's
+    /// representative length, and a shorter length can build a program with fewer limbs (32-bit
+    /// kernels only), which is self-tested once per (limb class, limb count) before it is used.
+    pub retarget_self_tests: u64,
     /// Limb classes autotuned (or loaded from the cache) by this engine: one per distinct
     /// `tune::limb_class` among the GPU buckets, however many bit lengths share it.
     pub tuned_classes: u64,
@@ -170,6 +174,40 @@ fn device_failure(gpu: &Gpu, e: &str) -> bool {
     gpu.check_health().is_err() || is_device_error(e)
 }
 
+/// Self-tests `cfg` (the tuned shape `tuned` retargeted to some bit length of limb class `class`) when
+/// it is a different program from the one the tuner self-tested, i.e. when its limb count differs
+/// (13-bit kernels never differ within a class). It runs once per (class, limb count) and the outcome
+/// is remembered in `done`, except when the device itself failed (that says nothing about `cfg`).
+/// The test length is the largest the retargeted kernel supports, capped at the class's
+/// representative length: `min(class_bits(class), cfg.r_bits() - 4)`. A 32-bit kernel has at least 4
+/// limbs, so that length is at least 124 bits, above the self-test's 32-bit minimum.
+fn retarget_check(
+    gpu: &Gpu,
+    done: &mut HashMap<(u32, u32), Result<(), String>>,
+    report: &mut EngineReport,
+    class: u32,
+    tuned: &KernelConfig,
+    cfg: &KernelConfig,
+) -> Result<(), String> {
+    if cfg.limbs == tuned.limbs {
+        return Ok(());
+    }
+    if let Some(known) = done.get(&(class, cfg.limbs)) {
+        return known.clone();
+    }
+    let test_bits = tune::class_bits(class).min(cfg.r_bits().saturating_sub(4));
+    report.retarget_self_tests += 1;
+    let outcome = tune::self_test(gpu, *cfg, test_bits);
+    if let Err(e) = &outcome {
+        if device_failure(gpu, e) {
+            return outcome;
+        }
+        eprintln!("bigmont: the retargeted kernel {cfg:?} failed its self-test at {test_bits} bits: {e}");
+    }
+    done.insert((class, cfg.limbs), outcome.clone());
+    outcome
+}
+
 pub struct Engine {
     opts: Options,
     gpu: Option<Gpu>,
@@ -183,6 +221,9 @@ pub struct Engine {
     /// The tuned kernel shape per limb class (`tune::limb_class`), shared by every bit length in the
     /// class; the error is why tuning the class failed. Kept across device re-opens.
     tuned: HashMap<u32, Result<KernelConfig, String>>,
+    /// The outcome of the extra self-test of a retargeted kernel, per (limb class, limb count) of the
+    /// retargeted kernel (see `retarget_check`). Cleared with `tuned`.
+    retarget_checked: HashMap<(u32, u32), Result<(), String>>,
     report: EngineReport,
     /// Freshly opened devices still to destroy (`Options::inject_loss_on_open`).
     inject_on_open: u32,
@@ -207,6 +248,7 @@ impl Engine {
             cpu_only: None,
             runners: HashMap::new(),
             tuned: HashMap::new(),
+            retarget_checked: HashMap::new(),
             report: EngineReport::default(),
         };
         if e.opts.backend != Backend::Cpu {
@@ -368,6 +410,7 @@ impl Engine {
                 Reopen::Retune => {
                     eprintln!("bigmont: the re-opened GPU is a different adapter ({}); tuning again", g.describe());
                     self.tuned.clear();
+                    self.retarget_checked.clear();
                 }
                 Reopen::CpuOnly => {
                     let reason = format!("the re-opened GPU {} lacks subgroup support (after: {why})", g.describe());
@@ -426,12 +469,16 @@ impl Engine {
                 self.report.tuned_classes += 1;
                 self.tuned.insert(class, tuned);
             }
-            let built = match &self.tuned[&class] {
+            let built = match self.tuned[&class].clone() {
                 // The class's kernel shape (scheme, tpi, wg) at this exact length. A 32-bit kernel's
-                // limb count can be smaller than at the class's representative length, which the
-                // self-test at the representative covers (see `tune::autotune`).
-                Ok(tuned) => Runner::new(gpu, tuned.retarget(bits), bits, self.opts.capacity),
-                Err(e) => Err(e.clone()),
+                // limb count can be smaller than at the class's representative length, and that is a
+                // different program from the one the tuner self-tested: check it once first.
+                Ok(tuned) => {
+                    let cfg = tuned.retarget(bits);
+                    retarget_check(gpu, &mut self.retarget_checked, &mut self.report, class, &tuned, &cfg)
+                        .and_then(|()| Runner::new(gpu, cfg, bits, self.opts.capacity))
+                }
+                Err(e) => Err(e),
             };
             self.report.tune_secs += t.elapsed().as_secs_f64();
             if let Err(e) = &built {
@@ -500,6 +547,37 @@ mod tests {
             assert_eq!(reopen_decision(backend, true, true), Reopen::Keep, "{backend:?}");
             assert_eq!(reopen_decision(backend, false, true), Reopen::Retune, "{backend:?}");
         }
+    }
+
+    #[test]
+    fn a_retargeted_kernel_is_self_tested_once_and_a_failure_is_remembered() {
+        use bigmont_core::kernel::Variant;
+        use bigmont_core::scheme::LimbScheme;
+        let gpu = match Gpu::new() {
+            Ok(g) => g,
+            Err(e) => {
+                assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+                eprintln!("SKIP no adapter: {e}");
+                return;
+            }
+        };
+        let mut done = HashMap::new();
+        let mut report = EngineReport::default();
+        // Same limb count as the tuned shape: the same program, nothing to test.
+        let tuned = KernelConfig::for_bits_scheme(LimbScheme::Limb13, 256, 8, 64, Variant::Unrolled);
+        assert!(retarget_check(&gpu, &mut done, &mut report, 20, &tuned, &tuned.retarget(252)).is_ok());
+        assert_eq!(report.retarget_self_tests, 0);
+        // A different limb count whose self-test fails (the workgroup size is invalid): the error is
+        // returned, counted once and remembered for the same (class, limbs).
+        let mut broken = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 252, 8, 64, Variant::Unrolled);
+        broken.wg = 300;
+        let wider = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 256, 8, 64, Variant::Unrolled);
+        assert_ne!(broken.limbs, wider.limbs);
+        let first = retarget_check(&gpu, &mut done, &mut report, 20, &wider, &broken);
+        assert!(first.as_ref().is_err_and(|e| e.contains("workgroup")), "{first:?}");
+        let second = retarget_check(&gpu, &mut done, &mut report, 20, &wider, &broken);
+        assert_eq!(first, second);
+        assert_eq!(report.retarget_self_tests, 1, "the failed self-test is not repeated");
     }
 
     #[test]

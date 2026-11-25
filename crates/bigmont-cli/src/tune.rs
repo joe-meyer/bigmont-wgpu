@@ -29,10 +29,13 @@ const MIN_CLASS_LIMBS: u32 = 4;
 /// them: a 2-bit modulus has exactly one value and 8-bit ones are mostly prime or tiny.
 const MIN_SELF_TEST_BITS: u32 = 32;
 
-/// The tuning class of `bits`-bit numbers: the minimum limb count `limbs_for_bits(bits)` (R > 16n),
-/// at least 4. Every bit length of a class builds the same kernel for each cooperative width (the
-/// limb count is that minimum rounded up to a multiple of `tpi`), so the tuned configuration, the
-/// cache entry and the self-test are shared by the whole class.
+/// The tuning class of `bits`-bit numbers: the minimum 13-bit limb count `limbs_for_bits(bits)`
+/// (R > 16n), at least 4. For the 13-bit scheme every bit length of a class builds the same kernel for
+/// each cooperative width (the limb count is that minimum rounded up to a multiple of `tpi`), so the
+/// tuned configuration, the cache entry and the self-test are shared by the whole class. A 32-bit
+/// kernel's limb count can differ between lengths of one class (it is smaller below the class's
+/// representative length): the tuned (scheme, tpi, wg) shape is shared, but the kernel built for an
+/// exact length is a different program; see the note on `autotune` and the engine's extra self-test.
 pub fn limb_class(bits: u32) -> u32 {
     (limbs_for_bits(bits) as u32).max(MIN_CLASS_LIMBS)
 }
@@ -265,17 +268,24 @@ fn clean(s: &str) -> String {
     s.chars().map(|c| if matches!(c, '|' | '\n' | '\r') { '/' } else { c }).collect()
 }
 
-/// The cache key of the limb class of `bits`-bit numbers on an adapter described by these fields
-/// (`name|backend|driver driver_info|class`). A forced scheme inserts `only-<name>` before the class,
-/// so a forced run has its own entry and never replaces or deletes the `Auto` one (the `Auto` key plus
-/// its `|` separator is not a prefix of a forced key).
+/// The cache key of the limb class of `bits`-bit numbers on an adapter described by these fields:
+/// `name|backend|driver driver_info|<choice>|class`, where `<choice>` is `any` for `Auto` and
+/// `only-<name>` (`only-13`, `only-32`) for a forced scheme. A forced run therefore has its own entry
+/// and never replaces or deletes the `Auto` one.
+///
+/// Caches written before the limb schemes existed use `name|backend|driver driver_info|class` (no
+/// choice field). Those lines never match a key built here, so they are re-measured once: they were
+/// tuned among 13-bit kernels only and would otherwise hide a faster 32-bit scheme forever. (Their
+/// value text, `unrolled <tpi> <wg>|<rate>`, is unchanged and still parses; only the key moved.) No
+/// key's lookup prefix (`key|`) is a prefix of another's: the fields are `|`-separated, field text
+/// never contains `|` (see `clean`), the choice field is `any` or `only-..` and the class is numeric.
 #[doc(hidden)]
 pub fn cache_key_text(name: &str, backend: &str, driver: &str, driver_info: &str, bits: u32, choice: SchemeChoice) -> String {
-    let only = match choice {
-        SchemeChoice::Auto => String::new(),
-        SchemeChoice::Only(s) => format!("only-{}|", s.name()),
+    let which = match choice {
+        SchemeChoice::Auto => "any".to_string(),
+        SchemeChoice::Only(s) => format!("only-{}", s.name()),
     };
-    format!("{}|{backend}|{} {}|{only}{}", clean(name), clean(driver), clean(driver_info), limb_class(bits))
+    format!("{}|{backend}|{} {}|{which}|{}", clean(name), clean(driver), clean(driver_info), limb_class(bits))
 }
 
 #[doc(hidden)]

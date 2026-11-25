@@ -340,13 +340,20 @@ fn a_forced_scheme_has_its_own_cache_key_and_never_touches_the_auto_entry() {
     let auto = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Auto);
     let f13 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb13));
     let f32 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb32));
-    // The Auto key is what older versions wrote: name|backend|driver driver_info|class.
-    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|{class}"));
+    // Auto has its own `any` choice field; a cache from before the limb schemes used no field at all
+    // (`name|backend|driver driver_info|class`) and must never match.
+    let legacy = format!("Some GPU|Vulkan|drv info|{class}");
+    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|any|{class}"));
     assert_eq!(f13, format!("Some GPU|Vulkan|drv info|only-13|{class}"));
     assert_eq!(f32, format!("Some GPU|Vulkan|drv info|only-32|{class}"));
-    for (a, b) in [(&auto, &f13), (&auto, &f32), (&f13, &f32)] {
-        assert_ne!(a, b);
-        assert!(!b.starts_with(&format!("{a}|")) && !a.starts_with(&format!("{b}|")), "neither key is a prefix of the other");
+    let keys = [&legacy, &auto, &f13, &f32];
+    for (i, a) in keys.iter().enumerate() {
+        for (j, b) in keys.iter().enumerate() {
+            if i != j {
+                assert_ne!(a, b);
+                assert!(!b.starts_with(&format!("{a}|")), "the lookup prefix of {a:?} must not match {b:?}");
+            }
+        }
     }
     // Same class, same adapter: the key is still shared across the class.
     assert_eq!(cache_key_text("Some GPU", "Vulkan", "drv", "info", tune::class_bits(class), Only(Limb32)), f32);
@@ -490,6 +497,30 @@ fn a_cache_line_from_another_scheme_or_an_unknown_word_is_a_miss() {
     let t = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("retune");
     assert!(!t.from_cache);
     assert_ne!(t.squarings_per_sec, 1e9);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_legacy_auto_cache_line_without_the_choice_field_is_a_miss_and_is_retuned() {
+    let Some(gpu) = gpu() else { return };
+    if skip_unless(gpu.has_subgroups, "no subgroups") {
+        return;
+    }
+    let (dir, cache) = temp_cache("legacy");
+    // A phase 1 line: key without the `any` field, a 13-bit shape that is a valid candidate here.
+    let key = tune::cache_key(&gpu, 1019, Auto);
+    let legacy = key.replacen("|any|", "|", 1);
+    assert_ne!(legacy, key);
+    tune::write_cache(&cache, &legacy, "unrolled 4 64|1e9");
+    let t = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("retune past the legacy line");
+    assert!(!t.from_cache, "a legacy line must not be served");
+    assert_ne!(t.squarings_per_sec, 1e9);
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.lines().any(|l| l.starts_with(&format!("{key}|"))), "the new entry is written under the Auto key: {text}");
+    assert!(text.lines().any(|l| l == format!("{legacy}|unrolled 4 64|1e9")), "the legacy line is left alone: {text}");
+    let again = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("from the new entry");
+    assert!(again.from_cache);
+    assert_eq!(again.cfg, t.cfg);
     let _ = std::fs::remove_dir_all(dir);
 }
 

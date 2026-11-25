@@ -1,4 +1,6 @@
-//! CPU reference ("oracle") for the 13-bit-limb Montgomery arithmetic used by the GPU kernels.
+//! CPU reference ("oracle") for the Montgomery arithmetic used by the GPU kernels: the 13-bit-limb
+//! scheme (`pack_limbs*`, `neg_inv_limb`, `mont_square_chain_n`) and the 32-bit-limb scheme
+//! (`pack_u32_limbs`, `neg_inv_u32`, ...), both built on the radix-generic `mont_square_chain_bits`.
 //! Everything here is plain big-integer arithmetic, deliberately unrelated to the GPU code's
 //! tricks, so that the two can be compared.
 

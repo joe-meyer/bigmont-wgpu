@@ -6,7 +6,8 @@
 //!
 //! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
 //! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
-//! scheme keeps its own tuning-cache entries.
+//! scheme keeps its own tuning-cache entries. Cache entries written before the limb schemes existed
+//! (13-bit only) are not reused: the first run re-measures and writes the new entries.
 //!
 //! Tuning cache: `--cache PATH`, else `$BIGMONT_CACHE`, else a per-user file (`%LOCALAPPDATA%\bigmont\tune.cache`
 //! on Windows, `$XDG_CACHE_HOME/bigmont/tune.cache` or `~/.cache/bigmont/tune.cache` elsewhere); `--no-cache`
@@ -29,6 +30,7 @@ const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--ada
        bigmont canary CAND EXPECTED [same engine flags]
        bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
 limb scheme: --limbs auto (default) measures every scheme the adapter can run and uses the fastest; 13 or 32 forces one
+              (tuning caches from before the limb schemes are re-measured once)
 tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPPDATA%\\bigmont\\tune.cache on Windows,
               $XDG_CACHE_HOME/bigmont/tune.cache or ~/.cache/bigmont/tune.cache elsewhere); --no-cache disables it";
 

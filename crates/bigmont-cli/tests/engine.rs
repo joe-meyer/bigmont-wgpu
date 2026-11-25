@@ -236,6 +236,35 @@ fn run_with_scheme(scheme: bigmont_cli::tune::SchemeChoice, tag: &str) -> Option
     assert_eq!(r.gpu_tests, ns.len() as u64, "{scheme:?}: every bucket has at least min_gpu_batch entries");
     assert_eq!(r.gpu_errors, 0, "{scheme:?}");
     assert_eq!((r.prp_disagreements, r.composite_disagreements), (0, 0), "{scheme:?}");
+
+    // The extra self-test of retargeted kernels: derive from the cache file which (class, limb count)
+    // pairs build a different program from the tuned shape's at the class representative, and require
+    // the engine to have self-tested exactly those, once each. 13-bit shapes never differ.
+    use bigmont_cli::tune;
+    use bigmont_core::kernel::{KernelConfig, Variant};
+    let text = std::fs::read_to_string(&cache).unwrap();
+    let mut expected = std::collections::BTreeSet::new();
+    let bit_lengths: std::collections::BTreeSet<u32> = ns.iter().map(|n| n.bits() as u32).collect();
+    for bits in bit_lengths {
+        let class = tune::limb_class(bits);
+        let line = text
+            .lines()
+            .find(|l| l.rsplitn(3, '|').nth(2).and_then(|key| key.rsplit('|').next()) == Some(class.to_string().as_str()))
+            .unwrap_or_else(|| panic!("no cache line for class {class}: {text}"));
+        let mut f = line.rsplitn(3, '|');
+        let (rate, shape) = (f.next().unwrap(), f.next().unwrap());
+        let (s, tpi, wg, _) = tune::parse_value(&format!("{shape}|{rate}")).expect("a parsable cache value");
+        let tuned = KernelConfig::for_bits_scheme(s, tune::class_bits(class), tpi, wg, Variant::Unrolled);
+        let exact = tuned.retarget(bits);
+        if exact.limbs != tuned.limbs {
+            expected.insert((class, exact.limbs));
+        }
+    }
+    eprintln!("{scheme:?}: {} retargeted kernels need their own self-test: {expected:?}", expected.len());
+    assert_eq!(r.retarget_self_tests, expected.len() as u64, "{scheme:?}: retargeted self-tests (class, limbs) {expected:?}");
+    if matches!(scheme, SchemeChoice::Only(bigmont_core::scheme::LimbScheme::Limb13)) {
+        assert_eq!(r.retarget_self_tests, 0, "13-bit retargets build the tuned program");
+    }
     Some((cache, guard))
 }
 
