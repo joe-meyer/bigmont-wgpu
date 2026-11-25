@@ -1,0 +1,10 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:16-05:00 from /tmp/dbg/laptop_exps.log
+E1_long_chain_only run 18 rc=101 xid_lines=2 thread 'unrolled_long_chain_matches_oracle' (229412) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:;KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: Parent device is lost (set BIGMONT_ALLOW_SKIP=1 to allow skips);
+E1_long_chain_only run 24 rc=101 xid_lines=2 thread 'unrolled_long_chain_matches_oracle' (229755) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:;KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: Parent device is lost (set BIGMONT_ALLOW_SKIP=1 to allow skips);
+RESULT E1_long_chain_only n=60 ok=58 fail=2 hang(90s)=0
+E3_all_except_long_chain run 16 rc=101 xid_lines=2 thread 'tpi32_unrolled_other_workgroup_sizes_match_oracle' (234451) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:;KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160 }: no adapter: Parent device is lost (set BIGMONT_ALLOW_SKIP=1 to allow skips);
+E3_all_except_long_chain run 48 rc=101 xid_lines=2 thread 'tpi1_matches_oracle' (240257) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:;KernelConfig { tpi: 1, wg: 64, variant: Rolled, limbs: 160 }: no adapter: Parent device is lost (set BIGMONT_ALLOW_SKIP=1 to allow skips);
+RESULT E3_all_except_long_chain n=60 ok=58 fail=2 hang(90s)=0
+RESULT E2_tpi32_unrolled_only n=60 ok=60 fail=0 hang(90s)=0
+ALLDONE

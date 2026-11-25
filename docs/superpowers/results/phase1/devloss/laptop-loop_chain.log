@@ -1,0 +1,44 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:15-05:00 from /tmp/dbg/laptop_loop_chain.log
+bin=target/release/build/bigmont-core/d30c47bf2b0b2349/out/chain-d30c47bf2b0b2349 n=40 start=2026-11-24T18:36:05-05:00 kernel_xid_before=10
+run 1 rc=0 dur=6s xid_total=10 
+run 2 rc=0 dur=4s xid_total=10 
+run 3 rc=0 dur=4s xid_total=10 
+run 4 rc=0 dur=4s xid_total=10 
+run 5 rc=0 dur=4s xid_total=10 
+run 6 rc=0 dur=4s xid_total=10 
+run 7 rc=0 dur=4s xid_total=10 
+run 8 rc=0 dur=3s xid_total=10 
+run 9 rc=0 dur=4s xid_total=10 
+run 10 rc=0 dur=4s xid_total=10 
+run 11 rc=0 dur=4s xid_total=10 
+run 12 rc=0 dur=4s xid_total=10 
+run 13 rc=0 dur=4s xid_total=10 
+run 14 rc=0 dur=4s xid_total=10 
+run 15 rc=0 dur=4s xid_total=10 
+run 16 rc=0 dur=4s xid_total=10 
+run 17 rc=0 dur=4s xid_total=10 
+run 18 rc=0 dur=4s xid_total=10 
+run 19 rc=0 dur=4s xid_total=10 
+run 20 rc=0 dur=4s xid_total=10 
+run 21 rc=0 dur=4s xid_total=10 
+run 22 rc=0 dur=4s xid_total=10 
+run 23 rc=0 dur=4s xid_total=10 
+run 24 rc=0 dur=3s xid_total=10 
+run 25 rc=0 dur=4s xid_total=10 
+run 26 rc=0 dur=4s xid_total=10 
+run 27 rc=0 dur=4s xid_total=10 
+run 28 rc=0 dur=4s xid_total=10 
+run 29 rc=0 dur=3s xid_total=10 
+run 30 rc=0 dur=4s xid_total=10 
+run 31 rc=0 dur=4s xid_total=10 
+run 32 rc=0 dur=4s xid_total=10 
+run 33 rc=0 dur=4s xid_total=10 
+run 34 rc=0 dur=4s xid_total=10 
+run 35 rc=0 dur=4s xid_total=10 
+run 36 rc=143 dur=303s xid_total=12 
+run 37 rc=0 dur=3s xid_total=12 
+run 38 rc=101 dur=4s xid_total=14 test unrolled_long_chain_matches_oracle ... FAILED;thread 'unrolled_long_chain_matches_oracle' (227852) panicked at crates/bigmont-core/tests/common/mod.rs:15:9:;KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160 }: no adapter: Parent device is lost (set BIGMONT_ALLOW_SKIP=1 to allow skips);
+run 39 rc=0 dur=4s xid_total=14 
+run 40 rc=0 dur=4s xid_total=14 
+done 2026-11-24T18:44:18-05:00

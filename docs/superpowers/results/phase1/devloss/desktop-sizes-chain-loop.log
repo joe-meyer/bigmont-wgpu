@@ -1,0 +1,53 @@
+# desktop (Windows, RX 6700 XT) loop log: exit code 127 in Git Bash = 0xC0000409; see the investigation doc for the commands
+# collected 2026-11-24T22:57:15-05:00 from /tmp/dbg/loop_win.log
+sizes run 1 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.77s
+sizes run 2 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.57s
+sizes run 3 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.57s
+sizes run 4 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.68s
+sizes run 5 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.58s
+sizes run 6 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.56s
+sizes run 7 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.86s
+sizes run 8 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.51s
+sizes run 9 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.49s
+sizes run 10 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.69s
+sizes run 11 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.56s
+sizes run 12 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.54s
+sizes run 13 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.53s
+sizes run 14 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.49s
+sizes run 15 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.35s
+sizes run 16 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.26s
+sizes run 17 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.34s
+sizes run 18 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.57s
+sizes run 19 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.13s
+sizes run 20 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.55s
+sizes run 21 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.47s
+sizes run 22 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.34s
+sizes run 23 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.52s
+sizes run 24 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.52s
+sizes run 25 rc=0 dur=7s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.44s
+chain run 1 rc=0 dur=6s Binary file /tmp/dbg/chain-last.log matches
+chain run 2 rc=0 dur=6s Binary file /tmp/dbg/chain-last.log matches
+chain run 3 rc=0 dur=6s Binary file /tmp/dbg/chain-last.log matches
+chain run 4 rc=0 dur=5s Binary file /tmp/dbg/chain-last.log matches
+chain run 5 rc=0 dur=6s Binary file /tmp/dbg/chain-last.log matches
+chain run 6 rc=0 dur=6s Binary file /tmp/dbg/chain-last.log matches
+chain run 7 rc=0 dur=9s Binary file /tmp/dbg/chain-last.log matches
+chain run 8 rc=0 dur=8s Binary file /tmp/dbg/chain-last.log matches
+chain run 9 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.29s
+chain run 10 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.95s
+chain run 11 rc=0 dur=7s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.23s
+chain run 12 rc=0 dur=7s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.13s
+chain run 13 rc=0 dur=9s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.39s
+chain run 14 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.48s
+chain run 15 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.77s
+chain run 16 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.93s
+chain run 17 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.10s
+chain run 18 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.21s
+chain run 19 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.23s
+chain run 20 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.24s
+chain run 21 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.10s
+chain run 22 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.22s
+chain run 23 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.18s
+chain run 24 rc=0 dur=5s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.20s
+chain run 25 rc=0 dur=6s test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.26s
+done

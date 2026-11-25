@@ -1,0 +1,7 @@
+# desktop (Windows, RX 6700 XT) loop log: exit code 127 in Git Bash = 0xC0000409; see the investigation doc for the commands
+# collected 2026-11-24T22:57:15-05:00 from /tmp/dbg/loop_churn.log
+RESULT mode=new n=40 ok=40 bad=0 [ ]
+RESULT mode=reuse n=40 ok=40 bad=0 [ ]
+RESULT mode=new n=40 ok=40 bad=0 [ ]
+RESULT mode=reuse n=40 ok=40 bad=0 [ ]
+done

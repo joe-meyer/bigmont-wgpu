@@ -1,0 +1,27 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:17-05:00 from /tmp/dbg/laptop_vkdbg.log
+cycle 0: 11200 limbs back, 0.0014 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 1: 11200 limbs back, 0.0012 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 2: 11200 limbs back, 0.0012 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 3: 11200 limbs back, 0.0012 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 4: 11200 limbs back, 0.0012 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 5: 11200 limbs back, 0.0014 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 6: 11200 limbs back, 0.0013 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 7: 11200 limbs back, 0.0013 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 8: 11200 limbs back, 0.0013 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 9: 11200 limbs back, 0.0014 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+[Vulkan Loader] ERROR:          /usr/lib/x86_64-linux-gnu/libnvidia-tls.so.580.178.04: cannot allocate memory in static TLS block
+[Vulkan Loader] ERROR | DRIVER: loader_icd_scan: Failed loading library associated with ICD JSON libGLX_nvidia.so.0. Ignoring this JSON
+[Vulkan Loader] ERROR:          /usr/lib/x86_64-linux-gnu/libnvidia-tls.so.580.178.04: cannot allocate memory in static TLS block
+[Vulkan Loader] ERROR | DRIVER: loader_icd_scan: Failed loading library associated with ICD JSON libGLX_nvidia.so.0. Ignoring this JSON
+[Vulkan Loader] ERROR:          /usr/lib/x86_64-linux-gnu/libnvidia-tls.so.580.178.04: cannot allocate memory in static TLS block
+[Vulkan Loader] ERROR | DRIVER: loader_icd_scan: Failed loading library associated with ICD JSON libGLX_nvidia.so.0. Ignoring this JSON
+[Vulkan Loader] ERROR:          /usr/lib/x86_64-linux-gnu/libnvidia-tls.so.580.178.04: cannot allocate memory in static TLS block
+[Vulkan Loader] ERROR | DRIVER: loader_icd_scan: Failed loading library associated with ICD JSON libGLX_nvidia.so.0. Ignoring this JSON
+
+thread '<unnamed>' (405254) panicked at crates/bigmont-core/examples/device_churn.rs:22:27:
+gpu: "no adapter matches AdapterSelector { name: Some(\"4070\"), backend: None, index: None }"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'main' (405133) panicked at crates/bigmont-core/examples/device_churn.rs:74:13:
+a scoped thread panicked

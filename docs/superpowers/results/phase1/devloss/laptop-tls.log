@@ -1,0 +1,43 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:18-05:00 from /tmp/dbg/laptop_tls.log
+cycle 0: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 1: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 2: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 3: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 4: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 5: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 6: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 7: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 8: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 9: 11200 limbs back, 0.0005 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 10: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 11: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 12: 11200 limbs back, 0.0005 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 13: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 14: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 15: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 16: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 17: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 18: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 19: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 20: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 21: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 22: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 23: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 24: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 25: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 26: 11200 limbs back, 0.0005 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 27: 11200 limbs back, 0.0005 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 28: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 29: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 30: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 31: 11200 limbs back, 0.0004 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 32: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 33: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 34: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 35: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 36: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 37: 11200 limbs back, 0.0005 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 38: 11200 limbs back, 0.0006 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+cycle 39: 11200 limbs back, 0.0003 s | NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | fds 46 threads 9
+exiting normally after 40 cycles (new, thread)

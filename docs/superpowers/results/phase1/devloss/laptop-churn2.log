@@ -1,0 +1,7 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:16-05:00 from /tmp/dbg/laptop_churn2.log
+RESULT reuse_thread n=80 ok=80 bad=0 hang=0 [ ]
+RESULT new_mainthread n=80 ok=75 bad=5 hang=0 [ 3:rc124 3:xid+2 7:rc101 7:xid+2 8:rc101 8:xid+2 31:rc101 31:xid+2 78:rc101 78:xid+2 ]
+RESULT keep_mainthread n=80 ok=79 bad=1 hang=0 [ 41:rc101 41:xid+2 ]
+RESULT new_thread_squarings8 n=80 ok=78 bad=2 hang=0 [ 64:rc101 64:xid+2 77:rc101 77:xid+2 ]
+CHURN2DONE

@@ -1,0 +1,6 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:17-05:00 from /tmp/dbg/laptop_churn4.log
+RESULT fixed_primary_new12 n=100 ok=96 bad=4 [ 38:rc101(lost) 38:xid+2 40:rc124() 40:xid+2 55:rc101(lost) 55:xid+2 63:rc101(lost) 63:xid+2 ]
+RESULT fixed_all_new12 n=100 ok=96 bad=4 [ 8:rc101(lost) 8:xid+2 32:rc101(lost) 32:xid+1 43:rc124() 93:rc101(lost) 93:xid+2 ]
+RESULT fixed_primary_reuse12 n=100 ok=98 bad=2 [ 15:rc101(lost) 15:xid+2 82:rc124() 82:xid+3 ]
+CHURN4DONE

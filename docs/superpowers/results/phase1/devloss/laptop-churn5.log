@@ -1,0 +1,6 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:17-05:00 from /tmp/dbg/laptop_churn5.log
+RESULT trivial_kernel_reuse12 n=150 ok=149 bad=1 [ 107:rc101(lost) 107:xid+2 ]
+RESULT real_kernel_reuse12 n=150 ok=149 bad=1 [ 121:rc101(lost) 121:xid+2 ]
+RESULT vulkaninfo_only n=150 ok=150 bad=0 [ ]
+CHURN5DONE

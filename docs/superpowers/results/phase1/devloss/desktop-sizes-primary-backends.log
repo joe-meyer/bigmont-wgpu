@@ -1,0 +1,7 @@
+# desktop (Windows, RX 6700 XT) loop log: exit code 127 in Git Bash = 0xC0000409; see the investigation doc for the commands
+# collected 2026-11-24T22:57:15-05:00 from /tmp/dbg/loop_sizes_c.log
+RESULT C_primary ok=60 bad=0 [ ]
+test unrolled_size_classes_match_oracle ... adapter: AMD Radeon RX 6700 XT (Vulkan), config KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }
+adapter: AMD Radeon RX 6700 XT (Vulkan), config KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }
+adapter: AMD Radeon RX 6700 XT (Vulkan), config KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }
+done

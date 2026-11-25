@@ -1,0 +1,15 @@
+# desktop (Windows, RX 6700 XT) loop log: exit code 127 in Git Bash = 0xC0000409; see the investigation doc for the commands
+# collected 2026-11-24T22:57:14-05:00 from /tmp/dbg/loop_win_part1.log
+sizes run 1 rc=0 dur=5s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.59s
+sizes run 2 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.57s
+sizes run 3 rc=127 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.73s
+sizes run 4 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.56s
+sizes run 5 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.50s
+sizes run 6 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.66s
+sizes run 7 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.32s
+sizes run 8 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.58s
+sizes run 9 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.58s
+sizes run 10 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.69s
+sizes run 11 rc=0 dur=5s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.57s
+sizes run 12 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.62s
+sizes run 13 rc=0 dur=6s test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.86s

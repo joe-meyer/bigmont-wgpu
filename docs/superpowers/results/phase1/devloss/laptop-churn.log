@@ -1,0 +1,7 @@
+# laptop (Ubuntu, RTX 4070, driver 580.178.04) loop log (rc101 = panic, rc124 = hang killed after 90 s, xid+N = new NVRM Xid lines)
+# collected 2026-11-24T22:57:16-05:00 from /tmp/dbg/laptop_churn.log
+RESULT all_backends_thread n=80 ok=75 bad=5 hang=0 [ 7:rc101 7:xid+2 23:rc101 23:xid+2 30:rc124 30:xid+2 52:rc101 52:xid+2 69:rc124 69:xid+2 ]
+RESULT vulkan_only_thread n=80 ok=79 bad=1 hang=0 [ 59:rc101 59:xid+2 ]
+RESULT all_backends_thread_b n=80 ok=77 bad=3 hang=0 [ 52:rc101 52:xid+2 76:rc124 78:rc101 78:xid+1 ]
+RESULT vulkan_only_thread_b n=80 ok=80 bad=0 hang=0 [ ]
+CHURNDONE

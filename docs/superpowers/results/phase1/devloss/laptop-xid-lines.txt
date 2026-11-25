@@ -1,0 +1,98 @@
+Nov 23 22:53:55 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=26054, name=gapsieve, channel 0x0000000c intr0 00040000
+Nov 23 22:53:55 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=26054, name=gapsieve, channel 0x0000000c intr0 00040000
+Nov 24 00:11:50 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=71438, name=broken_fast_pat, channel 0x0000000c intr0 00040000
+Nov 24 00:11:50 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=71438, name=broken_fast_pat, channel 0x0000000c intr0 00040000
+Nov 24 00:12:56 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=73363, name=broken_fast_pat, channel 0x0000000d intr0 00040000
+Nov 24 00:12:56 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=73363, name=broken_fast_pat, channel 0x0000000d intr0 00040000
+Nov 24 00:27:39 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=101673, name=broken_fast_pat, channel 0x0000000c intr0 00040000
+Nov 24 00:27:39 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=101673, name=broken_fast_pat, channel 0x0000000c intr0 00040000
+Nov 24 17:34:36 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=193667, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 17:34:36 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=193667, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:38:58 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=226720, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:38:58 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=226720, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:44:08 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=227673, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:44:08 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=227673, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:44:51 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=229411, name=unrolled_long_c, channel 0x0000000d intr0 00040000
+Nov 24 18:44:51 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=229411, name=unrolled_long_c, channel 0x0000000d intr0 00040000
+Nov 24 18:45:02 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=229754, name=unrolled_long_c, channel 0x0000000d intr0 00040000
+Nov 24 18:45:02 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=229754, name=unrolled_long_c, channel 0x0000000d intr0 00040000
+Nov 24 18:47:10 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=234367, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:47:10 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=234367, name=tpi16_matches_o, channel 0x0000000d intr0 00040000
+Nov 24 18:49:11 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=240232, name=tpi16_matches_o, channel 0x0000000c intr0 00040000
+Nov 24 18:49:11 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=240232, name=tpi16_matches_o, channel 0x0000000c intr0 00040000
+Nov 24 18:51:35 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=244788, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 18:51:35 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=244788, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 18:52:25 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=247123, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:52:25 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=247123, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:52:45 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=248176, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:52:45 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=248176, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:55:23 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=251419, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:55:23 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=251419, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:56:15 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=253934, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 18:56:15 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=253934, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:01:30 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=263423, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 19:01:30 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=263423, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 19:05:20 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=274121, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 19:05:20 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=274121, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 19:08:10 kernel: NVRM: Xid (PCI:0000:01:00): 31, pid=278018, name=device_churn, channel 0x0000000d, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x0_00000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Nov 24 19:14:29 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=291785, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:14:29 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=291785, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:16:10 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=292266, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:16:10 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=292266, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:16:13 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=292348, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:16:13 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=292348, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:17:22 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=295476, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:17:22 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=295476, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:19:49 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=301871, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:19:49 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=301871, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:21:43 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=306894, name=device_churn, channel 0x0000002b intr0 00040000
+Nov 24 19:21:43 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=306894, name=device_churn, channel 0x0000002b intr0 00040000
+Nov 24 19:26:44 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=320915, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 19:26:44 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=320915, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 19:27:23 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=322725, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 19:27:23 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=322725, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 20:19:22 kernel: NVRM: Xid (PCI:0000:01:00): 31, pid=326464, name=wide32_split_ma, channel 0x0000000d, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x0_00000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Nov 24 20:23:29 kernel: NVRM: Xid (PCI:0000:01:00): 69, pid=329339, name=pipeline_stats, Class Error: channel 0x00000008, Class 0000c997, Offset 00000d40, Data 00000003, ErrorCode 00000004
+Nov 24 20:59:22 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=378322, name=device_churn, channel 0x00000005 intr0 00040000
+Nov 24 20:59:22 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=378322, name=device_churn, channel 0x00000005 intr0 00040000
+Nov 24 21:00:50 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=382140, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:00:50 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=382140, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:01:01 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=382650, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:01:01 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=382650, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:01:07 kernel: NVRM: Xid (PCI:0000:01:00): 13, Graphics Exception: Class 0xc9c0 Subchannel 0x3 Mismatch
+Nov 24 21:01:07 kernel: NVRM: Xid (PCI:0000:01:00): 13, Graphics Exception: ESR 0x4041b0=0x12bc9c0
+Nov 24 21:01:07 kernel: NVRM: Xid (PCI:0000:01:00): 13, Graphics Exception: ESR 0x404000=0x80000002
+Nov 24 21:01:07 kernel: NVRM: Xid (PCI:0000:01:00): 13, pid=382821, name=device_churn, Graphics Exception: channel 0x0000000d, Class 0000c9c0, Offset 00000000, Data 00000000
+Nov 24 21:01:35 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=384135, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:01:35 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=384135, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:03:46 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=390216, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:03:46 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=390216, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:05:28 kernel: NVRM: Xid (PCI:0000:01:00): 31, pid=394935, name=device_churn, channel 0x0000000d, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x0_00000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Nov 24 21:07:02 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=399334, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:07:02 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=399334, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:07:04 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=399368, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:07:04 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=399368, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:11:33 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=408158, name=opening_many_de, channel 0x0000000d intr0 00040000
+Nov 24 21:11:33 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=408158, name=opening_many_de, channel 0x0000000d intr0 00040000
+Nov 24 21:13:36 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=413081, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:13:36 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=413081, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:13:40 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=413206, name=device_churn, channel 0x0000000a intr0 00040000
+Nov 24 21:13:40 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=413206, name=device_churn, channel 0x0000000a intr0 00040000
+Nov 24 21:15:44 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=414803, name=device_churn, channel 0x00000009 intr0 00040000
+Nov 24 21:15:44 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=414803, name=device_churn, channel 0x00000009 intr0 00040000
+Nov 24 21:16:03 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=415580, name=device_churn, channel 0x0000000a intr0 00040000
+Nov 24 21:16:03 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=415580, name=device_churn, channel 0x0000000a intr0 00040000
+Nov 24 21:17:53 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=420410, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:17:53 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=420410, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:18:59 kernel: NVRM: Xid (PCI:0000:01:00): 31, pid=423153, name=device_churn, channel 0x0000000d, intr 00000000. MMU Fault: ENGINE GRAPHICS HUBCLIENT_FE faulted @ 0x0_00000000. Fault is of type FAULT_PDE ACCESS_TYPE_VIRT_WRITE
+Nov 24 21:23:14 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=430295, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:23:14 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=430295, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:23:53 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=431556, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:23:53 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=431556, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:25:22 kernel: NVRM: Xid (PCI:0000:01:00): 13, Graphics Exception:  ILLEGAL_OPCODE
+Nov 24 21:25:22 kernel: NVRM: Xid (PCI:0000:01:00): 13, Graphics Exception: ESR 0x404490=0x80000004
+Nov 24 21:25:22 kernel: NVRM: Xid (PCI:0000:01:00): 13, pid=433450, name=device_churn, Graphics Exception: channel 0x0000000d, Class 0000c9c0, Offset 00000510, Data 00419b48
+Nov 24 21:30:07 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=437153, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:30:07 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=437153, name=device_churn, channel 0x0000000c intr0 00040000
+Nov 24 21:33:45 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=441811, name=device_churn, channel 0x0000000d intr0 00040000
+Nov 24 21:33:45 kernel: NVRM: Xid (PCI:0000:01:00): 32, pid=441811, name=device_churn, channel 0x0000000d intr0 00040000

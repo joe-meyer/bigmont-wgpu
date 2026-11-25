@@ -1,0 +1,3 @@
+# desktop (Windows, RX 6700 XT) loop log: exit code 127 in Git Bash = 0xC0000409; see the investigation doc for the commands
+# collected 2026-11-24T22:57:15-05:00 from /tmp/dbg/loop_default.log
+RESULT default_backends sizes n=60 ok=60 bad=0 [ ]

@@ -1,0 +1,7 @@
+# desktop (Windows, RX 6700 XT) loop log: exit code 127 in Git Bash = 0xC0000409; see the investigation doc for the commands
+# collected 2026-11-24T22:57:15-05:00 from /tmp/dbg/loop_churn2.log
+RESULT all_backends_thread n=80 ok=80 bad=0 [ ]
+RESULT vulkan_only_thread n=80 ok=80 bad=0 [ ]
+RESULT all_backends_thread_b n=80 ok=80 bad=0 [ ]
+RESULT vulkan_only_thread_b n=80 ok=80 bad=0 [ ]
+done
