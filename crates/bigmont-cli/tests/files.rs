@@ -136,10 +136,31 @@ fn malformed_sizes_files_are_errors() {
     assert!(read_sizes(&p).is_err()); // body truncated mid-entry
     std::fs::write(&p, sizes_bytes(0x3153_3247, 3, &[1, 2])).unwrap();
     assert!(read_sizes(&p).is_err()); // fewer entries than claimed
-    std::fs::write(&p, sizes_bytes(0x3153_3247, 1, &[1, 2])).unwrap();
-    assert!(read_sizes(&p).is_err()); // more entries than claimed
     std::fs::write(&p, sizes_bytes(0x3153_3247, u32::MAX, &[1])).unwrap();
     assert!(read_sizes(&p).is_err()); // absurd count, rejected before any allocation
+    std::fs::remove_file(p).unwrap();
+}
+
+#[test]
+fn sizes_file_one_entry_short_of_its_claim_is_an_error() {
+    let p = tmp("shortsizes.bin");
+    std::fs::write(&p, sizes_bytes(0x3153_3247, 3, &[1, 2])).unwrap();
+    let err = read_sizes(&p).unwrap_err();
+    assert!(err.contains("claims 3 entries but only has 8 bytes"), "{err}");
+    std::fs::remove_file(p).unwrap();
+}
+
+#[test]
+fn sizes_file_ignores_bytes_after_the_declared_entries() {
+    let p = tmp("trailing.bin");
+    std::fs::write(&p, sizes_bytes(0x3153_3247, 1, &[1, 2])).unwrap(); // a whole extra entry
+    assert_eq!(read_sizes(&p).unwrap(), vec![1]);
+    let mut v = sizes_bytes(0x3153_3247, 2, &[4, 5]);
+    v.extend_from_slice(&[9, 9, 9]); // stray bytes, not a multiple of 4
+    std::fs::write(&p, &v).unwrap();
+    assert_eq!(read_sizes(&p).unwrap(), vec![4, 5]);
+    std::fs::write(&p, sizes_bytes(0x3153_3247, 0, &[7])).unwrap();
+    assert_eq!(read_sizes(&p).unwrap(), Vec::<u32>::new());
     std::fs::remove_file(p).unwrap();
 }
 
@@ -149,6 +170,14 @@ fn bin_list_strips_line_endings_and_trailing_spaces_and_skips_blanks() {
     std::fs::write(&p, "a.bin\r\n\r\n  \nb dir/b.bin  \n\nc.bin").unwrap();
     let got = read_bin_list(&p).unwrap();
     assert_eq!(got, vec![PathBuf::from("a.bin"), PathBuf::from("b dir/b.bin"), PathBuf::from("c.bin")]);
+    std::fs::remove_file(p).unwrap();
+}
+
+#[test]
+fn bin_list_keeps_a_leading_space() {
+    let p = tmp("leadlist.txt");
+    std::fs::write(&p, " lead.bin \n").unwrap();
+    assert_eq!(read_bin_list(&p).unwrap(), vec![PathBuf::from(" lead.bin")]);
     std::fs::remove_file(p).unwrap();
 }
 

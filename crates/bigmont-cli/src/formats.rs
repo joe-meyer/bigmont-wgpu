@@ -78,7 +78,8 @@ pub fn read_candidate_files(paths: &[PathBuf]) -> Result<CandidateFile, String> 
 }
 
 /// Reads a text file listing one path per line: trailing `\r`, `\n` and spaces are stripped, empty
-/// lines skipped. Errors if the file cannot be read or lists no path.
+/// lines skipped; leading spaces are kept. The file must be UTF-8. Errors if the file cannot be
+/// read or lists no path.
 pub fn read_bin_list(path: &Path) -> Result<Vec<PathBuf>, String> {
     let raw = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let text = String::from_utf8(raw).map_err(|_| format!("{}: list file is not valid UTF-8", path.display()))?;
@@ -93,7 +94,8 @@ pub fn read_bin_list(path: &Path) -> Result<Vec<PathBuf>, String> {
 pub const SIZES_MAGIC: u32 = 0x3153_3247;
 
 /// Reads a `G2S1` sizes file: magic `u32`, entry count `u32`, then that many `u32` counts, all
-/// little-endian. The length must match the header exactly, checked before anything is allocated.
+/// little-endian. The file must hold at least the declared entries (checked before anything is
+/// allocated); bytes after them are ignored.
 pub fn read_sizes(path: &Path) -> Result<Vec<u32>, String> {
     let raw = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let bad = |e: String| format!("{}: {e}", path.display());
@@ -106,10 +108,13 @@ pub fn read_sizes(path: &Path) -> Result<Vec<u32>, String> {
     }
     let nk = u32::from_le_bytes(raw[4..8].try_into().expect("4 bytes"));
     let body = (raw.len() - 8) as u64;
-    if u64::from(nk) * 4 != body {
-        return Err(bad(format!("sizes file header claims {nk} entries, which does not match its {body}-byte body")));
+    let need = u64::from(nk) * 4; // at most 2^34, no overflow; checked before any allocation
+    if body < need {
+        return Err(bad(format!("sizes file claims {nk} entries but only has {body} bytes after the header")));
     }
-    Ok(raw[8..].as_chunks::<4>().0.iter().map(|c| u32::from_le_bytes(*c)).collect())
+    // Bytes after the declared entries are ignored.
+    let end = 8 + usize::try_from(need).expect("need <= body, which is a usize");
+    Ok(raw[8..end].as_chunks::<4>().0.iter().map(|c| u32::from_le_bytes(*c)).collect())
 }
 
 /// Writes a `G2S1` sizes file to `path` (used to build test inputs).
