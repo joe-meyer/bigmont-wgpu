@@ -47,13 +47,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --all-features --locked
-      # TODO: make blocking. Hosted runners have no usable GPU, and some
-      # bigmont-cli tests (devloss, engine, two in cli) unwrap a GPU engine
-      # instead of honouring BIGMONT_ALLOW_SKIP, so they fail on a runner with no
-      # adapter (Linux) or with a software adapter that lacks SUBGROUP (Windows
-      # WARP). The build above still blocks on all three OSes.
+      # Hosted runners have no usable GPU, so the GPU-dependent tests skip here
+      # (BIGMONT_ALLOW_SKIP=1) and the engine's GPU paths are not covered by this
+      # job. See https://github.com/joe-meyer/bigmont-wgpu/issues/23.
       - run: cargo test --workspace --all-features --locked --no-fail-fast -- --test-threads=1
-        continue-on-error: true
 
   # Exercises the real wgpu code path using a software Vulkan device (lavapipe),
   # since hosted runners have no GPU. Non-blocking until it proves stable. Runs

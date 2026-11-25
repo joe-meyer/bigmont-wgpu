@@ -7,6 +7,8 @@ use num_bigint::BigUint;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+mod common;
+
 fn bigmont(args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_bigmont"));
     c.args(args);
@@ -58,15 +60,9 @@ fn tmp_dir(tag: &str) -> PathBuf {
     d
 }
 
+/// The engine's GPU backend needs an adapter with subgroups; see `common::usable_gpu`.
 fn gpu_available() -> bool {
-    match Gpu::new() {
-        Ok(_) => true,
-        Err(e) => {
-            assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
-            eprintln!("SKIP no adapter: {e}");
-            false
-        }
-    }
+    common::usable_gpu()
 }
 
 /// 80 odd 1019-bit candidates (above the engine's 64-candidate GPU threshold), written to `dir`.

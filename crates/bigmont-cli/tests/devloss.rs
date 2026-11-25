@@ -8,6 +8,8 @@ use bigmont_oracle::*;
 use num_bigint::BigUint;
 use std::time::Duration;
 
+mod common;
+
 /// Two GPU buckets (1019 bits: 10 random + 2 PRPs, 777 bits: 9 random) and a lone 3 (CPU).
 fn batch() -> (Vec<BigUint>, Vec<u8>, u64) {
     let mut rng = XorShift64::new(9);
@@ -50,6 +52,9 @@ fn the_default_allows_two_device_retries() {
 
 #[test]
 fn a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu() {
+    if !common::usable_gpu() {
+        return;
+    }
     let (ns, want, gpu_candidates) = batch();
     let (o, _cleanup) = opts("reopen");
     let mut e = Engine::open(o);
@@ -77,6 +82,9 @@ fn a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu() {
 
 #[test]
 fn more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process() {
+    if !common::usable_gpu() {
+        return;
+    }
     let (ns, want, gpu_candidates) = batch();
     let (o, _cleanup) = opts("exhaust");
     // The first device and both re-opened ones are destroyed right after opening.
@@ -107,6 +115,9 @@ fn more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process() {
 
 #[test]
 fn a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu() {
+    if !common::usable_gpu() {
+        return;
+    }
     let (ns, want, _) = batch();
     let (o, _cleanup) = opts("timeout");
     // Far shorter than any real dispatch: the first wait that does not finish at once times out.
@@ -128,6 +139,9 @@ fn a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu() {
 
 #[test]
 fn a_panicking_poll_is_recovered_like_a_lost_device() {
+    if !common::usable_gpu() {
+        return;
+    }
     // The path a real NVIDIA Xid takes: wgpu 30's Device::poll panics. The engine must classify it
     // as a device failure, re-open, and re-run the bucket on the GPU.
     let (ns, want, gpu_candidates) = batch();
@@ -147,6 +161,9 @@ fn a_panicking_poll_is_recovered_like_a_lost_device() {
 
 #[test]
 fn a_different_adapter_after_a_reopen_is_tuned_again() {
+    if !common::usable_gpu() {
+        return;
+    }
     let (ns, want, gpu_candidates) = batch();
     let (o, _cleanup) = opts("adapter");
     let mut e = Engine::open(o);
@@ -165,6 +182,9 @@ fn a_different_adapter_after_a_reopen_is_tuned_again() {
 
 #[test]
 fn the_lifetime_reopen_cap_makes_the_engine_cpu_only() {
+    if !common::usable_gpu() {
+        return;
+    }
     // A device that dies on every call: the per-call budget resets each call, the lifetime cap does not.
     let (ns, want, gpu_candidates) = batch();
     let (o, _cleanup) = opts("cap");
