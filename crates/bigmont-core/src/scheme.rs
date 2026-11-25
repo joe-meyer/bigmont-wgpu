@@ -2,7 +2,7 @@
 //! representation (limb count for a bit length, R, host-side packing, the Montgomery factor) lives
 //! here, so the runner and the tuner never name a limb width.
 
-use bigmont_oracle::{LIMB_BITS, LIMB_MASK, limbs_for_bits, mont_square_chain_bits, neg_inv_limb, pack_limbs_n, unpack_limbs};
+use bigmont_oracle::{LIMB_BITS, LIMB_MASK, limbs_for_bits, mont_square_chain_bits, neg_inv_limb, neg_inv_u32, pack_limbs_n, pack_u32_limbs, unpack_limbs, unpack_u32_limbs};
 use num_bigint::BigUint;
 
 /// What a device offers, or what a kernel needs.
@@ -39,26 +39,31 @@ impl Caps {
 pub enum LimbScheme {
     /// 13-bit limbs, one per u32, products accumulated in u32.
     Limb13,
+    /// 32-bit limbs, one per u32, products in u64 (needs `SHADER_INT64`; never built for browsers).
+    Limb32,
 }
 
 impl LimbScheme {
-    pub const ALL: &'static [LimbScheme] = &[LimbScheme::Limb13];
+    pub const ALL: &'static [LimbScheme] = &[LimbScheme::Limb13, LimbScheme::Limb32];
 
     pub fn limb_bits(self) -> u32 {
         match self {
             LimbScheme::Limb13 => LIMB_BITS,
+            LimbScheme::Limb32 => 32,
         }
     }
 
     pub fn name(self) -> &'static str {
         match self {
             LimbScheme::Limb13 => "13",
+            LimbScheme::Limb32 => "32",
         }
     }
 
     pub fn parse(s: &str) -> Option<LimbScheme> {
         match s {
             "13" => Some(LimbScheme::Limb13),
+            "32" => Some(LimbScheme::Limb32),
             _ => None,
         }
     }
@@ -68,6 +73,7 @@ impl LimbScheme {
     pub fn requires(self) -> Caps {
         match self {
             LimbScheme::Limb13 => Caps::default(),
+            LimbScheme::Limb32 => Caps { subgroups: false, int64: true },
         }
     }
 
@@ -75,6 +81,7 @@ impl LimbScheme {
     pub fn limbs_for_bits(self, bits: u32) -> u32 {
         match self {
             LimbScheme::Limb13 => limbs_for_bits(bits) as u32,
+            LimbScheme::Limb32 => (bits + 4).div_ceil(32),
         }
     }
 
@@ -86,12 +93,14 @@ impl LimbScheme {
     pub fn pack(self, x: &BigUint, limbs: usize) -> Vec<u32> {
         match self {
             LimbScheme::Limb13 => pack_limbs_n(x, limbs),
+            LimbScheme::Limb32 => pack_u32_limbs(x, limbs),
         }
     }
 
     pub fn unpack(self, limbs: &[u32]) -> BigUint {
         match self {
             LimbScheme::Limb13 => unpack_limbs(limbs),
+            LimbScheme::Limb32 => unpack_u32_limbs(limbs),
         }
     }
 
@@ -99,6 +108,7 @@ impl LimbScheme {
     pub fn neg_inv(self, n: &BigUint) -> u32 {
         match self {
             LimbScheme::Limb13 => neg_inv_limb(n),
+            LimbScheme::Limb32 => neg_inv_u32(n),
         }
     }
 
@@ -106,6 +116,7 @@ impl LimbScheme {
     pub fn normalised(self, limbs: &[u32]) -> bool {
         match self {
             LimbScheme::Limb13 => limbs.iter().all(|&l| l <= LIMB_MASK),
+            LimbScheme::Limb32 => true,
         }
     }
 

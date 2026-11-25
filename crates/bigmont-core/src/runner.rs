@@ -77,10 +77,7 @@ impl Runner {
         if capacity == 0 {
             return Err("capacity must be at least 1".into());
         }
-        let missing = gpu.caps().missing(cfg.requires());
-        if !missing.is_empty() {
-            return Err(format!("the adapter lacks {} (needed by {cfg:?})", missing.join(" and ")));
-        }
+        cfg.check_caps(gpu.caps())?;
         gpu.check_subgroups(cfg.tpi)?;
         gpu.check_health()?;
         Self::build(gpu, cfg, bits, capacity).map_err(|e| gpu.explain(e))

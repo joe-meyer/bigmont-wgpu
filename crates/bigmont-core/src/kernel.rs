@@ -42,6 +42,14 @@ pub enum Target {
 }
 
 impl Target {
+    /// What this target can run: a browser offers no 64-bit integers, native offers everything.
+    pub fn offers(self) -> Caps {
+        match self {
+            Target::Native => Caps { subgroups: true, int64: true },
+            Target::Browser => Caps::BROWSER,
+        }
+    }
+
     pub(crate) fn prelude(self) -> &'static str {
         match self {
             Target::Native => "",
@@ -104,6 +112,28 @@ impl KernelConfig {
         Caps { subgroups: self.needs_subgroups(), int64: self.scheme.requires().int64 }
     }
 
+    /// `Ok` when a device offering `have` can run this kernel, else an error naming what is missing
+    /// ("needs int64, which the adapter lacks").
+    pub fn check_caps(&self, have: Caps) -> Result<(), String> {
+        let missing = have.missing(self.requires());
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("{self:?} needs {}, which the adapter lacks", missing.join(" and ")))
+        }
+    }
+
+    /// `Err` when `target` cannot run this kernel's scheme (a 32-bit kernel needs int64, which a
+    /// browser does not offer).
+    fn check_target(&self, target: Target) -> Result<(), String> {
+        let missing = target.offers().missing(self.scheme.requires());
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("{:?} needs {missing:?}, which the {target:?} target does not offer", self.scheme))
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(self.tpi, 1 | 4 | 8 | 16 | 32) {
             return Err(format!("tpi {} not supported (1, 4, 8, 16, 32)", self.tpi));
@@ -116,6 +146,9 @@ impl KernelConfig {
         }
         if self.variant == Variant::Unrolled && self.tpi == 1 {
             return Err("the unrolled variant supports tpi 4, 8, 16, 32 only (tpi 1 is rolled-only)".to_string());
+        }
+        if self.scheme == LimbScheme::Limb32 && (self.variant != Variant::Unrolled || self.tpi == 1) {
+            return Err("32-bit limbs are generated for the unrolled variant with tpi 4, 8, 16, 32 only".to_string());
         }
         Ok(())
     }
@@ -144,6 +177,13 @@ impl KernelConfig {
 
     /// [`KernelConfig::wgsl_for`], or the reason this configuration has no source for `target`.
     pub fn try_wgsl_for(&self, target: Target) -> Result<String, String> {
+        self.check_target(target)?;
+        if self.scheme == LimbScheme::Limb32 {
+            if self.variant != Variant::Unrolled {
+                return Err("32-bit limbs are generated for the unrolled variant only".to_string());
+            }
+            return crate::limb32::wgsl(self, crate::unrolled::Mode::Squarings);
+        }
         if self.variant == Variant::Unrolled {
             return Ok(crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Squarings));
         }
@@ -171,8 +211,12 @@ impl KernelConfig {
 
     /// [`KernelConfig::fermat_wgsl_for`], or the reason this configuration has no source for `target`.
     pub fn try_fermat_wgsl_for(&self, target: Target) -> Result<String, String> {
+        self.check_target(target)?;
         if self.variant != Variant::Unrolled {
             return Err("the Fermat ladder is generated for the unrolled variant only".to_string());
+        }
+        if self.scheme == LimbScheme::Limb32 {
+            return crate::limb32::wgsl(self, crate::unrolled::Mode::Fermat);
         }
         Ok(crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Fermat))
     }

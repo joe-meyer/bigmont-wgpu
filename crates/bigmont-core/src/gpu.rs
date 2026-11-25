@@ -596,6 +596,7 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> 
 /// timed-out wait or an uncaptured wgpu error is an `Err` (see [`Gpu::check_health`]).
 pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats: u32) -> Result<Run, String> {
     cfg.validate()?;
+    cfg.check_caps(gpu.caps())?;
     let count = batch.count as usize;
     let limbs = cfg.limbs as usize;
     if count == 0 {
