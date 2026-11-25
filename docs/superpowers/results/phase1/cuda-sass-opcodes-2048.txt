@@ -1,0 +1,44 @@
+# cuobjdump -sass opcode histogram of Beacon's g1_fermat_v3 kernel_fermat<f2_params_t<8,2048>> (static count over the whole kernel, sm_89)
+# host: test-laptop, RTX 4070 Laptop (sm_89) | date: 2026-11-24T19:54:16-05:00 | binary built by the Test B step from ~/beacon-test/p3/cuda/g1_fermat_v3.cu
+# command: cuobjdump -sass -fun <mangled name> g1_fermat_v3 | opcode count (static; NOT dynamic per-squaring counts)
+total static instructions: 4096
+    554 IADD3.X
+    397 SEL
+    301 LOP3.LUT
+    288 SHFL.IDX
+    274 IADD3
+    263 IMAD.WIDE.U32.X
+    220 IMAD.MOV.U32
+    189 IMAD
+    162 IMAD.HI.U32
+    150 ISETP.NE.AND
+    106 REDUX.OR
+     92 IMAD.WIDE.U32
+     90 BRA.DIV
+     76 VOTEU.ANY
+     76 MATCH.ANY
+     72 IMAD.X
+     60 BRA
+     58 IMAD.MOV
+     56 VOTE.ANY
+     46 BSSY
+     44 ISETP.GT.U32.AND
+     43 IMAD.IADD
+     43 BSYNC
+     34 SHFL.UP
+     32 SHF.L.U32.HI
+     30 R2UR
+     30 LEA.HI.X.SX32
+     23 ISETP.EQ.AND
+     23 CALL.REL.NOINC
+     21 ISETP.NE.U32.AND
+     20 SHF.R.U32.HI
+     19 SHF.R.W.U32
+     19 MOV
+     19 ISETP.GE.AND
+     16 CS2R
+     16 BRA.CONV
+     15 PLOP3.LUT
+     12 P2R
+     12 ISETP.GT.AND
+     12 ISETP.GE.U32.AND

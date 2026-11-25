@@ -38,6 +38,50 @@ pub struct Gpu {
     pub queue: wgpu::Queue,
 }
 
+/// Parses a `BIGMONT_INSTANCE_BACKENDS` value: a comma list of `vulkan`, `dx12`, `metal`, `gl`,
+/// `primary` (Vulkan, Dx12 and Metal) and `all` (every backend, GL included).
+pub fn parse_instance_backends(list: &str) -> Result<wgpu::Backends, String> {
+    let mut backends = wgpu::Backends::empty();
+    for token in list.split(',').map(|t| t.trim().to_lowercase()).filter(|t| !t.is_empty()) {
+        backends |= match token.as_str() {
+            "vulkan" => wgpu::Backends::VULKAN,
+            "dx12" => wgpu::Backends::DX12,
+            "metal" => wgpu::Backends::METAL,
+            "gl" => wgpu::Backends::GL,
+            "primary" => wgpu::Backends::PRIMARY,
+            "all" => wgpu::Backends::all(),
+            other => return Err(format!("unknown backend '{other}' (use vulkan, dx12, metal, gl, primary, all)")),
+        };
+    }
+    if backends.is_empty() {
+        return Err("no backends listed".into());
+    }
+    Ok(backends)
+}
+
+/// The backends the wgpu instance initialises: `Backends::PRIMARY` (Vulkan, Dx12, Metal) unless
+/// `BIGMONT_INSTANCE_BACKENDS` says otherwise.
+///
+/// GL is left out on purpose. Our kernels need subgroup operations, which the GL backend does not
+/// offer, so it can never run them; and initialising it (EGL on Linux, WGL on Windows) alongside
+/// Vulkan made test binaries crash at exit inside the AMD driver on Windows (6 of 60 runs with all
+/// backends, 0 of 60 with Vulkan only and 0 of 60 with Vulkan + Dx12) and was associated with
+/// NVIDIA Xid 32 device losses on Linux (8 of 160 runs with all backends, 1 of 160 with Vulkan
+/// only). See docs/superpowers/results/2026-11-24-device-loss-investigation.md.
+pub fn instance_backends() -> wgpu::Backends {
+    match std::env::var("BIGMONT_INSTANCE_BACKENDS") {
+        Ok(list) if !list.trim().is_empty() => parse_instance_backends(&list).unwrap_or_else(|e| {
+            eprintln!("bigmont: ignoring BIGMONT_INSTANCE_BACKENDS ({e}); using the default");
+            wgpu::Backends::PRIMARY
+        }),
+        _ => wgpu::Backends::PRIMARY,
+    }
+}
+
+fn make_instance() -> wgpu::Instance {
+    wgpu::Instance::new(wgpu::InstanceDescriptor { backends: instance_backends(), ..wgpu::InstanceDescriptor::new_without_display_handle() })
+}
+
 fn describe(info: &wgpu::AdapterInfo) -> String {
     format!("{} [{:?}, {:?}] subgroup {}..{}", info.name, info.backend, info.device_type, info.subgroup_min_size, info.subgroup_max_size)
 }
@@ -55,7 +99,7 @@ impl Gpu {
     pub fn open(selector: &AdapterSelector) -> Result<Gpu, String> {
         let _init = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         pollster::block_on(async {
-            let instance = wgpu::Instance::default();
+            let instance = make_instance();
             let name = selector.name.as_ref().map(|s| s.to_lowercase());
             let backend = selector.backend.as_ref().map(|s| s.to_lowercase());
             let adapter = if name.is_some() || backend.is_some() || selector.index.is_some() {
@@ -100,7 +144,7 @@ impl Gpu {
 
     pub fn list_adapters() -> Vec<String> {
         pollster::block_on(async {
-            let instance = wgpu::Instance::default();
+            let instance = make_instance();
             instance
                 .enumerate_adapters(wgpu::Backends::all())
                 .await
@@ -306,4 +350,35 @@ pub fn run(gpu: &Gpu, cfg: KernelConfig, batch: &Batch, squarings: u32, repeats:
     };
     staging.unmap();
     Ok(Run { x, best_secs: best })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_backend_lists() {
+        assert_eq!(parse_instance_backends("vulkan").unwrap(), wgpu::Backends::VULKAN);
+        assert_eq!(parse_instance_backends(" Vulkan , DX12 ").unwrap(), wgpu::Backends::VULKAN | wgpu::Backends::DX12);
+        assert_eq!(parse_instance_backends("primary").unwrap(), wgpu::Backends::PRIMARY);
+        assert_eq!(parse_instance_backends("primary,gl").unwrap(), wgpu::Backends::PRIMARY | wgpu::Backends::GL);
+        assert_eq!(parse_instance_backends("all").unwrap(), wgpu::Backends::all());
+        assert_eq!(parse_instance_backends("vulkan,,").unwrap(), wgpu::Backends::VULKAN);
+    }
+
+    #[test]
+    fn rejects_unknown_or_empty_lists() {
+        assert!(parse_instance_backends("opengl").is_err());
+        assert!(parse_instance_backends("").is_err());
+        assert!(parse_instance_backends(" , ").is_err());
+    }
+
+    #[test]
+    fn the_default_leaves_gl_out() {
+        // The env var is not set by the test harness; the default must be PRIMARY, which has no GL.
+        if std::env::var_os("BIGMONT_INSTANCE_BACKENDS").is_none() {
+            assert_eq!(instance_backends(), wgpu::Backends::PRIMARY);
+            assert!(!instance_backends().contains(wgpu::Backends::GL));
+        }
+    }
 }
