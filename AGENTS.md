@@ -19,6 +19,7 @@ It is a Cargo workspace (edition 2024):
 | `crates/bigmont-core` | the wgpu engine: kernel generators (`unrolled.rs`, `limb32.rs`), `Runner`, device handling |
 | `crates/bigmont-cpu` | pure-Rust 64-bit-limb Montgomery Fermat test (CPU backend) |
 | `crates/bigmont-cli` | the `bigmont` binary: file formats, autotuner and cache, engine |
+| `crates/bigmont-wasm` | browser (wasm32) entry points over `bigmont-core`; empty on native targets |
 | `web/` | browser test pages and generated kernels |
 | `docs/superpowers/` | design, plans, measurements and notes |
 
@@ -67,6 +68,10 @@ device. Always run the suite with `--test-threads=1`.
   rasterisers, browsers) were *not* tested. This lets other contributors pick up
   the gaps. Fill in the "Tested on" section of the PR template; "untested" is an
   acceptable answer, a silent omission is not. Never claim coverage you didn't run.
+- **`bigmont-core` must keep compiling for wasm32 (CI `wasm-check`).** Its real work is in
+  `async fn`s (`Gpu::open_async`, `Runner::fermat_async`, `run_async`, ...); the blocking forms are
+  native-only wrappers over them. Don't add blocking waits, threads, `Instant::now()` from `std`
+  (use `web_time`) or other native-only calls outside `#[cfg(not(target_arch = "wasm32"))]`.
 - **Handle device loss.** GPU calls can fail or reset mid-run; return errors,
   never panic or hang. The `devloss` tests cover this.
 - **No unsafe** unless unavoidable; if added, document the invariant on the line above.

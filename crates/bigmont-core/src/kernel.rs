@@ -42,6 +42,11 @@ pub enum Target {
 }
 
 impl Target {
+    /// The target the current build runs on: [`Target::Browser`] for wasm32, otherwise native.
+    pub const fn host() -> Target {
+        if cfg!(target_arch = "wasm32") { Target::Browser } else { Target::Native }
+    }
+
     /// What this target can run: a browser offers no 64-bit integers, native offers everything.
     pub fn offers(self) -> Caps {
         match self {

@@ -1,0 +1,16 @@
+[package]
+name = "bigmont-wasm"
+description = "Browser (wasm32 + WebGPU) entry points for the bigmont engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Everything lives behind the wasm32 gate, so a native build of the workspace compiles an empty crate.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bigmont-core = { path = "../bigmont-core" }
+num-bigint = "0.4"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
