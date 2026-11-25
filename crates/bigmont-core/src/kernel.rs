@@ -1,6 +1,7 @@
 //! Kernel configuration and WGSL generation.
 
-use bigmont_oracle::{LIMBS, limbs_for_bits};
+use crate::scheme::{Caps, LimbScheme};
+use bigmont_oracle::LIMBS;
 
 const TEMPLATE: &str = include_str!("mont.wgsl");
 
@@ -59,14 +60,16 @@ pub struct KernelConfig {
     pub wg: u32,
     /// Code generator: rolled template or unrolled straight-line generator.
     pub variant: Variant,
-    /// Limbs per number (13-bit limbs); a multiple of `tpi`.
+    /// Limbs per number; a multiple of `tpi`.
     pub limbs: u32,
+    /// The limb representation (radix) of the kernel.
+    pub scheme: LimbScheme,
 }
 
 impl KernelConfig {
     /// The Phase 0 size class: 160 limbs (2,029-bit numbers).
     pub const fn new(tpi: u32, wg: u32, variant: Variant) -> Self {
-        Self { tpi, wg, variant, limbs: LIMBS as u32 }
+        Self { tpi, wg, variant, limbs: LIMBS as u32, scheme: LimbScheme::Limb13 }
     }
 
     pub const fn with_limbs(mut self, limbs: u32) -> Self {
@@ -77,8 +80,28 @@ impl KernelConfig {
     /// Config for numbers of `bits` bits that is safe for the Fermat ladder (R > 16n): the smallest
     /// multiple of `tpi` that is at least `limbs_for_bits(bits)`.
     pub fn for_bits(bits: u32, tpi: u32, wg: u32, variant: Variant) -> Self {
-        let need = limbs_for_bits(bits) as u32;
-        Self::new(tpi, wg, variant).with_limbs(need.div_ceil(tpi) * tpi)
+        Self::for_bits_scheme(LimbScheme::Limb13, bits, tpi, wg, variant)
+    }
+
+    /// [`KernelConfig::for_bits`] for a given limb scheme.
+    pub fn for_bits_scheme(scheme: LimbScheme, bits: u32, tpi: u32, wg: u32, variant: Variant) -> Self {
+        let need = scheme.limbs_for_bits(bits);
+        Self { scheme, ..Self::new(tpi, wg, variant) }.with_limbs(need.div_ceil(tpi) * tpi)
+    }
+
+    /// The same scheme, lane count, workgroup size and variant, with the limb count for `bits`.
+    pub fn retarget(&self, bits: u32) -> KernelConfig {
+        Self::for_bits_scheme(self.scheme, bits, self.tpi, self.wg, self.variant)
+    }
+
+    /// `log2 R` of this configuration.
+    pub fn r_bits(&self) -> u32 {
+        self.scheme.r_bits(self.limbs)
+    }
+
+    /// What a device must offer to run this kernel.
+    pub fn requires(&self) -> Caps {
+        Caps { subgroups: self.needs_subgroups(), int64: self.scheme.requires().int64 }
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -116,29 +139,41 @@ impl KernelConfig {
 
     /// The complete squaring-mode WGSL source for this configuration.
     pub fn wgsl_for(&self, target: Target) -> String {
+        self.try_wgsl_for(target).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`KernelConfig::wgsl_for`], or the reason this configuration has no source for `target`.
+    pub fn try_wgsl_for(&self, target: Target) -> Result<String, String> {
         if self.variant == Variant::Unrolled {
-            return crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Squarings);
+            return Ok(crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Squarings));
         }
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
             (target.prelude(), ", @builtin(subgroup_invocation_id) sg_in: u32", "let sg = sg_in;", SUBGROUP_HELPERS)
         } else {
             ("", "", "let sg = 0u;", SCALAR_HELPERS)
         };
-        TEMPLATE
+        Ok(TEMPLATE
             .replace("__ENABLE__", enable)
             .replace("__TPI__", &format!("{}u", self.tpi))
             .replace("__LPL__", &format!("{}u", self.limbs_per_lane()))
             .replace("__WG__", &format!("{}u", self.wg))
             .replace("__SGPARAM__", sgparam)
             .replace("__SGLET__", sglet)
-            .replace("__SHUFFLES__", helpers)
+            .replace("__SHUFFLES__", helpers))
     }
 
     /// The complete Fermat-ladder WGSL source (unrolled variant only): bindings 0..3 as in squaring
     /// mode plus `@binding(4) e_words` (`n - 1` as u32 words, read-only storage) and `@binding(5) fp`
     /// (uniform: first iteration, nbits, words per instance). Needs R > 16n (see `for_bits`).
     pub fn fermat_wgsl_for(&self, target: Target) -> String {
-        assert_eq!(self.variant, Variant::Unrolled, "the Fermat ladder is generated for the unrolled variant only");
-        crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Fermat)
+        self.try_fermat_wgsl_for(target).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// [`KernelConfig::fermat_wgsl_for`], or the reason this configuration has no source for `target`.
+    pub fn try_fermat_wgsl_for(&self, target: Target) -> Result<String, String> {
+        if self.variant != Variant::Unrolled {
+            return Err("the Fermat ladder is generated for the unrolled variant only".to_string());
+        }
+        Ok(crate::unrolled::wgsl(self, target, crate::unrolled::Mode::Fermat))
     }
 }

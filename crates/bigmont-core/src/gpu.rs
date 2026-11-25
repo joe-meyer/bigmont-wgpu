@@ -1,7 +1,8 @@
 //! wgpu device setup, input batches, and the kernel runner.
 
 use crate::kernel::KernelConfig;
-use bigmont_oracle::{LIMBS, XorShift64, neg_inv_limb, pack_limbs_n, random_below, random_odd_modulus};
+use crate::scheme::{Caps, LimbScheme};
+use bigmont_oracle::{LIMBS, XorShift64, random_below, random_odd_modulus};
 use num_bigint::BigUint;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -165,6 +166,8 @@ fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 pub struct Gpu {
     pub info: wgpu::AdapterInfo,
     pub has_subgroups: bool,
+    /// Whether the device was created with `wgpu::Features::SHADER_INT64`.
+    pub has_int64: bool,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     /// The longest one [`Gpu::wait`] may take; a longer wait is an `Err` and poisons the `Gpu`.
@@ -296,6 +299,9 @@ impl Gpu {
             if has_subgroups {
                 features |= wgpu::Features::SUBGROUP;
             }
+            if adapter.features().contains(wgpu::Features::SHADER_INT64) {
+                features |= wgpu::Features::SHADER_INT64;
+            }
             let (device, queue) = adapter
                 .request_device(&wgpu::DeviceDescriptor { required_features: features, ..Default::default() })
                 .await
@@ -323,7 +329,13 @@ impl Gpu {
                 errors.push(e.to_string());
             }
         }));
-        Gpu { info, has_subgroups, device, queue, poll_timeout: poll_timeout_from_env(), health }
+        let has_int64 = device.features().contains(wgpu::Features::SHADER_INT64);
+        Gpu { info, has_subgroups, has_int64, device, queue, poll_timeout: poll_timeout_from_env(), health }
+    }
+
+    /// What this device offers, in the terms a kernel's `requires()` is expressed in.
+    pub fn caps(&self) -> Caps {
+        Caps { subgroups: self.has_subgroups, int64: self.has_int64 }
     }
 
     /// Sets [`Gpu::poll_timeout`].
@@ -507,7 +519,7 @@ impl Gpu {
     }
 }
 
-/// Input arrays, one entry per instance: moduli, -n^-1 mod 2^13, and starting values, as limbs.
+/// Input arrays, one entry per instance: moduli, -n^-1 mod 2^limb_bits, and starting values, as limbs.
 pub struct Batch {
     pub count: u32,
     /// Limbs per number.
@@ -525,12 +537,21 @@ impl Batch {
 
     /// Batch of `limbs`-limb numbers (every value must fit in `limbs` limbs).
     pub fn from_values_n(values: &[(BigUint, BigUint)], limbs: usize) -> Batch {
+        Self::from_values_scheme(LimbScheme::Limb13, values, limbs)
+    }
+
+    /// Batch for `cfg`: its limb count, packed with its scheme's radix (every value must fit).
+    pub fn from_values_cfg(values: &[(BigUint, BigUint)], cfg: &KernelConfig) -> Batch {
+        Self::from_values_scheme(cfg.scheme, values, cfg.limbs as usize)
+    }
+
+    fn from_values_scheme(scheme: LimbScheme, values: &[(BigUint, BigUint)], limbs: usize) -> Batch {
         let mut b = Batch { count: values.len() as u32, limbs, n: Vec::new(), ninv: Vec::new(), x: Vec::new() };
         for (n, x) in values {
             assert!(x < &(n * 2u32), "x must be below 2n");
-            b.n.extend(pack_limbs_n(n, limbs));
-            b.ninv.push(neg_inv_limb(n));
-            b.x.extend(pack_limbs_n(x, limbs));
+            b.n.extend(scheme.pack(n, limbs));
+            b.ninv.push(scheme.neg_inv(n));
+            b.x.extend(scheme.pack(x, limbs));
         }
         b
     }

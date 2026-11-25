@@ -1,13 +1,13 @@
 //! Reusable Fermat-test runner: shader, pipeline and buffers are built once per (config, bits).
 //!
 //! Each call to [`Runner::fermat`] prepares the Montgomery inputs on the host (`R mod n`, the start
-//! value `2R mod n`, `-n^-1 mod 2^13`, and the exponent `n - 1`), uploads them into the persistent
+//! value `2R mod n`, `-n^-1 mod 2^limb_bits`, and the exponent `n - 1`), uploads them into the persistent
 //! buffers and runs the `bits - 1` ladder iterations as a sequence of short dispatches ("segments"),
 //! so no single submission runs long enough to trip a driver watchdog (Windows TDR).
 
 use crate::gpu::{Gpu, guarded};
 use crate::kernel::{KernelConfig, Target, Variant};
-use bigmont_oracle::{LIMB_MASK, neg_inv_limb, pack_limbs_n, unpack_limbs};
+use crate::scheme::LimbScheme;
 use num_bigint::BigUint;
 use num_traits::One;
 use std::time::Instant;
@@ -24,7 +24,7 @@ pub struct RunStats {
 
 /// The smallest bit length a [`Runner`] accepts: 2, the length of n = 3, the smallest odd number
 /// the Fermat test applies to. Every length from here up is supported (the kernel arithmetic needs
-/// only R = 2^(13 * limbs) > 16n, which `KernelConfig::for_bits` guarantees at any size).
+/// only R = 2^(limb_bits * limbs) > 16n, which `KernelConfig::for_bits` guarantees at any size).
 pub const MIN_BITS: u32 = 2;
 
 pub struct Runner {
@@ -71,11 +71,15 @@ impl Runner {
         if bits < MIN_BITS {
             return Err(format!("{bits} bits is below the {MIN_BITS}-bit minimum (the smallest odd candidate, n = 3, has {MIN_BITS} bits)"));
         }
-        if 13 * cfg.limbs < bits + 4 {
-            return Err(format!("{} limbs give R = 2^{}, which is not above 16n for {bits}-bit n (use KernelConfig::for_bits)", cfg.limbs, 13 * cfg.limbs));
+        if cfg.r_bits() < bits + 4 {
+            return Err(format!("{} limbs give R = 2^{}, which is not above 16n for {bits}-bit n (use KernelConfig::for_bits)", cfg.limbs, cfg.r_bits()));
         }
         if capacity == 0 {
             return Err("capacity must be at least 1".into());
+        }
+        let missing = gpu.caps().missing(cfg.requires());
+        if !missing.is_empty() {
+            return Err(format!("the adapter lacks {} (needed by {cfg:?})", missing.join(" and ")));
         }
         gpu.check_subgroups(cfg.tpi)?;
         gpu.check_health()?;
@@ -213,7 +217,7 @@ impl Runner {
         let words = self.words as usize;
 
         let t = Instant::now();
-        let preps = prepare(ns, limbs, words);
+        let preps = prepare(ns, self.cfg.scheme, limbs, words);
         let mut n_all = Vec::with_capacity(ns.len() * limbs);
         let mut x_all = Vec::with_capacity(ns.len() * limbs);
         let mut ninv_all = Vec::with_capacity(ns.len());
@@ -267,10 +271,11 @@ impl Runner {
         queue.submit([enc.finish()]);
         let x = gpu.read_back(&self.staging, bytes)?;
 
-        if x.iter().any(|&l| l > LIMB_MASK) {
+        let scheme = self.cfg.scheme;
+        if !scheme.normalised(&x) {
             return Err("kernel returned an unnormalised limb".into());
         }
-        let verdicts = ns.iter().zip(&preps).enumerate().map(|(i, (n, p))| unpack_limbs(&x[i * limbs..(i + 1) * limbs]) % n == p.r).collect();
+        let verdicts = ns.iter().zip(&preps).enumerate().map(|(i, (n, p))| scheme.unpack(&x[i * limbs..(i + 1) * limbs]) % n == p.r).collect();
         self.stats.tests += u64::from(count);
         Ok(verdicts)
     }
@@ -278,14 +283,14 @@ impl Runner {
 
 /// Montgomery inputs for every candidate, split across the available cores in contiguous slices
 /// (results stay in input order).
-fn prepare(ns: &[BigUint], limbs: usize, words: usize) -> Vec<Prep> {
-    let r_pow = BigUint::one() << (13 * limbs);
+fn prepare(ns: &[BigUint], scheme: LimbScheme, limbs: usize, words: usize) -> Vec<Prep> {
+    let r_pow = BigUint::one() << scheme.r_bits(limbs as u32);
     let one = |n: &BigUint| {
         let r = &r_pow % n;
         let x0 = (&r << 1u32) % n;
         let mut e = (n - 1u32).to_u32_digits();
         e.resize(words, 0);
-        Prep { n: pack_limbs_n(n, limbs), x0: pack_limbs_n(&x0, limbs), ninv: neg_inv_limb(n), e, r }
+        Prep { n: scheme.pack(n, limbs), x0: scheme.pack(&x0, limbs), ninv: scheme.neg_inv(n), e, r }
     };
     let threads = std::thread::available_parallelism().map_or(1, |t| t.get()).min(ns.len()).max(1);
     if threads == 1 {

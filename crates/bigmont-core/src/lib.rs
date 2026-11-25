@@ -8,4 +8,6 @@
 pub mod gpu;
 pub mod kernel;
 pub mod runner;
+/// Limb schemes (radix-dependent host helpers) and device capabilities.
+pub mod scheme;
 mod unrolled;

@@ -4,7 +4,7 @@
 use bigmont_core::gpu::{Batch, Gpu, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
-use bigmont_oracle::{LIMB_BITS, LIMB_MASK, XorShift64, limbs_for_bits, mont_square_chain_n, random_odd_modulus, unpack_limbs};
+use bigmont_oracle::{LIMB_BITS, XorShift64, limbs_for_bits, random_odd_modulus};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
 use std::collections::HashMap;
@@ -117,29 +117,30 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
     if bits < MIN_SELF_TEST_BITS {
         return Err(format!("the self-test needs at least {MIN_SELF_TEST_BITS}-bit numbers, got {bits} (tune a limb class at tune::class_bits)"));
     }
-    if 13 * cfg.limbs < bits + 4 {
+    if cfg.r_bits() < bits + 4 {
         return Err(format!("{} limbs are too few for {bits}-bit numbers (need R > 16n)", cfg.limbs));
     }
     let limbs = cfg.limbs as usize;
+    let scheme = cfg.scheme;
 
     // (a) squaring mode: R > 4n moduli, plus the all-ones modulus.
-    let bits_sq = cfg.limbs * 13 - 3;
+    let bits_sq = cfg.r_bits() - 3;
     let mut values = Batch::random_values(24, bits_sq, 0x5EED_0001);
     let all_ones = (BigUint::one() << bits_sq) - 1u32;
     values.push((all_ones.clone(), &all_ones - 1u32));
     let squarings = 3;
-    let batch = Batch::from_values_n(&values, limbs);
+    let batch = Batch::from_values_cfg(&values, &cfg);
     let result = run(gpu, cfg, &batch, squarings, 1)?;
     for (i, (n, x0)) in values.iter().enumerate() {
         let got_limbs = &result.x[i * limbs..(i + 1) * limbs];
-        if got_limbs.iter().any(|&l| l > LIMB_MASK) {
+        if !scheme.normalised(got_limbs) {
             return Err(format!("squaring instance {i}: limbs are not normalised"));
         }
-        let got = unpack_limbs(got_limbs);
+        let got = scheme.unpack(got_limbs);
         if got >= n * 2u32 {
             return Err(format!("squaring instance {i}: result is not below 2n"));
         }
-        if &got % n != mont_square_chain_n(n, x0, squarings, limbs) {
+        if &got % n != scheme.chain(n, x0, squarings, limbs) {
             return Err(format!("squaring instance {i}: wrong value"));
         }
     }
@@ -170,8 +171,8 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;
     let count = cfg.instances_per_workgroup() * if on_cpu { CPU_MEASURE_GROUPS } else { MEASURE_GROUPS };
     let max_work: u64 = if on_cpu { 1 << 18 } else { 1 << 26 };
-    let values = Batch::random_values(count, cfg.limbs * 13 - 3, 0x5EED_0002);
-    let batch = Batch::from_values_n(&values, limbs);
+    let values = Batch::random_values(count, cfg.r_bits() - 3, 0x5EED_0002);
+    let batch = Batch::from_values_cfg(&values, &cfg);
 
     let mut squarings = 8u32;
     loop {
@@ -191,8 +192,8 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     let last = last.expect("two timed runs");
     for i in (0..count as usize).step_by((count as usize / 4).max(1)).take(4) {
         let (n, x0) = &values[i];
-        let got = unpack_limbs(&last.x[i * limbs..(i + 1) * limbs]);
-        if &got % n != mont_square_chain_n(n, x0, squarings, limbs) {
+        let got = cfg.scheme.unpack(&last.x[i * limbs..(i + 1) * limbs]);
+        if &got % n != cfg.scheme.chain(n, x0, squarings, limbs) {
             return Err(format!("timing run: instance {i} differs from the oracle"));
         }
     }
