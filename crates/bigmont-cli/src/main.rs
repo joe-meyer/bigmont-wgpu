@@ -35,7 +35,9 @@ tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPP
               $XDG_CACHE_HOME/bigmont/tune.cache or ~/.cache/bigmont/tune.cache elsewhere); --no-cache disables it";
 
 /// Flags of the driver this one replaces that are not implemented yet.
-const UNSUPPORTED: [&str; 6] = ["--inject", "--ee", "--bins", "--chunk", "--growth", "--marker"];
+const UNSUPPORTED: [&str; 6] = [
+    "--inject", "--ee", "--bins", "--chunk", "--growth", "--marker",
+];
 
 struct Args {
     positional: Vec<String>,
@@ -51,13 +53,17 @@ fn usage_err(msg: impl std::fmt::Display) -> String {
 }
 
 fn parse<T: std::str::FromStr>(flag: &str, v: &str) -> Result<T, String> {
-    v.parse().map_err(|_| usage_err(format!("invalid value {v:?} for {flag}")))
+    v.parse()
+        .map_err(|_| usage_err(format!("invalid value {v:?} for {flag}")))
 }
 
 fn parse_args(raw: &[String]) -> Result<Args, String> {
     let mut a = Args {
         positional: Vec::new(),
-        opts: Options { selector: AdapterSelector::from_env(), ..Options::default() },
+        opts: Options {
+            selector: AdapterSelector::from_env(),
+            ..Options::default()
+        },
         bits: 2029,
         cache_flag: None,
         no_cache: false,
@@ -83,12 +89,27 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             a.no_cache = true;
             continue;
         }
-        if !matches!(flag, "--backend" | "--adapter" | "--vk-backend" | "--device" | "--cache" | "--verify-rate" | "--repeat" | "--lock" | "--bits" | "--limbs") {
+        if !matches!(
+            flag,
+            "--backend"
+                | "--adapter"
+                | "--vk-backend"
+                | "--device"
+                | "--cache"
+                | "--verify-rate"
+                | "--repeat"
+                | "--lock"
+                | "--bits"
+                | "--limbs"
+        ) {
             return Err(usage_err(format!("unknown flag {flag}")));
         }
         let value = match inline {
             Some(v) => v,
-            None => it.next().cloned().ok_or_else(|| usage_err(format!("{flag} needs a value")))?,
+            None => it
+                .next()
+                .cloned()
+                .ok_or_else(|| usage_err(format!("{flag} needs a value")))?,
         };
         match flag {
             "--backend" => {
@@ -96,7 +117,11 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
                     "auto" => Backend::Auto,
                     "gpu" => Backend::Gpu,
                     "cpu" => Backend::Cpu,
-                    _ => return Err(usage_err(format!("--backend must be auto, gpu or cpu, not {value:?}"))),
+                    _ => {
+                        return Err(usage_err(format!(
+                            "--backend must be auto, gpu or cpu, not {value:?}"
+                        )));
+                    }
                 }
             }
             "--adapter" => a.opts.selector.name = Some(value),
@@ -105,14 +130,22 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             "--cache" => a.cache_flag = Some(PathBuf::from(value)),
             "--verify-rate" => a.opts.verify_rate = parse(flag, &value)?,
             "--bits" => a.bits = parse(flag, &value)?,
-            "--limbs" => a.opts.scheme = tune::SchemeChoice::parse(&value).map_err(|e| usage_err(format!("--limbs: {e}")))?,
+            "--limbs" => {
+                a.opts.scheme = tune::SchemeChoice::parse(&value)
+                    .map_err(|e| usage_err(format!("--limbs: {e}")))?
+            }
             _ => eprintln!("bigmont: note: {flag} is accepted and ignored"), // --repeat, --lock
         }
     }
     if a.no_cache && a.cache_flag.is_some() {
         return Err(usage_err("--cache and --no-cache are mutually exclusive"));
     }
-    a.opts.cache = tune::resolve_cache(a.cache_flag.take(), a.no_cache, &tune::CacheEnv::from_process(), cfg!(windows));
+    a.opts.cache = tune::resolve_cache(
+        a.cache_flag.take(),
+        a.no_cache,
+        &tune::CacheEnv::from_process(),
+        cfg!(windows),
+    );
     Ok(a)
 }
 
@@ -155,11 +188,17 @@ fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutpu
         r.device_recoveries,
         r.poll_timeouts,
     );
-    Ok(RunOutput { verdicts, report: r, gpu_active: engine.gpu_active() })
+    Ok(RunOutput {
+        verdicts,
+        report: r,
+        gpu_active: engine.gpu_active(),
+    })
 }
 
 fn cmd_verdicts(a: Args) -> Result<ExitCode, String> {
-    let [cand, verdict] = a.positional.as_slice() else { return Err(usage_err("expected CAND and VERDICT")) };
+    let [cand, verdict] = a.positional.as_slice() else {
+        return Err(usage_err("expected CAND and VERDICT"));
+    };
     let file = formats::read_candidates(cand.as_ref())?;
     let run = run_engine(a.opts, &file.numbers)?;
     formats::write_verdicts(verdict.as_ref(), file.bits, &run.verdicts)?;
@@ -167,7 +206,9 @@ fn cmd_verdicts(a: Args) -> Result<ExitCode, String> {
 }
 
 fn cmd_canary(a: Args) -> Result<ExitCode, String> {
-    let [cand, expected] = a.positional.as_slice() else { return Err(usage_err("expected CAND and EXPECTED")) };
+    let [cand, expected] = a.positional.as_slice() else {
+        return Err(usage_err("expected CAND and EXPECTED"));
+    };
     let file = formats::read_candidates(cand.as_ref())?;
     let (_, want) = formats::read_verdicts(expected.as_ref())?;
     if let Some(msg) = canary::length_failure(file.numbers.len(), want.len()) {
@@ -177,7 +218,10 @@ fn cmd_canary(a: Args) -> Result<ExitCode, String> {
     let run = run_engine(a.opts, &file.numbers)?;
     let failed = canary::failures(&run.verdicts, &want, &run.report, run.gpu_active);
     if failed.is_empty() {
-        eprintln!("bigmont: canary ok: all {} verdicts match", run.verdicts.len());
+        eprintln!(
+            "bigmont: canary ok: all {} verdicts match",
+            run.verdicts.len()
+        );
         Ok(ExitCode::SUCCESS)
     } else {
         for f in &failed {
@@ -202,35 +246,64 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     let gpu = Gpu::open(&a.opts.selector).map_err(|e| format!("bigmont: no GPU: {e}"))?;
     println!("adapter: {}", gpu.describe());
     // Tuning is per limb class: test and time at the class's representative length.
-    let (class, bits) = (tune::limb_class(a.bits), tune::class_bits(tune::limb_class(a.bits)));
+    let (class, bits) = (
+        tune::limb_class(a.bits),
+        tune::class_bits(tune::limb_class(a.bits)),
+    );
     let choice = a.opts.scheme;
     let cands = tune::candidates(&gpu, bits, choice);
     if cands.is_empty() {
-        return Err(format!("bigmont: no kernel configuration fits {} for {} bits with --limbs {}", gpu.describe(), a.bits, choice_name(choice)));
+        return Err(format!(
+            "bigmont: no kernel configuration fits {} for {} bits with --limbs {}",
+            gpu.describe(),
+            a.bits,
+            choice_name(choice)
+        ));
     }
-    println!("{} bits: limb class {class}, tuned at {bits} bits, --limbs {}, {} candidate configurations", a.bits, choice_name(choice), cands.len());
-    println!("{:>6} {:>4} {:>5} {:>16}  {}", "scheme", "tpi", "wg", "squarings/s", "status");
+    println!(
+        "{} bits: limb class {class}, tuned at {bits} bits, --limbs {}, {} candidate configurations",
+        a.bits,
+        choice_name(choice),
+        cands.len()
+    );
+    println!(
+        "{:>6} {:>4} {:>5} {:>16}  {}",
+        "scheme", "tpi", "wg", "squarings/s", "status"
+    );
     let mut best: Option<(f64, KernelConfig)> = None;
     for cfg in cands {
         let scheme = cfg.scheme.name();
         match tune::self_test(&gpu, cfg, bits).and_then(|()| tune::measure(&gpu, cfg)) {
             Ok(rate) => {
-                println!("{scheme:>6} {:>4} {:>5} {:>16.0}  ok", cfg.tpi, cfg.wg, rate);
+                println!(
+                    "{scheme:>6} {:>4} {:>5} {:>16.0}  ok",
+                    cfg.tpi, cfg.wg, rate
+                );
                 if best.as_ref().is_none_or(|(r, _)| rate > *r) {
                     best = Some((rate, cfg));
                 }
             }
             Err(e) => {
-                println!("{scheme:>6} {:>4} {:>5} {:>16}  FAILED: {e}", cfg.tpi, cfg.wg, "-");
+                println!(
+                    "{scheme:>6} {:>4} {:>5} {:>16}  FAILED: {e}",
+                    cfg.tpi, cfg.wg, "-"
+                );
                 if let Err(problem) = gpu.check_health() {
-                    return Err(format!("bigmont: the GPU failed during tuning ({problem}); nothing cached, rerun `bigmont tune`"));
+                    return Err(format!(
+                        "bigmont: the GPU failed during tuning ({problem}); nothing cached, rerun `bigmont tune`"
+                    ));
                 }
             }
         }
     }
     match best {
         Some((rate, cfg)) => {
-            println!("best: scheme {} tpi {} wg {} at {rate:.0} squarings/s", cfg.scheme.name(), cfg.tpi, cfg.wg);
+            println!(
+                "best: scheme {} tpi {} wg {} at {rate:.0} squarings/s",
+                cfg.scheme.name(),
+                cfg.tpi,
+                cfg.wg
+            );
             match &a.opts.cache {
                 Some(path) => {
                     tune::store(&gpu, bits, choice, &cfg, rate, path);

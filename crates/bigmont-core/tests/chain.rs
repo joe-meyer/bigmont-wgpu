@@ -15,7 +15,9 @@ fn check(cfg: KernelConfig) {
 /// Like `check` with `random` random instances (plus the 2 special ones) and `squarings` chained
 /// squarings per dispatch.
 fn check_chain(cfg: KernelConfig, random: u32, squarings: u32) {
-    let Some(gpu) = common::open_gpu(cfg) else { return };
+    let Some(gpu) = common::open_gpu(cfg) else {
+        return;
+    };
 
     // 131 random + 2 special = 133 instances: spans many workgroups (wid.x > 0) and leaves a
     // partial last workgroup for every configuration used here.
@@ -30,10 +32,17 @@ fn check_chain(cfg: KernelConfig, random: u32, squarings: u32) {
     let result = run(&gpu, cfg, &batch, squarings, 1).expect("run failed");
     for (i, (n, x0)) in values.iter().enumerate() {
         let limbs = &result.x[i * LIMBS..(i + 1) * LIMBS];
-        assert!(limbs.iter().all(|&l| l <= LIMB_MASK), "instance {i}: limbs not normalised");
+        assert!(
+            limbs.iter().all(|&l| l <= LIMB_MASK),
+            "instance {i}: limbs not normalised"
+        );
         let got = unpack_limbs(limbs);
         assert!(got < n * 2u32, "instance {i}: result not below 2n");
-        assert_eq!(&got % n, mont_square_chain(n, x0, squarings), "instance {i}: wrong value");
+        assert_eq!(
+            &got % n,
+            mont_square_chain(n, x0, squarings),
+            "instance {i}: wrong value"
+        );
     }
 }
 
@@ -100,12 +109,21 @@ fn tpi32_unrolled_other_workgroup_sizes_match_oracle() {
 /// Configuration validation needs no GPU.
 #[test]
 fn unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths() {
-    assert!(KernelConfig::new(1, 64, Variant::Unrolled).validate().is_err(), "unrolled with tpi 1 must be rejected");
+    assert!(
+        KernelConfig::new(1, 64, Variant::Unrolled)
+            .validate()
+            .is_err(),
+        "unrolled with tpi 1 must be rejected"
+    );
     assert!(KernelConfig::new(1, 64, Variant::Rolled).validate().is_ok());
     for tpi in [4, 8, 16, 32] {
         for variant in [Variant::Rolled, Variant::Unrolled] {
             let cfg = KernelConfig::new(tpi, 64, variant);
-            assert!(cfg.validate().is_ok(), "{cfg:?} should validate: {:?}", cfg.validate());
+            assert!(
+                cfg.validate().is_ok(),
+                "{cfg:?} should validate: {:?}",
+                cfg.validate()
+            );
         }
     }
 }

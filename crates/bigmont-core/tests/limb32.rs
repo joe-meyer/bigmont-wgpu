@@ -52,16 +52,24 @@ fn values(bits: u32, count: usize, seed: u64) -> Vec<(BigUint, BigUint)> {
 fn check(gpu: &Gpu, bits: u32, tpi: u32, wg: u32, count: usize, squarings: u32, repeats: u32) {
     let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb32, bits, tpi, wg, Variant::Unrolled);
     if !gpu.caps().satisfies(cfg.requires()) {
-        common::skip(format!("{cfg:?}: the adapter lacks {}", gpu.caps().missing(cfg.requires()).join(" and ")));
+        common::skip(format!(
+            "{cfg:?}: the adapter lacks {}",
+            gpu.caps().missing(cfg.requires()).join(" and ")
+        ));
         return;
     }
     if let Err(e) = gpu.check_subgroups(tpi) {
         common::skip(format!("{cfg:?}: {e}"));
         return;
     }
-    let vals = values(bits, count, 0xc0de ^ u64::from(bits) ^ (u64::from(tpi) << 24) ^ (u64::from(wg) << 32));
+    let vals = values(
+        bits,
+        count,
+        0xc0de ^ u64::from(bits) ^ (u64::from(tpi) << 24) ^ (u64::from(wg) << 32),
+    );
     let batch = Batch::from_values_cfg(&vals, &cfg);
-    let out = run(gpu, cfg, &batch, squarings, repeats).unwrap_or_else(|e| panic!("{cfg:?}: run failed: {e}"));
+    let out = run(gpu, cfg, &batch, squarings, repeats)
+        .unwrap_or_else(|e| panic!("{cfg:?}: run failed: {e}"));
     let l = cfg.limbs as usize;
     assert_eq!(out.x.len(), count * l);
     let total = squarings * repeats;
@@ -79,7 +87,12 @@ fn check(gpu: &Gpu, bits: u32, tpi: u32, wg: u32, count: usize, squarings: u32, 
             bad.push(format!("{i} ({w})"));
         }
     }
-    assert!(bad.is_empty(), "{cfg:?}, {squarings} x {repeats} squarings: {} of {count} instances wrong: {}", bad.len(), bad.join(", "));
+    assert!(
+        bad.is_empty(),
+        "{cfg:?}, {squarings} x {repeats} squarings: {} of {count} instances wrong: {}",
+        bad.len(),
+        bad.join(", ")
+    );
 }
 
 #[test]

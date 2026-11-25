@@ -26,36 +26,58 @@ fn limbs_of(bits: u32) -> usize {
 
 /// Validates the header against the file length and returns `(bits, count)`. All size arithmetic is
 /// checked, so a hostile header cannot cause a huge allocation or an overflow.
-fn parse_header(raw: &[u8], magic: u32, what: &str, record_bytes: impl Fn(u32) -> usize) -> Result<(u32, usize), String> {
+fn parse_header(
+    raw: &[u8],
+    magic: u32,
+    what: &str,
+    record_bytes: impl Fn(u32) -> usize,
+) -> Result<(u32, usize), String> {
     if raw.len() < HEADER {
-        return Err(format!("{what} file is {} bytes, shorter than its {HEADER}-byte header", raw.len()));
+        return Err(format!(
+            "{what} file is {} bytes, shorter than its {HEADER}-byte header",
+            raw.len()
+        ));
     }
     let got = u32::from_le_bytes(raw[0..4].try_into().expect("4 bytes"));
     if got != magic {
-        return Err(format!("{what} file has magic {got:#010x}, expected {magic:#010x}"));
+        return Err(format!(
+            "{what} file has magic {got:#010x}, expected {magic:#010x}"
+        ));
     }
     let bits = u32::from_le_bytes(raw[4..8].try_into().expect("4 bytes"));
     let count = u64::from_le_bytes(raw[8..16].try_into().expect("8 bytes"));
     let body = (raw.len() - HEADER) as u64;
-    let want = u64::try_from(record_bytes(bits)).ok().and_then(|r| r.checked_mul(count));
+    let want = u64::try_from(record_bytes(bits))
+        .ok()
+        .and_then(|r| r.checked_mul(count));
     if want != Some(body) {
-        return Err(format!("{what} file header claims {count} entries at {bits} bits, which does not match its {body}-byte body"));
+        return Err(format!(
+            "{what} file header claims {count} entries at {bits} bits, which does not match its {body}-byte body"
+        ));
     }
-    let count = usize::try_from(count).map_err(|_| format!("{what} file entry count {count} does not fit in memory"))?;
+    let count = usize::try_from(count)
+        .map_err(|_| format!("{what} file entry count {count} does not fit in memory"))?;
     Ok((bits, count))
 }
 
 pub fn read_candidates(path: &Path) -> Result<CandidateFile, String> {
     let raw = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let (bits, count) = parse_header(&raw, CANDIDATE_MAGIC, "candidate", |b| limbs_of(b) * 4).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (bits, count) = parse_header(&raw, CANDIDATE_MAGIC, "candidate", |b| limbs_of(b) * 4)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     if bits == 0 {
-        return Err(format!("{}: candidate file declares 0-bit numbers", path.display()));
+        return Err(format!(
+            "{}: candidate file declares 0-bit numbers",
+            path.display()
+        ));
     }
     let stride = limbs_of(bits) * 4;
     let numbers = (0..count)
         .map(|i| {
             let rec = &raw[HEADER + i * stride..HEADER + (i + 1) * stride];
-            let limbs: Vec<u32> = rec.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().expect("4 bytes"))).collect();
+            let limbs: Vec<u32> = rec
+                .chunks_exact(4)
+                .map(|c| u32::from_le_bytes(c.try_into().expect("4 bytes")))
+                .collect();
             BigUint::new(limbs)
         })
         .collect();
@@ -77,7 +99,10 @@ pub fn write_candidates(path: &Path, bits: u32, numbers: &[BigUint]) -> Result<(
     out.reserve(numbers.len().saturating_mul(limbs * 4));
     for (i, n) in numbers.iter().enumerate() {
         if n.bits() > u64::from(bits) {
-            return Err(format!("candidate {i} has {} bits, more than the {bits}-bit container", n.bits()));
+            return Err(format!(
+                "candidate {i} has {} bits, more than the {bits}-bit container",
+                n.bits()
+            ));
         }
         let mut digits = n.to_u32_digits();
         digits.resize(limbs, 0);
@@ -90,7 +115,8 @@ pub fn write_candidates(path: &Path, bits: u32, numbers: &[BigUint]) -> Result<(
 
 pub fn read_verdicts(path: &Path) -> Result<(u32, Vec<u8>), String> {
     let raw = std::fs::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let (bits, _) = parse_header(&raw, VERDICT_MAGIC, "verdict", |_| 1).map_err(|e| format!("{}: {e}", path.display()))?;
+    let (bits, _) = parse_header(&raw, VERDICT_MAGIC, "verdict", |_| 1)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((bits, raw[HEADER..].to_vec()))
 }
 

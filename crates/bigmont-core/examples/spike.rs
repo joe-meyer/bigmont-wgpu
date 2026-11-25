@@ -43,7 +43,9 @@ fn validate(gpu: &Gpu, cfg: KernelConfig) -> Result<(), Failure> {
     for (i, (n, x0)) in values.iter().enumerate() {
         let limbs = &out.x[i * LIMBS..(i + 1) * LIMBS];
         if limbs.iter().any(|&l| l > LIMB_MASK) {
-            return Err(Failure::Wrong(format!("instance {i}: limbs not normalised")));
+            return Err(Failure::Wrong(format!(
+                "instance {i}: limbs not normalised"
+            )));
         }
         let got = unpack_limbs(limbs);
         if &got % n != mont_square_chain(n, x0, 3) {
@@ -62,7 +64,11 @@ fn sample_indices(count: u32, per_wg: u32) -> Vec<usize> {
     set.extend(0..4.min(count));
     set.extend(count.saturating_sub(4)..count);
     set.extend((1..=16).map(|i| i * (count - 1) / 17));
-    set.extend([per_wg as usize, count - per_wg as usize, count / 2].into_iter().filter(|&i| i < count));
+    set.extend(
+        [per_wg as usize, count - per_wg as usize, count / 2]
+            .into_iter()
+            .filter(|&i| i < count),
+    );
     set.into_iter().collect()
 }
 
@@ -70,7 +76,14 @@ fn sample_indices(count: u32, per_wg: u32) -> Vec<usize> {
 /// `s * r` squarings per instance) with the oracle for a sample of instances. Every sampled
 /// instance must have all limbs below 2^13, a value below 2n, and the right value modulo n. All
 /// failing sampled instances are listed. Returns the number of instances checked.
-fn verify_timed(values: &[(BigUint, BigUint)], per_wg: u32, out: &Run, s: u32, r: u32, what: &str) -> Result<usize, Failure> {
+fn verify_timed(
+    values: &[(BigUint, BigUint)],
+    per_wg: u32,
+    out: &Run,
+    s: u32,
+    r: u32,
+    what: &str,
+) -> Result<usize, Failure> {
     let squarings = s * r;
     let sample = sample_indices(values.len() as u32, per_wg);
     let mut bad = Vec::new();
@@ -138,11 +151,13 @@ impl Row {
     /// or None when the long dispatch was not measurably longer.
     fn rate_slope(&self) -> Option<f64> {
         let extra = self.long_secs - self.short_secs;
-        (self.long_squarings > 2 && extra > 0.02 * self.short_secs).then(|| f64::from(self.count) * f64::from(self.long_squarings - 2) / extra)
+        (self.long_squarings > 2 && extra > 0.02 * self.short_secs)
+            .then(|| f64::from(self.count) * f64::from(self.long_squarings - 2) / extra)
     }
     /// Fixed cost per dispatch implied by the slope, in ms (clamped at 0).
     fn fixed_ms(&self) -> Option<f64> {
-        self.rate_slope().map(|s| ((self.short_secs - 2.0 * f64::from(self.count) / s) * 1e3).max(0.0))
+        self.rate_slope()
+            .map(|s| ((self.short_secs - 2.0 * f64::from(self.count) / s) * 1e3).max(0.0))
     }
 }
 
@@ -152,7 +167,13 @@ impl Row {
 /// dispatch is predicted to stay within LONG_DISPATCH_BUDGET (assuming linear scaling, the worst
 /// case) and the current one is shorter than LONG_DISPATCH_TARGET. Each longer dispatch is the best
 /// of 3.
-fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed_count: Option<u32>) -> Result<Row, Failure> {
+fn bench(
+    gpu: &Gpu,
+    cfg: KernelConfig,
+    max_count: u32,
+    max_squarings: u32,
+    fixed_count: Option<u32>,
+) -> Result<Row, Failure> {
     let per_wg = cfg.instances_per_workgroup();
     let cap = (max_count / per_wg).max(1) * per_wg;
     // With --fixed-count the batch is exactly that size (rounded down to whole workgroups) and the
@@ -175,7 +196,10 @@ fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed
             let (mut long_run, mut long_repeats) = (short, 5u32);
             while long_secs < LONG_DISPATCH_TARGET {
                 let next = long_squarings * 2;
-                if next > max_squarings || long_secs * f64::from(next) / f64::from(long_squarings) > LONG_DISPATCH_BUDGET {
+                if next > max_squarings
+                    || long_secs * f64::from(next) / f64::from(long_squarings)
+                        > LONG_DISPATCH_BUDGET
+                {
                     break;
                 }
                 long_run = run(gpu, cfg, &batch, next, 3).map_err(Failure::Rejected)?;
@@ -185,7 +209,18 @@ fn bench(gpu: &Gpu, cfg: KernelConfig, max_count: u32, max_squarings: u32, fixed
             }
             // The run whose time is reported as `long ms` is `long_run` (the short run when the
             // loop never lengthened it).
-            let verified_long = if long_squarings == 2 { verified_short } else { verify_timed(&values, per_wg, &long_run, long_squarings, long_repeats, "long run")? };
+            let verified_long = if long_squarings == 2 {
+                verified_short
+            } else {
+                verify_timed(
+                    &values,
+                    per_wg,
+                    &long_run,
+                    long_squarings,
+                    long_repeats,
+                    "long run",
+                )?
+            };
             return Ok(Row {
                 cfg,
                 count,
@@ -212,17 +247,32 @@ fn main() {
     }
     let quick = args.iter().any(|a| a == "--quick");
     let max_count: u32 = match args.iter().position(|a| a == "--max-count") {
-        Some(i) => args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (1024..=262_144).contains(&n)).expect("--max-count needs a number from 1024 to 262144"),
+        Some(i) => args
+            .get(i + 1)
+            .and_then(|v| v.parse().ok())
+            .filter(|&n| (1024..=262_144).contains(&n))
+            .expect("--max-count needs a number from 1024 to 262144"),
         None => 65536,
     };
     let max_squarings: u32 = match args.iter().position(|a| a == "--max-squarings") {
-        Some(i) => args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (2..=1024).contains(&n)).expect("--max-squarings needs a number from 2 to 1024"),
+        Some(i) => args
+            .get(i + 1)
+            .and_then(|v| v.parse().ok())
+            .filter(|&n| (2..=1024).contains(&n))
+            .expect("--max-squarings needs a number from 2 to 1024"),
         None => 256,
     };
     let fixed_count: Option<u32> = args.iter().position(|a| a == "--fixed-count").map(|i| {
-        args.get(i + 1).and_then(|v| v.parse().ok()).filter(|&n| (64..=262_144).contains(&n)).expect("--fixed-count needs a number from 64 to 262144")
+        args.get(i + 1)
+            .and_then(|v| v.parse().ok())
+            .filter(|&n| (64..=262_144).contains(&n))
+            .expect("--fixed-count needs a number from 64 to 262144")
     });
-    let variant = match args.iter().position(|a| a == "--variant").map(|i| args.get(i + 1).map(String::as_str)) {
+    let variant = match args
+        .iter()
+        .position(|a| a == "--variant")
+        .map(|i| args.get(i + 1).map(String::as_str))
+    {
         None => Variant::Rolled,
         Some(Some("rolled")) => Variant::Rolled,
         Some(Some("unrolled")) => Variant::Unrolled,
@@ -235,7 +285,8 @@ fn main() {
     let gpu = Gpu::new().expect("no usable adapter");
     // Each instance needs LIMBS * 4 bytes in each storage buffer; keep the largest buffer bindable.
     let bytes_per_instance = (LIMBS * 4) as u64;
-    let bind_limit = (gpu.device.limits().max_storage_buffer_binding_size / bytes_per_instance).min(u64::from(u32::MAX)) as u32;
+    let bind_limit = (gpu.device.limits().max_storage_buffer_binding_size / bytes_per_instance)
+        .min(u64::from(u32::MAX)) as u32;
     let requested = max_count;
     let max_count = max_count.min(bind_limit);
     println!("adapter: {}", gpu.describe());
@@ -243,21 +294,42 @@ fn main() {
     println!("subgroups feature: {}", gpu.has_subgroups);
     println!("max batch (instances): {max_count}");
     if max_count < requested {
-        println!("note: --max-count {requested} clamped to {max_count} (max_storage_buffer_binding_size {} / {bytes_per_instance} bytes per instance)", gpu.device.limits().max_storage_buffer_binding_size);
+        println!(
+            "note: --max-count {requested} clamped to {max_count} (max_storage_buffer_binding_size {} / {bytes_per_instance} bytes per instance)",
+            gpu.device.limits().max_storage_buffer_binding_size
+        );
     }
     println!();
 
     // --tpi 8,32 restricts the widths (useful with --fixed-count: a large batch of one-thread
     // instances would exceed the per-dispatch time budget).
     let tpis: Vec<u32> = match args.iter().position(|a| a == "--tpi") {
-        Some(i) => args.get(i + 1).map(|v| v.split(',').map(|t| t.parse().expect("--tpi needs a comma list like 8,32")).collect()).expect("--tpi needs a list"),
+        Some(i) => args
+            .get(i + 1)
+            .map(|v| {
+                v.split(',')
+                    .map(|t| t.parse().expect("--tpi needs a comma list like 8,32"))
+                    .collect()
+            })
+            .expect("--tpi needs a list"),
         None => vec![1, 4, 8, 16, 32],
     };
     let wgs: &[u32] = if quick { &[64] } else { &[64, 128, 256] };
     let mut failures = 0u32;
     println!(
         "{:>8} {:>4} {:>4} {:>9} {:>5} {:>9} {:>12} {:>12} {:>12} {:>8} {:>9} {:>11}  status",
-        "variant", "tpi", "wg", "instances", "sq/d", "long ms", "sq/s @2", "sq/s @long", "sq/s slope", "fixed ms", "Gmad/s@L", "tests/s*@L"
+        "variant",
+        "tpi",
+        "wg",
+        "instances",
+        "sq/d",
+        "long ms",
+        "sq/s @2",
+        "sq/s @long",
+        "sq/s slope",
+        "fixed ms",
+        "Gmad/s@L",
+        "tests/s*@L"
     );
     for &tpi in tpis.iter() {
         for &wg in wgs {
@@ -270,7 +342,10 @@ fn main() {
             // 65535 workgroups in x.
             let per_wg = cfg.instances_per_workgroup();
             if max_count / per_wg > 65535 {
-                println!("{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {} workgroups at --max-count {max_count} exceeds 65535 per dispatch", max_count / per_wg);
+                println!(
+                    "{variant_name:>8} {tpi:>4} {wg:>4}  skipped: {} workgroups at --max-count {max_count} exceeds 65535 per dispatch",
+                    max_count / per_wg
+                );
                 continue;
             }
             if cfg.needs_subgroups() {
@@ -282,22 +357,33 @@ fn main() {
             match validate(&gpu, cfg) {
                 Ok(()) => {}
                 Err(Failure::Rejected(e)) => {
-                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  REJECTED: {e} (no speed reported)");
+                    println!(
+                        "{variant_name:>8} {tpi:>4} {wg:>4}  REJECTED: {e} (no speed reported)"
+                    );
                     failures += 1;
                     continue;
                 }
                 Err(Failure::Wrong(e)) => {
-                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  VALIDATION FAILED: {e} (no speed reported)");
+                    println!(
+                        "{variant_name:>8} {tpi:>4} {wg:>4}  VALIDATION FAILED: {e} (no speed reported)"
+                    );
                     failures += 1;
                     continue;
                 }
             }
             match bench(&gpu, cfg, max_count, max_squarings, fixed_count) {
                 Ok(r) => {
-                    let verified = format!("ok, verified {} inst x {} sq (long), {} inst x {} sq (short)", r.verified_long, r.verified_long_sq, r.verified_short, r.verified_short_sq);
+                    let verified = format!(
+                        "ok, verified {} inst x {} sq (long), {} inst x {} sq (short)",
+                        r.verified_long, r.verified_long_sq, r.verified_short, r.verified_short_sq
+                    );
                     let long = r.rate_long();
-                    let slope = r.rate_slope().map_or("n/a".to_string(), |s| format!("{s:.0}"));
-                    let fixed = r.fixed_ms().map_or("n/a".to_string(), |f| format!("{f:.1}"));
+                    let slope = r
+                        .rate_slope()
+                        .map_or("n/a".to_string(), |s| format!("{s:.0}"));
+                    let fixed = r
+                        .fixed_ms()
+                        .map_or("n/a".to_string(), |f| format!("{f:.1}"));
                     println!(
                         "{:>8} {:>4} {:>4} {:>9} {:>5} {:>9.2} {:>12.0} {:>12.0} {:>12} {:>8} {:>9.1} {:>11.0}  {}",
                         variant_name,
@@ -320,19 +406,31 @@ fn main() {
                     failures += 1;
                 }
                 Err(Failure::Wrong(e)) => {
-                    println!("{variant_name:>8} {tpi:>4} {wg:>4}  TIMED OUTPUT FAILED ORACLE: {e} (no speed reported)");
+                    println!(
+                        "{variant_name:>8} {tpi:>4} {wg:>4}  TIMED OUTPUT FAILED ORACLE: {e} (no speed reported)"
+                    );
                     failures += 1;
                 }
             }
         }
     }
     println!();
-    println!("Each row's timed outputs were compared with the oracle (first 4, last 4 and spread instances; limbs < 2^13, value < 2n, value mod n == mont_square_chain): 'verified K inst x S sq' = K instances checked after S squarings per instance, for the final long run and for the 2 squarings x 5 run. A row that fails prints no speed. Times are wall-clock around submit plus a blocking poll (no GPU timestamps); best of 3 (best of 5 for the short run).");
-    println!("sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost).");
-    println!("'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long.");
-    println!("* tests/s*@L = sq/s @long / {BITS}: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test.");
+    println!(
+        "Each row's timed outputs were compared with the oracle (first 4, last 4 and spread instances; limbs < 2^13, value < 2n, value mod n == mont_square_chain): 'verified K inst x S sq' = K instances checked after S squarings per instance, for the final long run and for the 2 squarings x 5 run. A row that fails prints no speed. Times are wall-clock around submit plus a blocking poll (no GPU timestamps); best of 3 (best of 5 for the short run)."
+    );
+    println!(
+        "sq/d = squarings per dispatch of the longest dispatch measured (its time is 'long ms'); 'sq/s @2' is the original 2-squaring figure (includes the fixed per-dispatch cost)."
+    );
+    println!(
+        "'sq/s @long' = instances x sq/d / long time. 'sq/s slope' = marginal rate between the 2-squaring and the long dispatch (fixed cost removed); 'fixed ms' = the per-dispatch cost that slope implies (n/a when the long dispatch was not measurably longer). Gmad/s@L is derived from sq/s @long."
+    );
+    println!(
+        "* tests/s*@L = sq/s @long / {BITS}: one squaring per exponent bit of a base-2 Fermat test (assumes the base-2 doubling is nearly free; not implemented here). A projection, not a measurement of a full test."
+    );
     if failures > 0 {
-        eprintln!("{failures} configuration(s) failed validation, were rejected, or failed to benchmark");
+        eprintln!(
+            "{failures} configuration(s) failed validation, were rejected, or failed to benchmark"
+        );
         std::process::exit(1);
     }
 }

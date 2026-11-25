@@ -13,12 +13,18 @@ fn validate(src: &str, caps: Caps) -> Result<(), String> {
     if caps.int64 {
         c |= naga::valid::Capabilities::SHADER_INT64;
     }
-    naga::valid::Validator::new(naga::valid::ValidationFlags::all(), c).validate(&module).map(|_| ()).map_err(|e| format!("{e:?}"))
+    naga::valid::Validator::new(naga::valid::ValidationFlags::all(), c)
+        .validate(&module)
+        .map(|_| ())
+        .map_err(|e| format!("{e:?}"))
 }
 
 #[test]
 fn every_scheme_and_target_that_generates_validates_with_exactly_that_targets_capabilities() {
-    let native = Caps { subgroups: true, int64: true };
+    let native = Caps {
+        subgroups: true,
+        int64: true,
+    };
     let mut generated = 0;
     for &scheme in LimbScheme::ALL {
         for tpi in [4u32, 8, 16, 32] {
@@ -27,10 +33,14 @@ fn every_scheme_and_target_that_generates_validates_with_exactly_that_targets_ca
                 for (target, caps) in [(Target::Native, native), (Target::Browser, Caps::BROWSER)] {
                     match cfg.try_wgsl_for(target) {
                         Ok(src) => {
-                            validate(&src, caps).unwrap_or_else(|e| panic!("{cfg:?} {target:?}: {e}"));
+                            validate(&src, caps)
+                                .unwrap_or_else(|e| panic!("{cfg:?} {target:?}: {e}"));
                             generated += 1;
                         }
-                        Err(_) => assert!(!caps.satisfies(cfg.requires()), "{cfg:?} {target:?} refused although the target can run it"),
+                        Err(_) => assert!(
+                            !caps.satisfies(cfg.requires()),
+                            "{cfg:?} {target:?} refused although the target can run it"
+                        ),
                     }
                 }
             }
@@ -41,7 +51,10 @@ fn every_scheme_and_target_that_generates_validates_with_exactly_that_targets_ca
 
 #[test]
 fn every_fermat_source_that_generates_validates_with_exactly_that_targets_capabilities() {
-    let native = Caps { subgroups: true, int64: true };
+    let native = Caps {
+        subgroups: true,
+        int64: true,
+    };
     let mut generated = 0;
     for &scheme in LimbScheme::ALL {
         for tpi in [4u32, 8, 16, 32] {
@@ -50,10 +63,14 @@ fn every_fermat_source_that_generates_validates_with_exactly_that_targets_capabi
                 for (target, caps) in [(Target::Native, native), (Target::Browser, Caps::BROWSER)] {
                     match cfg.try_fermat_wgsl_for(target) {
                         Ok(src) => {
-                            validate(&src, caps).unwrap_or_else(|e| panic!("{cfg:?} {target:?} fermat: {e}"));
+                            validate(&src, caps)
+                                .unwrap_or_else(|e| panic!("{cfg:?} {target:?} fermat: {e}"));
                             generated += 1;
                         }
-                        Err(_) => assert!(!caps.satisfies(cfg.requires()), "{cfg:?} {target:?} fermat refused although the target can run it"),
+                        Err(_) => assert!(
+                            !caps.satisfies(cfg.requires()),
+                            "{cfg:?} {target:?} fermat refused although the target can run it"
+                        ),
                     }
                 }
             }
@@ -70,9 +87,20 @@ fn a_32_bit_kernel_is_never_generated_for_the_browser() {
     assert!(cfg.try_wgsl_for(Target::Native).unwrap().contains("u64"));
     // and its source does need the int64 capability: validating it without that capability fails.
     let src = cfg.try_wgsl_for(Target::Native).unwrap();
-    assert!(validate(&src, Caps { subgroups: true, int64: false }).is_err());
+    assert!(
+        validate(
+            &src,
+            Caps {
+                subgroups: true,
+                int64: false
+            }
+        )
+        .is_err()
+    );
     // the 13-bit source never mentions u64.
-    let c13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled).try_wgsl_for(Target::Browser).unwrap();
+    let c13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled)
+        .try_wgsl_for(Target::Browser)
+        .unwrap();
     assert!(!c13.contains("u64"));
 
     // the same for the Fermat ladder.
@@ -80,8 +108,19 @@ fn a_32_bit_kernel_is_never_generated_for_the_browser() {
     assert!(e.contains("int64"), "{e}");
     let fermat = cfg.try_fermat_wgsl_for(Target::Native).unwrap();
     assert!(fermat.contains("u64") && fermat.contains("e_words"));
-    assert!(validate(&fermat, Caps { subgroups: true, int64: false }).is_err());
-    let f13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled).try_fermat_wgsl_for(Target::Browser).unwrap();
+    assert!(
+        validate(
+            &fermat,
+            Caps {
+                subgroups: true,
+                int64: false
+            }
+        )
+        .is_err()
+    );
+    let f13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled)
+        .try_fermat_wgsl_for(Target::Browser)
+        .unwrap();
     assert!(!f13.contains("u64"));
 }
 
@@ -92,8 +131,20 @@ fn limb32_geometry() {
     assert_eq!(s.limbs_for_bits(2029), 64);
     assert_eq!(s.limbs_for_bits(254), 9); // (254 + 4) / 32 = 8.06: R > 16n needs a ninth limb
     assert_eq!(LimbScheme::parse("32"), Some(s));
-    assert_eq!(s.requires(), Caps { subgroups: false, int64: true });
+    assert_eq!(
+        s.requires(),
+        Caps {
+            subgroups: false,
+            int64: true
+        }
+    );
     assert!(s.normalised(&[u32::MAX]));
-    assert_eq!(KernelConfig::for_bits_scheme(s, 2029, 8, 64, Variant::Unrolled).limbs, 64);
-    assert_eq!(KernelConfig::for_bits_scheme(s, 254, 8, 64, Variant::Unrolled).limbs, 16); // 9 rounded up to a multiple of 8
+    assert_eq!(
+        KernelConfig::for_bits_scheme(s, 2029, 8, 64, Variant::Unrolled).limbs,
+        64
+    );
+    assert_eq!(
+        KernelConfig::for_bits_scheme(s, 254, 8, 64, Variant::Unrolled).limbs,
+        16
+    ); // 9 rounded up to a multiple of 8
 }

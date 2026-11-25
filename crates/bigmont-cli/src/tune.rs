@@ -70,7 +70,9 @@ impl SchemeChoice {
         if s == "auto" {
             return Ok(SchemeChoice::Auto);
         }
-        LimbScheme::parse(s).map(SchemeChoice::Only).ok_or_else(|| format!("the limb scheme must be auto, 13 or 32, not {s:?}"))
+        LimbScheme::parse(s)
+            .map(SchemeChoice::Only)
+            .ok_or_else(|| format!("the limb scheme must be auto, 13 or 32, not {s:?}"))
     }
 }
 
@@ -128,7 +130,9 @@ struct FermatSet {
 }
 
 fn small_primes() -> Vec<u32> {
-    (3..1000u32).filter(|p| (2..*p).take_while(|d| d * d <= *p).all(|d| p % d != 0)).collect()
+    (3..1000u32)
+        .filter(|p| (2..*p).take_while(|d| d * d <= *p).all(|d| p % d != 0))
+        .collect()
 }
 
 fn fermat_set(bits: u32) -> Arc<FermatSet> {
@@ -139,7 +143,9 @@ fn fermat_set(bits: u32) -> Arc<FermatSet> {
         return set.clone();
     }
     let mut rng = XorShift64::new(0xFE12_3A5E ^ u64::from(bits));
-    let mut ns: Vec<BigUint> = (0..14).map(|_| random_odd_modulus(&mut rng, bits)).collect();
+    let mut ns: Vec<BigUint> = (0..14)
+        .map(|_| random_odd_modulus(&mut rng, bits))
+        .collect();
     // Probable primes found here (bigmont_oracle::random_prp is slow at 2,029 bits): small-prime
     // filter, then the CPU Fermat test.
     let primes = small_primes();
@@ -157,7 +163,11 @@ fn fermat_set(bits: u32) -> Arc<FermatSet> {
     let counted = ns.len();
     ns.push((BigUint::one() << bits) - 1u32);
     let expect = ns.iter().map(bigmont_cpu::fermat_base2).collect();
-    let set = Arc::new(FermatSet { ns, expect, counted });
+    let set = Arc::new(FermatSet {
+        ns,
+        expect,
+        counted,
+    });
     cache.insert(bits, set.clone());
     set
 }
@@ -172,10 +182,15 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
     cfg.validate()?;
     gpu.check_health()?;
     if bits < MIN_SELF_TEST_BITS {
-        return Err(format!("the self-test needs at least {MIN_SELF_TEST_BITS}-bit numbers, got {bits} (tune a limb class at tune::class_bits)"));
+        return Err(format!(
+            "the self-test needs at least {MIN_SELF_TEST_BITS}-bit numbers, got {bits} (tune a limb class at tune::class_bits)"
+        ));
     }
     if cfg.r_bits() < bits + 4 {
-        return Err(format!("{} limbs are too few for {bits}-bit numbers (need R > 16n)", cfg.limbs));
+        return Err(format!(
+            "{} limbs are too few for {bits}-bit numbers (need R > 16n)",
+            cfg.limbs
+        ));
     }
     let limbs = cfg.limbs as usize;
     let scheme = cfg.scheme;
@@ -208,7 +223,9 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
     let verdicts = runner.fermat(gpu, &set.ns)?;
     for (i, (got, want)) in verdicts.iter().zip(&set.expect).enumerate() {
         if got != want {
-            return Err(format!("Fermat candidate {i}: GPU says {got}, CPU says {want}"));
+            return Err(format!(
+                "Fermat candidate {i}: GPU says {got}, CPU says {want}"
+            ));
         }
     }
     let counted = &verdicts[..set.counted];
@@ -226,7 +243,12 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     gpu.check_health()?;
     let limbs = cfg.limbs as usize;
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;
-    let count = cfg.instances_per_workgroup() * if on_cpu { CPU_MEASURE_GROUPS } else { MEASURE_GROUPS };
+    let count = cfg.instances_per_workgroup()
+        * if on_cpu {
+            CPU_MEASURE_GROUPS
+        } else {
+            MEASURE_GROUPS
+        };
     let max_work: u64 = if on_cpu { 1 << 18 } else { 1 << 26 };
     let values = Batch::random_values(count, cfg.r_bits() - 3, 0x5EED_0002);
     let batch = Batch::from_values_cfg(&values, &cfg);
@@ -247,7 +269,10 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
         last = Some(r);
     }
     let last = last.expect("two timed runs");
-    for i in (0..count as usize).step_by((count as usize / 4).max(1)).take(4) {
+    for i in (0..count as usize)
+        .step_by((count as usize / 4).max(1))
+        .take(4)
+    {
         let (n, x0) = &values[i];
         let got = cfg.scheme.unpack(&last.x[i * limbs..(i + 1) * limbs]);
         if &got % n != cfg.scheme.chain(n, x0, squarings, limbs) {
@@ -265,7 +290,15 @@ pub struct Tuned {
 }
 
 fn clean(s: &str) -> String {
-    s.chars().map(|c| if matches!(c, '|' | '\n' | '\r') { '/' } else { c }).collect()
+    s.chars()
+        .map(|c| {
+            if matches!(c, '|' | '\n' | '\r') {
+                '/'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 /// The cache key of the limb class of `bits`-bit numbers on an adapter described by these fields:
@@ -280,18 +313,38 @@ fn clean(s: &str) -> String {
 /// key's lookup prefix (`key|`) is a prefix of another's: the fields are `|`-separated, field text
 /// never contains `|` (see `clean`), the choice field is `any` or `only-..` and the class is numeric.
 #[doc(hidden)]
-pub fn cache_key_text(name: &str, backend: &str, driver: &str, driver_info: &str, bits: u32, choice: SchemeChoice) -> String {
+pub fn cache_key_text(
+    name: &str,
+    backend: &str,
+    driver: &str,
+    driver_info: &str,
+    bits: u32,
+    choice: SchemeChoice,
+) -> String {
     let which = match choice {
         SchemeChoice::Auto => "any".to_string(),
         SchemeChoice::Only(s) => format!("only-{}", s.name()),
     };
-    format!("{}|{backend}|{} {}|{which}|{}", clean(name), clean(driver), clean(driver_info), limb_class(bits))
+    format!(
+        "{}|{backend}|{} {}|{which}|{}",
+        clean(name),
+        clean(driver),
+        clean(driver_info),
+        limb_class(bits)
+    )
 }
 
 #[doc(hidden)]
 pub fn cache_key(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> String {
     let i = &gpu.info;
-    cache_key_text(&i.name, &format!("{:?}", i.backend), &i.driver, &i.driver_info, bits, choice)
+    cache_key_text(
+        &i.name,
+        &format!("{:?}", i.backend),
+        &i.driver,
+        &i.driver_info,
+        bits,
+        choice,
+    )
 }
 
 /// `unrolled <tpi> <wg>|<rate>` for a 13-bit winner (the text older versions wrote and read) and
@@ -328,16 +381,25 @@ pub fn parse_value(v: &str) -> Option<(LimbScheme, u32, u32, f64)> {
 /// is no longer offered is a miss. Returns the candidate (not a config rebuilt from the text) and the
 /// cached rate.
 #[doc(hidden)]
-pub fn cache_lookup(lines: &[String], key: &str, cands: &[KernelConfig]) -> Option<(KernelConfig, f64)> {
+pub fn cache_lookup(
+    lines: &[String],
+    key: &str,
+    cands: &[KernelConfig],
+) -> Option<(KernelConfig, f64)> {
     let prefix = format!("{key}|");
     lines.iter().find_map(|l| {
         let (scheme, tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
-        cands.iter().find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg).map(|&cfg| (cfg, rate))
+        cands
+            .iter()
+            .find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg)
+            .map(|&cfg| (cfg, rate))
     })
 }
 
 fn read_cache(path: &Path) -> Vec<String> {
-    std::fs::read_to_string(path).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
+    std::fs::read_to_string(path)
+        .map(|s| s.lines().map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 /// Replaces (or adds) the entry for `key` in the cache file at `path`, creating missing parent
@@ -347,7 +409,10 @@ fn read_cache(path: &Path) -> Vec<String> {
 /// Failures are reported on stderr and otherwise ignored: the cache is an optimisation.
 pub fn write_cache(path: &Path, key: &str, value: &str) {
     let prefix = format!("{key}|");
-    let mut lines: Vec<String> = read_cache(path).into_iter().filter(|l| !l.starts_with(&prefix)).collect();
+    let mut lines: Vec<String> = read_cache(path)
+        .into_iter()
+        .filter(|l| !l.starts_with(&prefix))
+        .collect();
     lines.push(format!("{prefix}{value}"));
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(format!(".tmp.{}", std::process::id()));
@@ -367,8 +432,19 @@ pub fn write_cache(path: &Path, key: &str, value: &str) {
 
 /// Records `cfg` as the best configuration for the limb class of `bits`-bit numbers on this adapter
 /// under `choice` (a forced choice has its own entry, see `cache_key_text`).
-pub fn store(gpu: &Gpu, bits: u32, choice: SchemeChoice, cfg: &KernelConfig, squarings_per_sec: f64, path: &Path) {
-    write_cache(path, &cache_key(gpu, bits, choice), &cache_value(cfg, squarings_per_sec));
+pub fn store(
+    gpu: &Gpu,
+    bits: u32,
+    choice: SchemeChoice,
+    cfg: &KernelConfig,
+    squarings_per_sec: f64,
+    path: &Path,
+) {
+    write_cache(
+        path,
+        &cache_key(gpu, bits, choice),
+        &cache_value(cfg, squarings_per_sec),
+    );
 }
 
 /// The environment values that decide where the tuning cache lives (injectable for tests).
@@ -387,7 +463,12 @@ pub struct CacheEnv {
 impl CacheEnv {
     pub fn from_process() -> CacheEnv {
         let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
-        CacheEnv { bigmont_cache: var("BIGMONT_CACHE"), local_app_data: var("LOCALAPPDATA"), xdg_cache_home: var("XDG_CACHE_HOME"), home: var("HOME") }
+        CacheEnv {
+            bigmont_cache: var("BIGMONT_CACHE"),
+            local_app_data: var("LOCALAPPDATA"),
+            xdg_cache_home: var("XDG_CACHE_HOME"),
+            home: var("HOME"),
+        }
     }
 }
 
@@ -409,8 +490,17 @@ pub fn default_cache_path(env: &CacheEnv, windows: bool) -> Option<PathBuf> {
 }
 
 /// The cache file to use: none with `--no-cache`, else `--cache PATH`, else the default.
-pub fn resolve_cache(explicit: Option<PathBuf>, disabled: bool, env: &CacheEnv, windows: bool) -> Option<PathBuf> {
-    if disabled { None } else { explicit.or_else(|| default_cache_path(env, windows)) }
+pub fn resolve_cache(
+    explicit: Option<PathBuf>,
+    disabled: bool,
+    env: &CacheEnv,
+    windows: bool,
+) -> Option<PathBuf> {
+    if disabled {
+        None
+    } else {
+        explicit.or_else(|| default_cache_path(env, windows))
+    }
 }
 
 /// Picks the fastest configuration that passes the self-test, reusing `cache` unless `retune`.
@@ -430,19 +520,34 @@ pub fn resolve_cache(explicit: Option<PathBuf>, disabled: bool, env: &CacheEnv, 
 /// A device-level failure (lost device, timed-out wait, uncaptured wgpu error: see
 /// `Gpu::check_health`) stops tuning at once and returns that error, and nothing is written to the
 /// cache: it says nothing about the configurations.
-pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool, choice: SchemeChoice) -> Result<Tuned, String> {
+pub fn autotune(
+    gpu: &Gpu,
+    bits: u32,
+    cache: Option<&Path>,
+    retune: bool,
+    choice: SchemeChoice,
+) -> Result<Tuned, String> {
     gpu.check_health()?;
     let bits = class_bits(limb_class(bits));
     let cands = candidates(gpu, bits, choice);
     if cands.is_empty() {
         let why = no_candidates_reason(gpu, bits, choice);
-        return Err(format!("no usable kernel configuration on {} ({why})", gpu.describe()));
+        return Err(format!(
+            "no usable kernel configuration on {} ({why})",
+            gpu.describe()
+        ));
     }
     let key = cache_key(gpu, bits, choice);
     if let (Some(path), false) = (cache, retune) {
         if let Some((cfg, rate)) = cache_lookup(&read_cache(path), &key, &cands) {
             match self_test(gpu, cfg, bits) {
-                Ok(()) => return Ok(Tuned { cfg, squarings_per_sec: rate, from_cache: true }),
+                Ok(()) => {
+                    return Ok(Tuned {
+                        cfg,
+                        squarings_per_sec: rate,
+                        from_cache: true,
+                    });
+                }
                 Err(e) if gpu.check_health().is_err() => return Err(e),
                 Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
             }
@@ -451,11 +556,17 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool, choice
     let mut best: Option<Tuned> = None;
     let mut reasons = Vec::new();
     for cfg in cands {
-        match self_test(gpu, cfg, bits).and_then(|()| measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}"))) {
+        match self_test(gpu, cfg, bits)
+            .and_then(|()| measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}")))
+        {
             Ok(rate) => {
                 eprintln!("tune {cfg:?}: {rate:.0} squarings/s");
                 if best.is_none_or(|b| rate > b.squarings_per_sec) {
-                    best = Some(Tuned { cfg, squarings_per_sec: rate, from_cache: false });
+                    best = Some(Tuned {
+                        cfg,
+                        squarings_per_sec: rate,
+                        from_cache: false,
+                    });
                 }
             }
             Err(e) if gpu.check_health().is_err() => return Err(e),
@@ -465,7 +576,13 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool, choice
             }
         }
     }
-    let best = best.ok_or_else(|| format!("no kernel configuration passed the self-test on {}: {}", gpu.describe(), reasons.join("; ")))?;
+    let best = best.ok_or_else(|| {
+        format!(
+            "no kernel configuration passed the self-test on {}: {}",
+            gpu.describe(),
+            reasons.join("; ")
+        )
+    })?;
     if let Some(path) = cache {
         store(gpu, bits, choice, &best.cfg, best.squarings_per_sec, path);
     }

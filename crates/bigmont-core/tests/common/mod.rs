@@ -32,6 +32,9 @@ pub fn open_gpu(cfg: KernelConfig) -> Option<Gpu> {
             return None;
         }
     }
-    eprintln!("adapter: {} ({:?}), config {cfg:?}", gpu.info.name, gpu.info.backend);
+    eprintln!(
+        "adapter: {} ({:?}), config {cfg:?}",
+        gpu.info.name, gpu.info.backend
+    );
     Some(gpu)
 }

@@ -27,8 +27,14 @@ use bigmont_core::kernel::{KernelConfig, Variant};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let tpi: u32 = args.first().and_then(|v| v.parse().ok()).expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
-    let wg: u32 = args.get(1).and_then(|v| v.parse().ok()).expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
+    let tpi: u32 = args
+        .first()
+        .and_then(|v| v.parse().ok())
+        .expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
+    let wg: u32 = args
+        .get(1)
+        .and_then(|v| v.parse().ok())
+        .expect("usage: pipeline_stats TPI WG [DEVICE_SUBSTRING]");
     let want = args.get(2).map(|s| s.to_lowercase());
     let variant = match args.get(3).map(String::as_str) {
         None | Some("rolled") => Variant::Rolled,
@@ -57,35 +63,55 @@ fn main() {
     if cfg.needs_subgroups() {
         caps |= naga::valid::Capabilities::SUBGROUP | naga::valid::Capabilities::SUBGROUP_BARRIER;
     }
-    let info = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), caps).validate(&module).expect("WGSL validation");
+    let info = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), caps)
+        .validate(&module)
+        .expect("WGSL validation");
     let name = "main".to_string();
 
     unsafe {
         let entry = ash::Entry::load().expect("no Vulkan loader");
         let app = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_3);
-        let instance = entry.create_instance(&vk::InstanceCreateInfo::default().application_info(&app), None).unwrap();
+        let instance = entry
+            .create_instance(
+                &vk::InstanceCreateInfo::default().application_info(&app),
+                None,
+            )
+            .unwrap();
         let devices = instance.enumerate_physical_devices().unwrap();
         let pdev = devices
             .into_iter()
             .find(|&d| {
                 let p = instance.get_physical_device_properties(d);
-                let n = CStr::from_ptr(p.device_name.as_ptr()).to_string_lossy().to_lowercase();
+                let n = CStr::from_ptr(p.device_name.as_ptr())
+                    .to_string_lossy()
+                    .to_lowercase();
                 want.as_ref().is_none_or(|w| n.contains(w))
             })
             .expect("no matching Vulkan device");
         let props = instance.get_physical_device_properties(pdev);
-        println!("device: {}", CStr::from_ptr(props.device_name.as_ptr()).to_string_lossy());
-        println!("config: tpi {tpi}, wg {wg}, limbs per lane {}, variant {variant:?}, mode {mode_name}", cfg.limbs_per_lane());
+        println!(
+            "device: {}",
+            CStr::from_ptr(props.device_name.as_ptr()).to_string_lossy()
+        );
+        println!(
+            "config: tpi {tpi}, wg {wg}, limbs per lane {}, variant {variant:?}, mode {mode_name}",
+            cfg.limbs_per_lane()
+        );
         let family = instance
             .get_physical_device_queue_family_properties(pdev)
             .iter()
             .position(|q| q.queue_flags.contains(vk::QueueFlags::COMPUTE))
             .unwrap() as u32;
         let priorities = [1.0f32];
-        let queues = [vk::DeviceQueueCreateInfo::default().queue_family_index(family).queue_priorities(&priorities)];
+        let queues = [vk::DeviceQueueCreateInfo::default()
+            .queue_family_index(family)
+            .queue_priorities(&priorities)];
         let extensions = [ash::khr::pipeline_executable_properties::NAME.as_ptr()];
-        let mut exec_props = vk::PhysicalDevicePipelineExecutablePropertiesFeaturesKHR::default().pipeline_executable_info(true);
-        let mut vk13 = vk::PhysicalDeviceVulkan13Features::default().shader_zero_initialize_workgroup_memory(true).subgroup_size_control(stage_flag_on);
+        let mut exec_props = vk::PhysicalDevicePipelineExecutablePropertiesFeaturesKHR::default()
+            .pipeline_executable_info(true);
+        let mut vk13 = vk::PhysicalDeviceVulkan13Features::default()
+            .shader_zero_initialize_workgroup_memory(true)
+            .subgroup_size_control(stage_flag_on);
         let device = instance
             .create_device(
                 pdev,
@@ -95,7 +121,12 @@ fn main() {
             .expect("device with VK_KHR_pipeline_executable_properties (this driver may not support it)");
         let pep = ash::khr::pipeline_executable_properties::Device::new(&instance, &device);
 
-        let (index, _) = module.entry_points.iter().enumerate().find(|(_, e)| e.name == name).expect("no entry point main");
+        let (index, _) = module
+            .entry_points
+            .iter()
+            .enumerate()
+            .find(|(_, e)| e.name == name)
+            .expect("no entry point main");
         let usage = info.get_entry_point(index);
         let bindings: Vec<_> = module
             .global_variables
@@ -110,13 +141,32 @@ fn main() {
                     naga::AddressSpace::Storage { .. } => vk::DescriptorType::STORAGE_BUFFER,
                     other => panic!("unexpected address space {other:?}"),
                 };
-                Some(vk::DescriptorSetLayoutBinding::default().binding(b.binding).descriptor_type(ty).descriptor_count(1).stage_flags(vk::ShaderStageFlags::COMPUTE))
+                Some(
+                    vk::DescriptorSetLayoutBinding::default()
+                        .binding(b.binding)
+                        .descriptor_type(ty)
+                        .descriptor_count(1)
+                        .stage_flags(vk::ShaderStageFlags::COMPUTE),
+                )
             })
             .collect();
-        let set_layout = device.create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None).unwrap();
+        let set_layout = device
+            .create_descriptor_set_layout(
+                &vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings),
+                None,
+            )
+            .unwrap();
         let set_layouts = [set_layout];
-        let layout = device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts), None).unwrap();
-        let options = naga::back::spv::PipelineOptions { shader_stage: naga::ShaderStage::Compute, entry_point: name.clone() };
+        let layout = device
+            .create_pipeline_layout(
+                &vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts),
+                None,
+            )
+            .unwrap();
+        let options = naga::back::spv::PipelineOptions {
+            shader_stage: naga::ShaderStage::Compute,
+            entry_point: name.clone(),
+        };
         let spv_options = if wgpu_mode {
             // Mirrors wgpu-hal 30.0.2 `naga_options` (src/vulkan/adapter.rs) for a Vulkan 1.3 device with
             // Features::SUBGROUP, default runtime checks (bounds checks and loop bounding on),
@@ -149,12 +199,25 @@ fn main() {
                     image_load: naga::proc::BoundsCheckPolicy::Restrict,
                     binding_array: naga::proc::BoundsCheckPolicy::Unchecked,
                 },
-                zero_initialize_workgroup_memory: naga::back::spv::ZeroInitializeWorkgroupMemoryMode::Native,
+                zero_initialize_workgroup_memory:
+                    naga::back::spv::ZeroInitializeWorkgroupMemoryMode::Native,
                 force_loop_bounding: true,
                 fake_missing_bindings: false,
                 // wgpu builds this from the bind group layout; for these four bindings it is the identity map on set 0.
                 binding_map: (0..4)
-                    .map(|b| (naga::ResourceBinding { group: 0, binding: b }, naga::back::spv::BindingInfo { descriptor_set: 0, binding: b, binding_array_size: None }))
+                    .map(|b| {
+                        (
+                            naga::ResourceBinding {
+                                group: 0,
+                                binding: b,
+                            },
+                            naga::back::spv::BindingInfo {
+                                descriptor_set: 0,
+                                binding: b,
+                                binding_array_size: None,
+                            },
+                        )
+                    })
                     .collect(),
                 ..Default::default()
             }
@@ -162,41 +225,78 @@ fn main() {
             naga::back::spv::Options::default()
         };
         // wgpu writes the whole module (no entry point filter); this module has the single entry point `main`.
-        let spirv = naga::back::spv::write_vec(&module, &info, &spv_options, if wgpu_mode { None } else { Some(&options) }).expect("SPIR-V");
+        let spirv = naga::back::spv::write_vec(
+            &module,
+            &info,
+            &spv_options,
+            if wgpu_mode { None } else { Some(&options) },
+        )
+        .expect("SPIR-V");
         println!("spirv: {} words, version {:#x}", spirv.len(), spirv[1]);
-        let shader = device.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&spirv), None).unwrap();
+        let shader = device
+            .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&spirv), None)
+            .unwrap();
         let main = CString::new(name.as_str()).unwrap();
-        let stage_flags = if stage_flag_on { vk::PipelineShaderStageCreateFlags::ALLOW_VARYING_SUBGROUP_SIZE } else { vk::PipelineShaderStageCreateFlags::empty() };
-        let stage = vk::PipelineShaderStageCreateInfo::default().flags(stage_flags).stage(vk::ShaderStageFlags::COMPUTE).module(shader).name(&main);
+        let stage_flags = if stage_flag_on {
+            vk::PipelineShaderStageCreateFlags::ALLOW_VARYING_SUBGROUP_SIZE
+        } else {
+            vk::PipelineShaderStageCreateFlags::empty()
+        };
+        let stage = vk::PipelineShaderStageCreateInfo::default()
+            .flags(stage_flags)
+            .stage(vk::ShaderStageFlags::COMPUTE)
+            .module(shader)
+            .name(&main);
         let create = [vk::ComputePipelineCreateInfo::default()
             .stage(stage)
             .layout(layout)
-            .flags(vk::PipelineCreateFlags::CAPTURE_STATISTICS_KHR | vk::PipelineCreateFlags::CAPTURE_INTERNAL_REPRESENTATIONS_KHR)];
-        let pipeline = match device.create_compute_pipelines(vk::PipelineCache::null(), &create, None) {
-            Ok(p) => p[0],
-            Err((_, e)) => {
-                println!("pipeline creation failed: {e:?}");
-                return;
-            }
-        };
-        let executables = pep.get_pipeline_executable_properties(&vk::PipelineInfoKHR::default().pipeline(pipeline)).unwrap();
+            .flags(
+                vk::PipelineCreateFlags::CAPTURE_STATISTICS_KHR
+                    | vk::PipelineCreateFlags::CAPTURE_INTERNAL_REPRESENTATIONS_KHR,
+            )];
+        let pipeline =
+            match device.create_compute_pipelines(vk::PipelineCache::null(), &create, None) {
+                Ok(p) => p[0],
+                Err((_, e)) => {
+                    println!("pipeline creation failed: {e:?}");
+                    return;
+                }
+            };
+        let executables = pep
+            .get_pipeline_executable_properties(&vk::PipelineInfoKHR::default().pipeline(pipeline))
+            .unwrap();
         for (ei, ex) in executables.iter().enumerate() {
-            println!("== {}: {} (subgroup size {})", name, CStr::from_ptr(ex.name.as_ptr()).to_string_lossy(), ex.subgroup_size);
-            let exec = vk::PipelineExecutableInfoKHR::default().pipeline(pipeline).executable_index(ei as u32);
+            println!(
+                "== {}: {} (subgroup size {})",
+                name,
+                CStr::from_ptr(ex.name.as_ptr()).to_string_lossy(),
+                ex.subgroup_size
+            );
+            let exec = vk::PipelineExecutableInfoKHR::default()
+                .pipeline(pipeline)
+                .executable_index(ei as u32);
             for st in pep.get_pipeline_executable_statistics(&exec).unwrap() {
                 let value = match st.format {
-                    vk::PipelineExecutableStatisticFormatKHR::BOOL32 => (st.value.b32 != 0).to_string(),
+                    vk::PipelineExecutableStatisticFormatKHR::BOOL32 => {
+                        (st.value.b32 != 0).to_string()
+                    }
                     vk::PipelineExecutableStatisticFormatKHR::INT64 => st.value.i64.to_string(),
                     vk::PipelineExecutableStatisticFormatKHR::UINT64 => st.value.u64.to_string(),
                     vk::PipelineExecutableStatisticFormatKHR::FLOAT64 => st.value.f64.to_string(),
                     _ => "?".into(),
                 };
-                println!("   {:<32} {value}", CStr::from_ptr(st.name.as_ptr()).to_string_lossy());
+                println!(
+                    "   {:<32} {value}",
+                    CStr::from_ptr(st.name.as_ptr()).to_string_lossy()
+                );
             }
-            let get = pep.fp().get_pipeline_executable_internal_representations_khr;
+            let get = pep
+                .fp()
+                .get_pipeline_executable_internal_representations_khr;
             let mut count = 0u32;
             let _ = get(device.handle(), &exec, &mut count, std::ptr::null_mut());
-            let mut reps = vec![vk::PipelineExecutableInternalRepresentationKHR::default(); count as usize];
+            let mut reps =
+                vec![vk::PipelineExecutableInternalRepresentationKHR::default(); count as usize];
             let _ = get(device.handle(), &exec, &mut count, reps.as_mut_ptr());
             let mut bufs: Vec<Vec<u8>> = reps.iter().map(|r| vec![0u8; r.data_size]).collect();
             for (r, b) in reps.iter_mut().zip(bufs.iter_mut()) {
@@ -204,8 +304,14 @@ fn main() {
             }
             let _ = get(device.handle(), &exec, &mut count, reps.as_mut_ptr());
             for (r, b) in reps.iter().zip(&bufs) {
-                let rep = CStr::from_ptr(r.name.as_ptr()).to_string_lossy().replace([' ', '/'], "_");
-                let path = out_dir.join(format!("{}_tpi{tpi}_wg{wg}_{mode_name}_{rep}.{}", format!("{variant:?}").to_lowercase(), if r.is_text != 0 { "txt" } else { "bin" }));
+                let rep = CStr::from_ptr(r.name.as_ptr())
+                    .to_string_lossy()
+                    .replace([' ', '/'], "_");
+                let path = out_dir.join(format!(
+                    "{}_tpi{tpi}_wg{wg}_{mode_name}_{rep}.{}",
+                    format!("{variant:?}").to_lowercase(),
+                    if r.is_text != 0 { "txt" } else { "bin" }
+                ));
                 std::fs::write(&path, b.split(|&c| c == 0).next().unwrap_or(&[])).unwrap();
                 println!("   saved {} ({} bytes)", path.display(), r.data_size);
             }

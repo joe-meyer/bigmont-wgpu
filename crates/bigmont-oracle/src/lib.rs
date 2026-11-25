@@ -62,7 +62,10 @@ pub fn limbs_for_bits(bits: u32) -> usize {
 
 /// Split x into `limbs` limbs of 13 bits (little-endian), one per u32.
 pub fn pack_limbs_n(x: &BigUint, limbs: usize) -> Vec<u32> {
-    assert!(x.bits() <= u64::from(LIMB_BITS) * limbs as u64, "value does not fit in {limbs} limbs");
+    assert!(
+        x.bits() <= u64::from(LIMB_BITS) * limbs as u64,
+        "value does not fit in {limbs} limbs"
+    );
     let d = x.to_u32_digits();
     (0..limbs)
         .map(|k| {
@@ -138,7 +141,10 @@ pub fn neg_inv_u32(n: &BigUint) -> u32 {
 
 /// Split x into `limbs` 32-bit limbs (little-endian).
 pub fn pack_u32_limbs(x: &BigUint, limbs: usize) -> Vec<u32> {
-    assert!(x.bits() <= 32 * limbs as u64, "value does not fit in {limbs} 32-bit limbs");
+    assert!(
+        x.bits() <= 32 * limbs as u64,
+        "value does not fit in {limbs} 32-bit limbs"
+    );
     let mut d = x.to_u32_digits();
     d.resize(limbs, 0);
     d
@@ -202,10 +208,15 @@ pub fn fermat_base2(n: &BigUint) -> bool {
 
 /// Odd number of exactly `bits` bits that passes `fermat_base2` (small-prime trial filter first).
 pub fn random_prp(rng: &mut XorShift64, bits: u32) -> BigUint {
-    let small: Vec<u32> = (3u32..1000).filter(|&p| (2..p).take_while(|d| d * d <= p).all(|d| p % d != 0)).collect();
+    let small: Vec<u32> = (3u32..1000)
+        .filter(|&p| (2..p).take_while(|d| d * d <= p).all(|d| p % d != 0))
+        .collect();
     loop {
         let c = random_odd_modulus(rng, bits);
-        if small.iter().any(|&p| (&c % p).is_zero() && c != BigUint::from(p)) {
+        if small
+            .iter()
+            .any(|&p| (&c % p).is_zero() && c != BigUint::from(p))
+        {
             continue;
         }
         if fermat_base2(&c) {

@@ -24,7 +24,10 @@ pub fn usable_gpu() -> bool {
 }
 
 fn skip(why: &str) -> bool {
-    assert!(allow_skip(), "{why} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+    assert!(
+        allow_skip(),
+        "{why} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
+    );
     eprintln!("SKIP {why}");
     false
 }
