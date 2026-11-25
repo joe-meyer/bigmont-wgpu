@@ -35,7 +35,7 @@ personal details.
 ## AI-assisted contributions
 
 Allowed and welcome, with a few rules. Read [`AI_POLICY.md`](AI_POLICY.md).
-AI agents should also read [`CLAUDE.md`](CLAUDE.md).
+AI agents should also read [`AGENTS.md`](AGENTS.md) (`CLAUDE.md` just imports it).
 
 ## Versioning
 

@@ -7,7 +7,7 @@ All notable changes are documented here. Format based on
 ## [Unreleased]
 
 ### Added
-- CI, release automation, `CLAUDE.md`, and AI contribution guidelines.
+- CI, release automation, `AGENTS.md`, and AI contribution guidelines.
 
 ## [0.1.0-alpha.1] - TBD
 

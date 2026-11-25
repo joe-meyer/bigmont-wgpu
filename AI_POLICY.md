@@ -36,7 +36,7 @@ rules keep quality and accountability clear.
 ## Using AI agents on this repo
 
 Agents may open PRs on a human's behalf. The human operator is responsible for
-the result. Agents should follow `CLAUDE.md`, work on branches, and never push
+the result. Agents should follow `AGENTS.md`, work on branches, and never push
 to `main`, tag releases, or change release workflows without explicit direction.
 
 ## Changes to this policy
