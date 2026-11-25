@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bigmont WebGPU Fermat ladder test</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; max-width: 980px; }
+  pre { background: #f4f4f4; padding: 10px; overflow: auto; white-space: pre-wrap; }
+  @media (prefers-color-scheme: dark) { body { background: #111; color: #ddd; } pre { background: #1c1c1c; } }
+</style>
+</head>
+<body>
+<h3>bigmont WebGPU Fermat-ladder test</h3>
+<p>Compiles generated Fermat-ladder kernels (<code>kernels/matrix/NAME.wgsl</code>, written by <code>dump_wgsl</code>) in this
+browser's own WebGPU implementation, runs the base-2 Fermat test on a mixed batch on the GPU and checks every verdict against a BigInt
+<code>2^(n-1) mod n == 1</code> oracle. Query: <code>?k=fermat_b2029_tpi8_wg64,fermat_b254_tpi4_wg64</code> (comma separated),
+<code>&amp;compile=1</code> compiles only, <code>&amp;count=4096</code> sets the throughput batch (0 skips it). Names starting
+<code>limb32_</code> are the native-only 32-bit kernels: they are EXPECTED to be rejected here (negative control).</p>
+<pre id="out">starting...</pre>
+<script>
+"use strict";
+const out = document.getElementById("out");
+const lines = [];
+const log = (s) => { lines.push(s); out.textContent = lines.join("\n"); };
+window.__runs = [];
+
+// ---- BigInt helpers, mirroring crates/bigmont-oracle ----
+const M13 = (1n << 13n) - 1n;
+function rnd(bits) {
+  const nb = Math.ceil(bits / 8), a = new Uint8Array(nb);
+  crypto.getRandomValues(a);
+  let v = 0n; for (const b of a) v = (v << 8n) | BigInt(b);
+  return v & ((1n << BigInt(bits)) - 1n);
+}
+const oddMod = (bits) => rnd(bits) | (1n << BigInt(bits - 1)) | 1n;
+function pack(x, limbs) { const o = new Uint32Array(limbs); for (let k = 0; k < limbs; k++) o[k] = Number((x >> (13n * BigInt(k))) & M13); return o; }
+function unpack(a, off, limbs) { let v = 0n; for (let k = limbs - 1; k >= 0; k--) v = (v << 13n) + BigInt(a[off + k]); return v; }
+function negInvLimb(n) {
+  const n0 = Number(n & 0xffffffffn) | 0; let inv = n0;
+  for (let i = 0; i < 4; i++) inv = Math.imul(inv, (2 - Math.imul(n0, inv)) | 0);
+  const r = ((0 - inv) >>> 0) & 0x1fff;
+  if ((((Number(n & 0x1fffn) * r) + 1) & 0x1fff) !== 0) throw new Error("negInvLimb property failed");
+  return r;
+}
+function modPow2(n) { // 2^(n-1) mod n, left to right
+  const e = n - 1n; let x = 1n;
+  for (let i = e.toString(2).length - 1; i >= 0; i--) { x = (x * x) % n; if ((e >> BigInt(i)) & 1n) x = (x << 1n) % n; }
+  return x;
+}
+const fermat = (n) => modPow2(n) === 1n;
+const SMALL = (() => { const p = []; for (let i = 3; i < 1000; i += 2) if (p.every((q) => i % q)) p.push(i); return p; })();
+function randomPrp(bits) {
+  for (;;) { const n = oddMod(bits); if (n > 1000n && SMALL.some((p) => n % BigInt(p) === 0n)) continue; if (bits > 12 && fermat(n)) return n; if (bits <= 12) return n; }
+}
+const sampleIdx = (count, k) => { const s = new Set([0, 1, 2, 3, count - 1, count - 2, count - 3, count - 4].filter((i) => i >= 0 && i < count)); for (let j = 0; s.size < k && j < 1e5; j++) s.add(Math.floor(Math.random() * count)); return [...s]; };
+
+async function one(kname, params, gpu) {
+  const r = { kernel: kname, expectFail: kname.startsWith("limb32_"), compile: null, pipeline: null, tests: [], timing: null, error: null, done: false };
+  window.__runs.push(r);
+  log(""); log("==== " + kname + " ====");
+  const m = /_b(\d+)_tpi(\d+)_wg(\d+)/.exec(kname);
+  if (!m) throw new Error("kernel name must contain _bBITS_tpiT_wgW");
+  const bits = Number(m[1]), TPI = Number(m[2]), WG = Number(m[3]), IPW = WG / TPI;
+  const src0 = await (await fetch("kernels/matrix/" + kname + ".wgsl")).text();
+  const need = (re) => { const x = re.exec(src0); if (!x) throw new Error("cannot find " + re + " in the kernel source"); return Number(x[1]); };
+  const limbs = need(/const TPI: u32 = (\d+)u;/) * need(/const LPL: u32 = (\d+)u;/);
+  if (need(/const TPI: u32 = (\d+)u;/) !== TPI) throw new Error("TPI in the file name differs from the source");
+  const words = Math.ceil(bits / 32);
+  log("kernel " + kname + ": " + bits + " bits, TPI " + TPI + ", workgroup " + WG + ", " + limbs + " limbs, " + src0.length + " chars of WGSL");
+  const code = (src0.startsWith("enable subgroups;") ? "" : "enable subgroups;\ndiagnostic(off, subgroup_uniformity);\n") + src0;
+  const device = gpu.device;
+  const errors = [];
+  device.pushErrorScope("validation");
+  const module = device.createShaderModule({ code });
+  const ci = await module.getCompilationInfo();
+  r.compile = ci.messages.map((x) => x.type + ": " + x.message + " (line " + x.lineNum + ")");
+  log("compilation messages: " + (r.compile.length ? "\n  " + r.compile.slice(0, 8).join("\n  ") : "none"));
+  const failed = ci.messages.some((x) => x.type === "error");
+  let pipeline = null;
+  if (!failed) {
+    try { pipeline = await device.createComputePipelineAsync({ layout: "auto", compute: { module, entryPoint: "main" } }); r.pipeline = "ok"; log("pipeline created"); }
+    catch (e) { r.pipeline = "FAILED: " + e.message; log("pipeline FAILED: " + e.message); }
+  }
+  const scopeErr = await device.popErrorScope();
+  if (scopeErr) log("validation error scope: " + scopeErr.message.slice(0, 300));
+  r.compiled = !failed && r.pipeline === "ok";
+  if (r.expectFail) {
+    r.pass = !r.compiled;
+    log((r.pass ? "PASS (negative control): rejected as expected" : "FAIL: a native-only kernel compiled in the browser"));
+    r.done = true; return;
+  }
+  if (!r.compiled) throw new Error("kernel did not compile in this browser");
+  if (params.get("compile")) { r.pass = true; r.done = true; log("PASS compile only"); return; }
+
+  const R = 1n << BigInt(13 * limbs);
+  const S = GPUBufferUsage;
+  async function ladder(ns) {
+    const count = ns.length;
+    const n = new Uint32Array(count * limbs), x = new Uint32Array(count * limbs), ninv = new Uint32Array(count), e = new Uint32Array(count * words), rr = [];
+    ns.forEach((nn, i) => {
+      const rm = R % nn; rr.push(rm);
+      n.set(pack(nn, limbs), i * limbs); x.set(pack((rm << 1n) % nn, limbs), i * limbs); ninv[i] = negInvLimb(nn);
+      let ee = nn - 1n; for (let w = 0; w < words; w++) { e[i * words + w] = Number(ee & 0xffffffffn); ee >>= 32n; }
+    });
+    const mk = (size, usage) => device.createBuffer({ size: Math.max(16, size), usage });
+    const pbuf = mk(16, S.UNIFORM | S.COPY_DST), fbuf = mk(16, S.UNIFORM | S.COPY_DST), nbuf = mk(n.byteLength, S.STORAGE | S.COPY_DST), ibuf = mk(ninv.byteLength, S.STORAGE | S.COPY_DST),
+      xbuf = mk(x.byteLength, S.STORAGE | S.COPY_DST | S.COPY_SRC), ebuf = mk(e.byteLength, S.STORAGE | S.COPY_DST), sbuf = mk(x.byteLength, S.MAP_READ | S.COPY_DST);
+    device.queue.writeBuffer(nbuf, 0, n); device.queue.writeBuffer(ibuf, 0, ninv); device.queue.writeBuffer(xbuf, 0, x); device.queue.writeBuffer(ebuf, 0, e);
+    const bg = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [pbuf, nbuf, ibuf, xbuf, ebuf, fbuf].map((b, i) => ({ binding: i, resource: { buffer: b } })) });
+    const groups = Math.ceil(count / IPW), total = bits - 1;
+    let done = 0, seg = 1, submits = 0; const t0 = performance.now();
+    while (done < total) {
+      const thisSeg = Math.min(seg, total - done);
+      device.queue.writeBuffer(pbuf, 0, new Uint32Array([count, thisSeg, 0, 0])); device.queue.writeBuffer(fbuf, 0, new Uint32Array([done, bits, words, 0]));
+      const enc = device.createCommandEncoder(); const pass = enc.beginComputePass();
+      pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.dispatchWorkgroups(groups); pass.end();
+      const t1 = performance.now(); device.queue.submit([enc.finish()]); await device.queue.onSubmittedWorkDone(); const dt = (performance.now() - t1) / 1000;
+      done += thisSeg; submits++;
+      seg = Math.max(1, Math.min(seg * 2, Math.floor(0.1 / (dt / thisSeg))));
+    }
+    const ms = performance.now() - t0;
+    const enc = device.createCommandEncoder(); enc.copyBufferToBuffer(xbuf, 0, sbuf, 0, x.byteLength); device.queue.submit([enc.finish()]);
+    await sbuf.mapAsync(GPUMapMode.READ); const res = new Uint32Array(sbuf.getMappedRange().slice(0)); sbuf.unmap();
+    [pbuf, fbuf, nbuf, ibuf, xbuf, ebuf, sbuf].forEach((b) => b.destroy());
+    const normalised = res.every((v) => v <= 0x1fff);
+    const verdicts = ns.map((nn, i) => unpack(res, i * limbs, limbs) % nn === rr[i]);
+    return { verdicts, ms, submits, normalised };
+  }
+  const record = (name, bad, checked, extra) => { const t = { name, checked, failed: bad.length, pass: bad.length === 0, ...extra }; r.tests.push(t); log((t.pass ? "PASS " : "FAIL ") + name + ": " + checked + " verdicts checked against the BigInt oracle, " + bad.length + " wrong" + (bad.length ? " (first: " + bad.slice(0, 5) + ")" : "")); };
+
+  // Test 1: mixed batch with the full oracle: random composites, probable primes, the all-ones number, a count that is not a workgroup multiple.
+  const nprp = bits <= 254 ? 40 : bits <= 1019 ? 8 : 3, ncomp = bits <= 254 ? 150 : bits <= 1019 ? 100 : 60;
+  const ns = []; for (let i = 0; i < ncomp; i++) ns.push(oddMod(bits)); for (let i = 0; i < nprp; i++) ns.push(randomPrp(bits)); ns.push((1n << BigInt(bits)) - 1n);
+  if (bits >= 4) ns.push((1n << BigInt(bits - 1)) + 1n);
+  const t0 = performance.now(); const want = ns.map(fermat); log("oracle: " + (performance.now() - t0).toFixed(0) + " ms for " + ns.length + " candidates, " + want.filter(Boolean).length + " probable primes");
+  const got = await ladder(ns);
+  const bad = []; ns.forEach((_, i) => { if (got.verdicts[i] !== want[i]) bad.push(i); });
+  record("mixed batch (" + ns.length + " candidates, " + want.filter(Boolean).length + " PRPs)", bad, ns.length, { limbsNormalised: got.normalised, submits: got.submits });
+  if (!got.normalised) { r.tests.push({ name: "limbs normalised", pass: false }); log("FAIL: kernel returned an unnormalised limb"); }
+  // Test 2: throughput on random odd numbers (mostly composite), verdicts sampled against the oracle.
+  const COUNT = Number(params.get("count") ?? (bits >= 1019 ? 4096 : 16384));
+  if (COUNT > 0) {
+    const big = Array.from({ length: COUNT }, () => oddMod(bits));
+    await ladder(big.slice(0, Math.min(COUNT, 64)));   // warm-up
+    const g = await ladder(big);
+    const idx = sampleIdx(COUNT, 16); const bad2 = idx.filter((i) => g.verdicts[i] !== fermat(big[i]));
+    const tps = COUNT / (g.ms / 1000);
+    record("throughput batch (" + COUNT + " candidates)", bad2, idx.length, { ms: g.ms, submits: g.submits, testsPerSec: tps });
+    r.timing = { count: COUNT, ms: g.ms, testsPerSec: tps, submits: g.submits, prps: g.verdicts.filter(Boolean).length };
+    log("TIMING: " + COUNT + " candidates, " + g.ms.toFixed(0) + " ms, " + Math.round(tps) + " tests/s (" + g.submits + " submits)");
+  }
+  r.pass = r.tests.every((t) => t.pass); r.done = true;
+}
+
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const ks = (params.get("k") || "fermat_b2029_tpi8_wg64").split(",");
+  const gpu = { };
+  try {
+    if (!navigator.gpu) throw new Error("navigator.gpu is not available in this browser");
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error("no WebGPU adapter");
+    const info = adapter.info || {};
+    window.__adapter = { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description, subgroupMin: info.subgroupMinSize, subgroupMax: info.subgroupMaxSize, features: [...adapter.features].sort(), hasSubgroups: adapter.features.has("subgroups"), isFallback: adapter.isFallbackAdapter, ua: navigator.userAgent };
+    log("adapter: " + JSON.stringify(window.__adapter));
+    gpu.device = await adapter.requestDevice({ requiredFeatures: adapter.features.has("subgroups") ? ["subgroups"] : [] });
+    gpu.device.addEventListener?.("uncapturederror", (e) => log("uncaptured GPU error: " + e.error.message));
+  } catch (e) { window.__fatal = String(e); log("FATAL: " + e); window.__all = true; document.title = "ALLDONE"; return; }
+  for (const k of ks) {
+    try { await one(k, params, gpu); log("DONE " + k); }
+    catch (e) { const r = window.__runs.find((x) => x.kernel === k) || {}; r.error = String(e && e.stack || e); r.pass = false; log("ERROR: " + r.error); }
+  }
+  window.__all = true; document.title = "ALLDONE";
+})();
+</script>
+</body>
+</html>
