@@ -119,7 +119,13 @@ fn the_tune_subcommand_writes_the_cache() {
     let out = run(bigmont(&["tune", "--bits", "1019", "--cache", cache.to_str().unwrap()]));
     assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
     let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
-    assert!(text.lines().any(|l| l.contains("|unrolled ")), "{text}");
+    // Auto may pick either scheme: the line must parse as a winner of one of them (the value is the
+    // last two `|` fields, `<unrolled|unrolled32> <tpi> <wg>|<rate>`), under the plain Auto key.
+    let line = text.lines().find(|l| !l.is_empty()).expect("one cache line");
+    let mut fields = line.rsplitn(3, '|');
+    let (rate, shape, key) = (fields.next().unwrap(), fields.next().unwrap(), fields.next().unwrap());
+    assert!(bigmont_cli::tune::parse_value(&format!("{shape}|{rate}")).is_some(), "{text}");
+    assert!(!key.contains("only-"), "tune with the default --limbs uses the Auto key: {text}");
     assert_eq!(files_in(&dir), ["tune.cache"]);
     let _ = std::fs::remove_dir_all(dir);
 }

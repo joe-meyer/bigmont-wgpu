@@ -272,11 +272,14 @@ fn autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers
     // representative (48 bits) is used.
     let first = tune::autotune(&gpu, 2, Some(&cache), false, Auto).expect("autotune at 2 bits");
     assert!(!first.from_cache);
-    assert_eq!(first.cfg, KernelConfig::for_bits(2, first.cfg.tpi, first.cfg.wg, Variant::Unrolled));
+    // Whichever scheme Auto picked, the shape at 2 bits is the same kernel (4 limbs at tpi 4, ...).
+    let at = |scheme, bits| KernelConfig::for_bits_scheme(scheme, bits, first.cfg.tpi, first.cfg.wg, Variant::Unrolled);
+    assert_eq!(first.cfg, at(first.cfg.scheme, 2));
     for bits in [20u32, 40, 48] {
         let again = tune::autotune(&gpu, bits, Some(&cache), false, Auto).expect("autotune from the class entry");
         assert!(again.from_cache, "{bits} bits shares the 2-bit class and must be served from the cache");
-        assert_eq!(again.cfg, KernelConfig::for_bits(bits, first.cfg.tpi, first.cfg.wg, Variant::Unrolled));
+        assert_eq!(again.cfg, first.cfg, "the class entry gives the same shape and scheme");
+        assert_eq!(again.cfg.retarget(bits), at(first.cfg.scheme, bits));
     }
     let lines = std::fs::read_to_string(&cache).unwrap().lines().filter(|l| !l.is_empty()).count();
     assert_eq!(lines, 1, "one cache line for the whole class");
@@ -488,6 +491,39 @@ fn a_cache_line_from_another_scheme_or_an_unknown_word_is_a_miss() {
     assert!(!t.from_cache);
     assert_ne!(t.squarings_per_sec, 1e9);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_candidate_list_without_32_bit_configs_never_matches_a_32_bit_cache_line() {
+    // Pure: the lookup autotune uses on a cache file. An adapter without int64 offers no Limb32
+    // candidate, so a cached `unrolled32` line is a miss however plausible its shape.
+    let class_bits = tune::class_bits(tune::limb_class(1019));
+    let shapes = |scheme| -> Vec<KernelConfig> {
+        let mut v = Vec::new();
+        for tpi in [4u32, 8, 16, 32] {
+            for wg in [64u32, 128, 256] {
+                v.push(KernelConfig::for_bits_scheme(scheme, class_bits, tpi, wg, Variant::Unrolled));
+            }
+        }
+        v
+    };
+    let key = "Some GPU|Vulkan|drv info|79";
+    let line = |text: &str| vec![format!("{key}|{text}")];
+    for text in ["unrolled32 8 64|1e9", "unrolled32 4 256|5", "unrolled32 32 64|7"] {
+        assert_eq!(tune::cache_lookup(&line(text), key, &shapes(Limb13)), None, "{text}: no Limb32 candidate");
+        let hit = tune::cache_lookup(&line(text), key, &shapes(Limb32)).unwrap_or_else(|| panic!("{text}: a Limb32 candidate matches"));
+        assert_eq!(hit.0.scheme, Limb32);
+    }
+    // And the 13-bit line is a miss when only 32-bit candidates are offered (a forced 32 run).
+    assert_eq!(tune::cache_lookup(&line("unrolled 8 64|1e9"), key, &shapes(Limb32)), None);
+    let hit = tune::cache_lookup(&line("unrolled 8 64|2.5"), key, &shapes(Limb13)).expect("13-bit hit");
+    assert_eq!((hit.0.scheme, hit.0.tpi, hit.0.wg, hit.1), (Limb13, 8, 64, 2.5));
+    // Other keys, unknown words and non-candidate shapes are misses; the first matching line wins.
+    assert_eq!(tune::cache_lookup(&["other|key|unrolled 8 64|1".to_string()], key, &shapes(Limb13)), None);
+    assert_eq!(tune::cache_lookup(&line("unrolled64 8 64|1"), key, &shapes(Limb13)), None);
+    assert_eq!(tune::cache_lookup(&line("unrolled 8 100|1"), key, &shapes(Limb13)), None);
+    let both = vec![format!("{key}|unrolled32 8 64|9"), format!("{key}|unrolled 8 64|3")];
+    assert_eq!(tune::cache_lookup(&both, key, &shapes(Limb13)).map(|h| h.1), Some(3.0), "the 32-bit line is skipped, the 13-bit one served");
 }
 
 #[test]

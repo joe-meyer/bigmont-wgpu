@@ -196,12 +196,13 @@ fn every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_on
 
 // ---- the limb scheme option: every choice gives the oracle's verdicts across the limb-count boundaries ----
 
-/// Mixed bit lengths around the 13-bit and 32-bit limb-count boundaries (40, 100, 254, 255, 300 and the
-/// 2,029-bit Phase 0 size), each in a bucket large enough for the GPU: random odd numbers, plus planted
+/// Mixed bit lengths around the 13-bit and 32-bit limb-count boundaries (40, 100, 252, 254, 255, 300 and
+/// the 2,029-bit Phase 0 size; 252, 254 and 255 share one 13-bit tuning class, 20 limbs, but 252 needs
+/// 8 32-bit limbs and 254 and 255 need 9), each in a bucket large enough for the GPU: random odd numbers, plus planted
 /// probable primes where they are cheap to find.
 fn scheme_batch() -> (Vec<BigUint>, Vec<u8>) {
     let mut ns = Vec::new();
-    for (i, bits) in [40u32, 100, 254, 255, 300, 2029].into_iter().enumerate() {
+    for (i, bits) in [40u32, 100, 252, 254, 255, 300, 2029].into_iter().enumerate() {
         let prps = if bits <= 300 { 2 } else { 0 };
         ns.extend(bucket(bits, 6, prps, 100 + i as u64));
     }
@@ -257,4 +258,78 @@ fn the_engine_matches_the_oracle_with_the_scheme_chosen_by_measurement() {
     let Some((cache, _cleanup)) = run_with_scheme(bigmont_cli::tune::SchemeChoice::Auto, "schemeauto") else { return };
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(text.lines().all(|l| !l.contains("only-")), "Auto uses the plain key: {text}");
+}
+
+// ---- a 32-bit kernel's limb count can shrink inside one 13-bit tuning class ----
+
+/// The class representative (what the tuner self-tests) and the exact length the engine retargets to.
+const CLASS_REP: u32 = 256; // tune::class_bits(20) = 13 * 20 - 4
+const SHORTER: u32 = 252; // same class (20 13-bit limbs), 8 32-bit limbs where 256 bits needs 9
+
+#[test]
+fn bit_length_252_shares_a_tuning_class_with_256_but_needs_fewer_32_bit_limbs() {
+    use bigmont_cli::tune;
+    use bigmont_core::kernel::{KernelConfig, Variant};
+    use bigmont_core::scheme::LimbScheme::{Limb13, Limb32};
+    assert_eq!(tune::limb_class(SHORTER), 20);
+    assert_eq!(tune::limb_class(CLASS_REP), 20);
+    assert_eq!(tune::class_bits(20), CLASS_REP);
+    // 13-bit: the same limb count across the class, whatever the tpi.
+    // 32-bit: tpi 4 and 8 build a smaller kernel at 252 bits than the one self-tested at 256; tpi 16
+    // and 32 round both up to the same size.
+    let mut shrinks = Vec::new();
+    for tpi in [4u32, 8, 16, 32] {
+        let rep13 = KernelConfig::for_bits_scheme(Limb13, CLASS_REP, tpi, 64, Variant::Unrolled);
+        assert_eq!(rep13.retarget(SHORTER), rep13, "13-bit tpi {tpi}");
+        let rep32 = KernelConfig::for_bits_scheme(Limb32, CLASS_REP, tpi, 64, Variant::Unrolled);
+        let at = rep32.retarget(SHORTER);
+        eprintln!("32-bit tpi {tpi}: {} limbs at {CLASS_REP} bits (self-tested), {} limbs at {SHORTER} bits (engine)", rep32.limbs, at.limbs);
+        assert!(at.limbs <= rep32.limbs);
+        assert!(at.r_bits() >= SHORTER + 4, "R > 16n at {SHORTER} bits: {at:?}");
+        if at.limbs < rep32.limbs {
+            shrinks.push((tpi, rep32.limbs, at.limbs));
+        }
+    }
+    assert_eq!(shrinks, [(4, 12, 8), (8, 16, 8)]);
+}
+
+#[test]
+fn a_retargeted_32_bit_kernel_that_is_smaller_than_the_self_tested_one_gives_oracle_verdicts() {
+    // What the engine does after tuning, with the shape fixed to the two tpis whose limb count shrinks
+    // (so it does not depend on which 32-bit shape wins the timing): self-test at the class
+    // representative, then run the retargeted kernel on 252-bit numbers.
+    use bigmont_cli::tune;
+    use bigmont_core::gpu::Gpu;
+    use bigmont_core::kernel::{KernelConfig, Variant};
+    use bigmont_core::runner::Runner;
+    use bigmont_core::scheme::LimbScheme::Limb32;
+    let gpu = match Gpu::new() {
+        Ok(g) => g,
+        Err(e) => {
+            assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+            eprintln!("SKIP no adapter: {e}");
+            return;
+        }
+    };
+    if !gpu.has_int64 || !gpu.has_subgroups {
+        assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "the adapter lacks SHADER_INT64 or subgroups (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+        eprintln!("SKIP the adapter lacks SHADER_INT64 or subgroups");
+        return;
+    }
+    let ns = bucket(SHORTER, 20, 4, 4242);
+    let want: Vec<bool> = ns.iter().map(fermat_base2).collect();
+    assert!(want.iter().any(|&w| w) && want.iter().any(|&w| !w));
+    for tpi in [4u32, 8] {
+        if gpu.check_subgroups(tpi).is_err() {
+            eprintln!("SKIP tpi {tpi}: subgroup size does not fit");
+            continue;
+        }
+        let tuned = KernelConfig::for_bits_scheme(Limb32, CLASS_REP, tpi, 64, Variant::Unrolled);
+        tune::self_test(&gpu, tuned, CLASS_REP).unwrap_or_else(|e| panic!("{e}"));
+        let exact = tuned.retarget(SHORTER);
+        assert!(exact.limbs < tuned.limbs, "{tuned:?} -> {exact:?}");
+        let mut runner = Runner::new(&gpu, exact, SHORTER, 32).expect("runner at the exact length");
+        let got = runner.fermat(&gpu, &ns).expect("fermat");
+        assert_eq!(got, want, "tpi {tpi}: {} limbs at {SHORTER} bits (self-tested with {})", exact.limbs, tuned.limbs);
+    }
 }

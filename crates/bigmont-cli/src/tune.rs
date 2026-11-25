@@ -312,6 +312,20 @@ pub fn parse_value(v: &str) -> Option<(LimbScheme, u32, u32, f64)> {
     (rate.is_finite() && rate > 0.0).then_some((scheme, tpi, wg, rate))
 }
 
+/// The cached winner for `key` among `lines` (cache file lines) that is still one of `cands`: the
+/// line's scheme, tpi and workgroup must all match a candidate, so a line naming a scheme the adapter
+/// cannot run (a 32-bit line on a device without int64), a scheme the choice forbids, or a shape that
+/// is no longer offered is a miss. Returns the candidate (not a config rebuilt from the text) and the
+/// cached rate.
+#[doc(hidden)]
+pub fn cache_lookup(lines: &[String], key: &str, cands: &[KernelConfig]) -> Option<(KernelConfig, f64)> {
+    let prefix = format!("{key}|");
+    lines.iter().find_map(|l| {
+        let (scheme, tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
+        cands.iter().find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg).map(|&cfg| (cfg, rate))
+    })
+}
+
 fn read_cache(path: &Path) -> Vec<String> {
     std::fs::read_to_string(path).map(|s| s.lines().map(str::to_string).collect()).unwrap_or_default()
 }
@@ -416,12 +430,7 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool, choice
     }
     let key = cache_key(gpu, bits, choice);
     if let (Some(path), false) = (cache, retune) {
-        let prefix = format!("{key}|");
-        let hit = read_cache(path).iter().find_map(|l| {
-            let (scheme, tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
-            cands.iter().find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg).map(|&cfg| (cfg, rate))
-        });
-        if let Some((cfg, rate)) = hit {
+        if let Some((cfg, rate)) = cache_lookup(&read_cache(path), &key, &cands) {
             match self_test(gpu, cfg, bits) {
                 Ok(()) => return Ok(Tuned { cfg, squarings_per_sec: rate, from_cache: true }),
                 Err(e) if gpu.check_health().is_err() => return Err(e),
