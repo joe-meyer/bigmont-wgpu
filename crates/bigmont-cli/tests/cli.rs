@@ -123,3 +123,78 @@ fn the_tune_subcommand_writes_the_cache() {
     assert_eq!(files_in(&dir), ["tune.cache"]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ---- --limbs auto|13|32 ----
+
+#[test]
+fn an_invalid_limbs_value_is_a_usage_error_naming_the_allowed_values() {
+    for bad in ["7", "64", "", "thirty-two"] {
+        let out = run(bigmont(&["a", "b", "--limbs", bad]));
+        assert_eq!(code(&out), Some(2), "--limbs {bad:?}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains("auto") && err.contains("13") && err.contains("32"), "--limbs {bad:?}: {err}");
+    }
+    let out = run(bigmont(&["tune", "--limbs=7"]));
+    assert_eq!(code(&out), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--limbs"));
+    let out = run(bigmont(&["--help"]));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("--limbs"), "the usage text documents the flag");
+}
+
+fn has_int64() -> Option<bool> {
+    Gpu::new().ok().map(|g| g.has_int64)
+}
+
+/// Whether a forced-32 test can run here; skips loudly (an error unless BIGMONT_ALLOW_SKIP=1) when not.
+fn int64_available() -> bool {
+    match has_int64() {
+        Some(true) => true,
+        other => {
+            assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no int64 adapter (found: {other:?}); set BIGMONT_ALLOW_SKIP=1 to allow skips");
+            eprintln!("SKIP no adapter with SHADER_INT64");
+            false
+        }
+    }
+}
+
+#[test]
+fn limbs_32_runs_a_candidate_file_and_writes_the_expected_verdicts() {
+    if !int64_available() {
+        return;
+    }
+    let dir = tmp_dir("limbs32");
+    let cand = candidates(&dir);
+    let verdict = dir.join("v.bin");
+    let cache = dir.join("tune.cache");
+    let out = run(bigmont(&[cand.to_str().unwrap(), verdict.to_str().unwrap(), "--backend", "gpu", "--limbs", "32", "--cache", cache.to_str().unwrap()]));
+    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let file = formats::read_candidates(&cand).unwrap();
+    let (_, got) = formats::read_verdicts(&verdict).unwrap();
+    let want: Vec<u8> = file.numbers.iter().map(|n| u8::from(bigmont_cpu::fermat_base2(n))).collect();
+    assert_eq!(got, want);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Limb32"), "the engine's tune lines name the scheme: {stderr}");
+    assert!(stderr.contains("gpu 80"), "all 80 candidates ran on the GPU: {stderr}");
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.lines().all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")), "{text}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_tune_subcommand_forces_a_scheme_and_prints_a_scheme_column() {
+    if !int64_available() {
+        return;
+    }
+    let dir = tmp_dir("tune32");
+    let cache = dir.join("tune.cache");
+    let out = run(bigmont(&["tune", "--bits", "1019", "--limbs", "32", "--cache", cache.to_str().unwrap()]));
+    assert_eq!(code(&out), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let header = stdout.lines().find(|l| l.contains("squarings/s") && l.contains("tpi")).expect("table header");
+    assert!(header.contains("scheme"), "{header}");
+    assert!(stdout.lines().filter(|l| l.trim_end().ends_with("ok")).all(|l| l.split_whitespace().next() == Some("32")), "only 32-bit rows: {stdout}");
+    assert!(stdout.contains("best: scheme 32"), "{stdout}");
+    let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
+    assert!(text.lines().all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")), "{text}");
+    let _ = std::fs::remove_dir_all(dir);
+}

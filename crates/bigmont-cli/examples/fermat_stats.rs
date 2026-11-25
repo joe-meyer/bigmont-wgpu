@@ -3,6 +3,7 @@
 //!
 //!   BIGMONT_ADAPTER=... cargo run --release -p bigmont-cli --example fermat_stats -- CAND [CAPACITY]
 
+use bigmont_cli::tune::SchemeChoice;
 use bigmont_cli::{formats, tune};
 use bigmont_core::gpu::Gpu;
 use bigmont_core::runner::Runner;
@@ -20,9 +21,11 @@ fn main() {
     let bits = file.numbers.iter().map(|n| n.bits()).max().expect("no candidates") as u32;
     let gpu = Gpu::open(&bigmont_core::gpu::AdapterSelector::from_env()).expect("no GPU");
     println!("adapter: {}", gpu.describe());
-    let tuned = tune::autotune(&gpu, bits, None, true).expect("autotune");
+    let tuned = tune::autotune(&gpu, bits, None, true, SchemeChoice::Auto).expect("autotune");
     println!("config: {:?} ({:.0} squarings/s measured by autotune)", tuned.cfg, tuned.squarings_per_sec);
-    let mut runner = Runner::new(&gpu, tuned.cfg, bits, capacity).expect("runner");
+    // The tuned shape at this exact length (a 32-bit limb count can differ within a tuning class).
+    let cfg = tuned.cfg.retarget(bits);
+    let mut runner = Runner::new(&gpu, cfg, bits, capacity).expect("runner");
     let cap = runner.capacity() as usize;
     let t = Instant::now();
     let mut prps = 0usize;

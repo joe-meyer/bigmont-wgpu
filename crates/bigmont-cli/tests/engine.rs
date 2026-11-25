@@ -193,3 +193,68 @@ fn every_bit_length_down_to_two_bits_runs_on_the_gpu_and_tunes_one_limb_class_on
     assert_eq!(r.tuned_classes, 1, "ten bit lengths, one limb class: autotuned once, not ten times");
     assert_eq!(cache_classes(&cache), ["4"], "exactly one cache line for the ten bit lengths of class 4");
 }
+
+// ---- the limb scheme option: every choice gives the oracle's verdicts across the limb-count boundaries ----
+
+/// Mixed bit lengths around the 13-bit and 32-bit limb-count boundaries (40, 100, 254, 255, 300 and the
+/// 2,029-bit Phase 0 size), each in a bucket large enough for the GPU: random odd numbers, plus planted
+/// probable primes where they are cheap to find.
+fn scheme_batch() -> (Vec<BigUint>, Vec<u8>) {
+    let mut ns = Vec::new();
+    for (i, bits) in [40u32, 100, 254, 255, 300, 2029].into_iter().enumerate() {
+        let prps = if bits <= 300 { 2 } else { 0 };
+        ns.extend(bucket(bits, 6, prps, 100 + i as u64));
+    }
+    let want = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    (ns, want)
+}
+
+fn run_with_scheme(scheme: bigmont_cli::tune::SchemeChoice, tag: &str) -> Option<(std::path::PathBuf, RemoveOnDrop)> {
+    use bigmont_cli::tune::SchemeChoice;
+    let gpu = match bigmont_core::gpu::Gpu::new() {
+        Ok(g) => g,
+        Err(e) => {
+            assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+            eprintln!("SKIP no adapter: {e}");
+            return None;
+        }
+    };
+    if scheme == SchemeChoice::Only(bigmont_core::scheme::LimbScheme::Limb32) && !gpu.has_int64 {
+        assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "the adapter lacks SHADER_INT64 (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+        eprintln!("SKIP the adapter lacks SHADER_INT64");
+        return None;
+    }
+    drop(gpu); // one device at a time: the engine opens its own
+    let (ns, want) = scheme_batch();
+    let (cache, guard) = temp_cache(tag);
+    let mut e = Engine::open(Options { scheme, cache: Some(cache.clone()), ..opts(Backend::Gpu) });
+    eprintln!("{} with {scheme:?}", e.describe());
+    assert_eq!(e.verdicts(&ns).unwrap(), want, "{scheme:?}");
+    let r = e.report();
+    assert!(r.gpu_tests > 0, "{scheme:?}: nothing ran on the GPU");
+    assert_eq!(r.gpu_tests, ns.len() as u64, "{scheme:?}: every bucket has at least min_gpu_batch entries");
+    assert_eq!(r.gpu_errors, 0, "{scheme:?}");
+    assert_eq!((r.prp_disagreements, r.composite_disagreements), (0, 0), "{scheme:?}");
+    Some((cache, guard))
+}
+
+#[test]
+fn the_engine_matches_the_oracle_with_the_13_bit_scheme_forced() {
+    let Some((cache, _cleanup)) = run_with_scheme(bigmont_cli::tune::SchemeChoice::Only(bigmont_core::scheme::LimbScheme::Limb13), "scheme13") else { return };
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.lines().all(|l| l.contains("|only-13|") && l.contains("|unrolled ")), "{text}");
+}
+
+#[test]
+fn the_engine_matches_the_oracle_with_the_32_bit_scheme_forced() {
+    let Some((cache, _cleanup)) = run_with_scheme(bigmont_cli::tune::SchemeChoice::Only(bigmont_core::scheme::LimbScheme::Limb32), "scheme32") else { return };
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.lines().all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")), "{text}");
+}
+
+#[test]
+fn the_engine_matches_the_oracle_with_the_scheme_chosen_by_measurement() {
+    let Some((cache, _cleanup)) = run_with_scheme(bigmont_cli::tune::SchemeChoice::Auto, "schemeauto") else { return };
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.lines().all(|l| !l.contains("only-")), "Auto uses the plain key: {text}");
+}

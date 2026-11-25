@@ -4,6 +4,7 @@
 use bigmont_core::gpu::{Batch, Gpu, run};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
+use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::{LIMB_BITS, XorShift64, limbs_for_bits, random_odd_modulus};
 use num_bigint::BigUint;
 use num_traits::{One, Zero};
@@ -43,22 +44,75 @@ pub fn class_bits(limbs: u32) -> u32 {
     LIMB_BITS * limbs - 4
 }
 
-/// Unrolled configurations for `bits`-bit numbers that fit this adapter's subgroups. Empty when the
-/// adapter has no subgroup support.
-pub fn candidates(gpu: &Gpu, bits: u32) -> Vec<KernelConfig> {
+/// Which limb schemes the tuner may pick from. `Auto` measures every scheme the adapter can run and
+/// takes the fastest; `Only(s)` forces one (the CLI's `--limbs 13|32`). No vendor or device name
+/// enters this: capabilities decide what can run, measurement decides what is faster.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SchemeChoice {
+    #[default]
+    Auto,
+    Only(LimbScheme),
+}
+
+impl SchemeChoice {
+    pub fn allows(self, s: LimbScheme) -> bool {
+        match self {
+            SchemeChoice::Auto => true,
+            SchemeChoice::Only(only) => only == s,
+        }
+    }
+
+    /// `auto`, `13` or `32`.
+    pub fn parse(s: &str) -> Result<SchemeChoice, String> {
+        if s == "auto" {
+            return Ok(SchemeChoice::Auto);
+        }
+        LimbScheme::parse(s).map(SchemeChoice::Only).ok_or_else(|| format!("the limb scheme must be auto, 13 or 32, not {s:?}"))
+    }
+}
+
+/// Unrolled configurations for `bits`-bit numbers that `choice` allows and this adapter can run: every
+/// allowed scheme, every (tpi, workgroup) whose lane count fits the adapter's subgroups, and only those
+/// whose capability needs (`KernelConfig::requires`) the adapter offers. Empty when nothing fits (no
+/// subgroup support, or a forced scheme the adapter lacks the capabilities for).
+pub fn candidates(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> Vec<KernelConfig> {
+    let have = gpu.caps();
     let mut out = Vec::new();
-    for tpi in TPIS {
-        if gpu.check_subgroups(tpi).is_err() {
+    for &scheme in LimbScheme::ALL {
+        if !choice.allows(scheme) {
             continue;
         }
-        for wg in WGS {
-            let cfg = KernelConfig::for_bits(bits, tpi, wg, Variant::Unrolled);
-            if cfg.validate().is_ok() {
-                out.push(cfg);
+        for tpi in TPIS {
+            if gpu.check_subgroups(tpi).is_err() {
+                continue;
+            }
+            for wg in WGS {
+                let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled);
+                if cfg.validate().is_ok() && have.satisfies(cfg.requires()) {
+                    out.push(cfg);
+                }
             }
         }
     }
     out
+}
+
+/// Why `candidates(gpu, bits, choice)` is empty, for error messages.
+fn no_candidates_reason(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> String {
+    for &scheme in LimbScheme::ALL {
+        if !choice.allows(scheme) {
+            continue;
+        }
+        // The narrowest cooperative kernel is the easiest to satisfy: if it fails, so do the rest.
+        if let Err(e) = gpu.check_subgroups(TPIS[0]) {
+            return e;
+        }
+        let probe = KernelConfig::for_bits_scheme(scheme, bits, TPIS[0], WGS[0], Variant::Unrolled);
+        if let Err(e) = probe.check_caps(gpu.caps()) {
+            return e;
+        }
+    }
+    "no configuration fits".into()
 }
 
 /// Fermat test inputs for `bits`-bit moduli with their reference verdicts (computed once per size).
@@ -211,26 +265,51 @@ fn clean(s: &str) -> String {
     s.chars().map(|c| if matches!(c, '|' | '\n' | '\r') { '/' } else { c }).collect()
 }
 
-fn cache_key(gpu: &Gpu, bits: u32) -> String {
+/// The cache key of the limb class of `bits`-bit numbers on an adapter described by these fields
+/// (`name|backend|driver driver_info|class`). A forced scheme inserts `only-<name>` before the class,
+/// so a forced run has its own entry and never replaces or deletes the `Auto` one (the `Auto` key plus
+/// its `|` separator is not a prefix of a forced key).
+#[doc(hidden)]
+pub fn cache_key_text(name: &str, backend: &str, driver: &str, driver_info: &str, bits: u32, choice: SchemeChoice) -> String {
+    let only = match choice {
+        SchemeChoice::Auto => String::new(),
+        SchemeChoice::Only(s) => format!("only-{}|", s.name()),
+    };
+    format!("{}|{backend}|{} {}|{only}{}", clean(name), clean(driver), clean(driver_info), limb_class(bits))
+}
+
+#[doc(hidden)]
+pub fn cache_key(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> String {
     let i = &gpu.info;
-    format!("{}|{:?}|{} {}|{}", clean(&i.name), i.backend, clean(&i.driver), clean(&i.driver_info), limb_class(bits))
+    cache_key_text(&i.name, &format!("{:?}", i.backend), &i.driver, &i.driver_info, bits, choice)
 }
 
-fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
-    format!("{} {} {}|{}", if cfg.variant == Variant::Unrolled { "unrolled" } else { "rolled" }, cfg.tpi, cfg.wg, rate)
+/// `unrolled <tpi> <wg>|<rate>` for a 13-bit winner (the text older versions wrote and read) and
+/// `unrolled32 <tpi> <wg>|<rate>` for a 32-bit one.
+#[doc(hidden)]
+pub fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
+    let word = match (cfg.variant, cfg.scheme) {
+        (Variant::Unrolled, LimbScheme::Limb13) => "unrolled",
+        (Variant::Unrolled, LimbScheme::Limb32) => "unrolled32",
+        (Variant::Rolled, _) => "rolled",
+    };
+    format!("{word} {} {}|{}", cfg.tpi, cfg.wg, rate)
 }
 
-/// Parses `unrolled <tpi> <wg>|<rate>`. The caller looks the pair up among the candidates, so
-/// corrupt cache text never reaches `KernelConfig` arithmetic.
-fn parse_value(v: &str) -> Option<(u32, u32, f64)> {
+/// Parses `unrolled|unrolled32 <tpi> <wg>|<rate>`; any other first word is a miss. The caller looks the
+/// shape up among the candidates, so corrupt cache text never reaches `KernelConfig` arithmetic.
+#[doc(hidden)]
+pub fn parse_value(v: &str) -> Option<(LimbScheme, u32, u32, f64)> {
     let (c, rate) = v.split_once('|')?;
     let mut f = c.split_whitespace();
-    if f.next()? != "unrolled" {
-        return None;
-    }
+    let scheme = match f.next()? {
+        "unrolled" => LimbScheme::Limb13,
+        "unrolled32" => LimbScheme::Limb32,
+        _ => return None,
+    };
     let (tpi, wg) = (f.next()?.parse().ok()?, f.next()?.parse().ok()?);
     let rate: f64 = rate.trim().parse().ok()?;
-    (rate.is_finite() && rate > 0.0).then_some((tpi, wg, rate))
+    (rate.is_finite() && rate > 0.0).then_some((scheme, tpi, wg, rate))
 }
 
 fn read_cache(path: &Path) -> Vec<String> {
@@ -262,9 +341,10 @@ pub fn write_cache(path: &Path, key: &str, value: &str) {
     }
 }
 
-/// Records `cfg` as the best configuration for the limb class of `bits`-bit numbers on this adapter.
-pub fn store(gpu: &Gpu, bits: u32, cfg: &KernelConfig, squarings_per_sec: f64, path: &Path) {
-    write_cache(path, &cache_key(gpu, bits), &cache_value(cfg, squarings_per_sec));
+/// Records `cfg` as the best configuration for the limb class of `bits`-bit numbers on this adapter
+/// under `choice` (a forced choice has its own entry, see `cache_key_text`).
+pub fn store(gpu: &Gpu, bits: u32, choice: SchemeChoice, cfg: &KernelConfig, squarings_per_sec: f64, path: &Path) {
+    write_cache(path, &cache_key(gpu, bits, choice), &cache_value(cfg, squarings_per_sec));
 }
 
 /// The environment values that decide where the tuning cache lives (injectable for tests).
@@ -314,27 +394,32 @@ pub fn resolve_cache(explicit: Option<PathBuf>, disabled: bool, env: &CacheEnv, 
 ///
 /// Tuning is per limb class (`limb_class(bits)`), not per exact bit length: the self-test and the
 /// timing run at the class's representative length `class_bits`, and the cache entry is keyed by the
-/// class. The returned configuration is the one `KernelConfig::for_bits` gives for `bits` too (same
-/// limb count across the class). This keeps tiny sizes testable (a 2-bit modulus has only the value
-/// 3) and means two bit lengths in one class cost one tuning, not two.
+/// class. The winner is a kernel shape (scheme, tpi, wg) at the representative length; apply it to an
+/// exact bit length with `KernelConfig::retarget`. (A 13-bit kernel has the same limb count across the
+/// class; a 32-bit one can have fewer limbs below the representative, which the self-test at the
+/// representative covers.) This keeps tiny sizes testable (a 2-bit modulus has only the value 3) and
+/// means two bit lengths in one class cost one tuning, not two.
+///
+/// `choice` limits the schemes tried: `Auto` times every scheme the adapter can run and the fastest
+/// wins (the 13-bit scheme on an exact tie); a forced choice is cached under its own key.
 ///
 /// A device-level failure (lost device, timed-out wait, uncaptured wgpu error: see
 /// `Gpu::check_health`) stops tuning at once and returns that error, and nothing is written to the
 /// cache: it says nothing about the configurations.
-pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Result<Tuned, String> {
+pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool, choice: SchemeChoice) -> Result<Tuned, String> {
     gpu.check_health()?;
     let bits = class_bits(limb_class(bits));
-    let cands = candidates(gpu, bits);
+    let cands = candidates(gpu, bits, choice);
     if cands.is_empty() {
-        let why = gpu.check_subgroups(4).err().unwrap_or_else(|| "no configuration fits".into());
+        let why = no_candidates_reason(gpu, bits, choice);
         return Err(format!("no usable kernel configuration on {} ({why})", gpu.describe()));
     }
-    let key = cache_key(gpu, bits);
+    let key = cache_key(gpu, bits, choice);
     if let (Some(path), false) = (cache, retune) {
         let prefix = format!("{key}|");
         let hit = read_cache(path).iter().find_map(|l| {
-            let (tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
-            cands.iter().find(|c| c.tpi == tpi && c.wg == wg).map(|&cfg| (cfg, rate))
+            let (scheme, tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
+            cands.iter().find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg).map(|&cfg| (cfg, rate))
         });
         if let Some((cfg, rate)) = hit {
             match self_test(gpu, cfg, bits) {
@@ -363,7 +448,7 @@ pub fn autotune(gpu: &Gpu, bits: u32, cache: Option<&Path>, retune: bool) -> Res
     }
     let best = best.ok_or_else(|| format!("no kernel configuration passed the self-test on {}: {}", gpu.describe(), reasons.join("; ")))?;
     if let Some(path) = cache {
-        store(gpu, bits, &best.cfg, best.squarings_per_sec, path);
+        store(gpu, bits, choice, &best.cfg, best.squarings_per_sec, path);
     }
     Ok(best)
 }

@@ -1,4 +1,5 @@
-use bigmont_cli::tune;
+use bigmont_cli::tune::{self, SchemeChoice::{self, Auto, Only}};
+use bigmont_core::scheme::LimbScheme::{Limb13, Limb32};
 use bigmont_core::gpu::Gpu;
 use bigmont_core::kernel::{KernelConfig, Variant};
 use std::path::{Path, PathBuf};
@@ -38,7 +39,7 @@ fn temp_cache(tag: &str) -> (PathBuf, PathBuf) {
 /// Runs a real autotune to create a cache file and returns the cache key (everything before the
 /// last two `|` fields of its only line).
 fn seed_cache(gpu: &Gpu, cache: &Path) -> String {
-    let first = tune::autotune(gpu, 1019, Some(cache), false).expect("autotune");
+    let first = tune::autotune(gpu, 1019, Some(cache), false, Auto).expect("autotune");
     assert!(!first.from_cache);
     let text = std::fs::read_to_string(cache).expect("cache written");
     let line = text.lines().find(|l| !l.is_empty()).expect("one cache line");
@@ -48,13 +49,13 @@ fn seed_cache(gpu: &Gpu, cache: &Path) -> String {
 #[test]
 fn candidates_are_valid_and_fit_the_adapter() {
     let Some(gpu) = gpu() else { return };
-    let cands = tune::candidates(&gpu, 2029);
+    let cands = tune::candidates(&gpu, 2029, Auto);
     if skip_unless(!cands.is_empty(), "no subgroup candidates on this adapter") {
         return;
     }
     for cfg in cands {
         assert!(cfg.validate().is_ok(), "{cfg:?}");
-        assert!(cfg.limbs >= 157, "{cfg:?}");
+        assert!(cfg.r_bits() >= 2029 + 4, "R must exceed 16n: {cfg:?}"); // 157 13-bit limbs, or 64 32-bit ones
         assert!(gpu.check_subgroups(cfg.tpi).is_ok());
         assert_eq!(cfg.variant, Variant::Unrolled);
     }
@@ -64,7 +65,7 @@ fn candidates_are_valid_and_fit_the_adapter() {
 fn self_test_accepts_a_good_config_at_two_sizes() {
     let Some(gpu) = gpu() else { return };
     for bits in [1019u32, 2029] {
-        let cfg = tune::candidates(&gpu, bits).into_iter().find(|c| c.tpi == 8 && c.wg == 64);
+        let cfg = tune::candidates(&gpu, bits, Auto).into_iter().find(|c| c.tpi == 8 && c.wg == 64);
         if skip_unless(cfg.is_some(), "no tpi 8 candidate on this adapter") {
             return;
         }
@@ -86,19 +87,19 @@ fn self_test_rejects_a_config_too_small_for_the_numbers() {
 fn autotune_picks_a_verified_config_and_uses_its_cache() {
     let Some(gpu) = gpu() else { return };
     let (dir, cache) = temp_cache("basic");
-    if tune::candidates(&gpu, 1019).is_empty() {
-        assert!(tune::autotune(&gpu, 1019, Some(&cache), false).is_err());
+    if tune::candidates(&gpu, 1019, Auto).is_empty() {
+        assert!(tune::autotune(&gpu, 1019, Some(&cache), false, Auto).is_err());
         skip_unless(false, "no subgroup candidates; autotune returned Err as designed");
         return;
     }
-    let first = tune::autotune(&gpu, 1019, Some(&cache), false).expect("autotune");
+    let first = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("autotune");
     assert!(!first.from_cache);
     assert!(first.squarings_per_sec > 0.0);
     assert!(cache.exists());
-    let second = tune::autotune(&gpu, 1019, Some(&cache), false).expect("autotune from cache");
+    let second = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("autotune from cache");
     assert!(second.from_cache);
     assert_eq!(second.cfg, first.cfg);
-    let third = tune::autotune(&gpu, 1019, Some(&cache), true).expect("retune");
+    let third = tune::autotune(&gpu, 1019, Some(&cache), true, Auto).expect("retune");
     assert!(!third.from_cache);
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -106,7 +107,7 @@ fn autotune_picks_a_verified_config_and_uses_its_cache() {
 #[test]
 fn a_corrupt_cache_is_ignored_and_rewritten() {
     let Some(gpu) = gpu() else { return };
-    if skip_unless(!tune::candidates(&gpu, 1019).is_empty(), "no subgroup candidates on this adapter") {
+    if skip_unless(!tune::candidates(&gpu, 1019, Auto).is_empty(), "no subgroup candidates on this adapter") {
         return;
     }
     let (dir, cache) = temp_cache("corrupt");
@@ -123,10 +124,10 @@ fn a_corrupt_cache_is_ignored_and_rewritten() {
         format!("{key}|unrolled 4294967295 4294967295|1e9"),
     ];
     std::fs::write(&cache, garbage.join("\n") + "\n").unwrap();
-    let tuned = tune::autotune(&gpu, 1019, Some(&cache), false).expect("retune after corrupt cache");
+    let tuned = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("retune after corrupt cache");
     assert!(!tuned.from_cache);
     // A valid entry was written back: the next call is served from the cache.
-    let again = tune::autotune(&gpu, 1019, Some(&cache), false).expect("autotune from rewritten cache");
+    let again = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("autotune from rewritten cache");
     assert!(again.from_cache);
     assert_eq!(again.cfg, tuned.cfg);
     let _ = std::fs::remove_dir_all(dir);
@@ -135,14 +136,14 @@ fn a_corrupt_cache_is_ignored_and_rewritten() {
 #[test]
 fn a_cache_entry_naming_a_non_candidate_falls_back_to_a_retune() {
     let Some(gpu) = gpu() else { return };
-    if skip_unless(!tune::candidates(&gpu, 1019).is_empty(), "no subgroup candidates on this adapter") {
+    if skip_unless(!tune::candidates(&gpu, 1019, Auto).is_empty(), "no subgroup candidates on this adapter") {
         return;
     }
     let (dir, cache) = temp_cache("noncand");
     let key = seed_cache(&gpu, &cache);
     // tpi 8 with wg 100 is not among the candidates (wg is 64, 128 or 256).
     std::fs::write(&cache, format!("{key}|unrolled 8 100|1e9\n")).unwrap();
-    let tuned = tune::autotune(&gpu, 1019, Some(&cache), false).expect("retune");
+    let tuned = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("retune");
     assert!(!tuned.from_cache);
     assert_ne!(tuned.squarings_per_sec, 1e9);
     let _ = std::fs::remove_dir_all(dir);
@@ -263,24 +264,246 @@ fn self_test_refuses_lengths_too_small_for_a_meaningful_test_instead_of_hanging(
 #[test]
 fn autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers() {
     let Some(gpu) = gpu() else { return };
-    if skip_unless(!tune::candidates(&gpu, 20).is_empty(), "no subgroup candidates on this adapter") {
+    if skip_unless(!tune::candidates(&gpu, 20, Auto).is_empty(), "no subgroup candidates on this adapter") {
         return;
     }
     let (dir, cache) = temp_cache("class");
     // 2 bits: only the number 3 exists, so a self-test at 2 bits would be impossible; the class
     // representative (48 bits) is used.
-    let first = tune::autotune(&gpu, 2, Some(&cache), false).expect("autotune at 2 bits");
+    let first = tune::autotune(&gpu, 2, Some(&cache), false, Auto).expect("autotune at 2 bits");
     assert!(!first.from_cache);
     assert_eq!(first.cfg, KernelConfig::for_bits(2, first.cfg.tpi, first.cfg.wg, Variant::Unrolled));
     for bits in [20u32, 40, 48] {
-        let again = tune::autotune(&gpu, bits, Some(&cache), false).expect("autotune from the class entry");
+        let again = tune::autotune(&gpu, bits, Some(&cache), false, Auto).expect("autotune from the class entry");
         assert!(again.from_cache, "{bits} bits shares the 2-bit class and must be served from the cache");
         assert_eq!(again.cfg, KernelConfig::for_bits(bits, first.cfg.tpi, first.cfg.wg, Variant::Unrolled));
     }
     let lines = std::fs::read_to_string(&cache).unwrap().lines().filter(|l| !l.is_empty()).count();
     assert_eq!(lines, 1, "one cache line for the whole class");
     // 49 bits is the next class: not served from that entry.
-    let next = tune::autotune(&gpu, 49, Some(&cache), false).expect("autotune at 49 bits");
+    let next = tune::autotune(&gpu, 49, Some(&cache), false, Auto).expect("autotune at 49 bits");
     assert!(!next.from_cache);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// ---- the limb scheme dimension: choice, cache text and keys (pure, no GPU) ----
+
+#[test]
+fn scheme_choice_parses_auto_13_and_32_and_rejects_everything_else() {
+    assert_eq!(SchemeChoice::parse("auto"), Ok(Auto));
+    assert_eq!(SchemeChoice::parse("13"), Ok(Only(Limb13)));
+    assert_eq!(SchemeChoice::parse("32"), Ok(Only(Limb32)));
+    for bad in ["64", "", "Auto", "13 ", "0x20", "-1"] {
+        let err = SchemeChoice::parse(bad).expect_err(bad);
+        assert!(err.contains("auto") && err.contains("13") && err.contains("32"), "the error names the allowed values: {err}");
+    }
+    assert_eq!(SchemeChoice::default(), Auto);
+}
+
+#[test]
+fn scheme_choice_allows_what_it_names() {
+    for s in [Limb13, Limb32] {
+        assert!(Auto.allows(s));
+        assert!(Only(s).allows(s));
+    }
+    assert!(!Only(Limb13).allows(Limb32));
+    assert!(!Only(Limb32).allows(Limb13));
+}
+
+#[test]
+fn cache_values_round_trip_for_both_schemes_and_old_lines_stay_valid() {
+    for scheme in [Limb13, Limb32] {
+        let cfg = KernelConfig::for_bits_scheme(scheme, 1019, 8, 64, Variant::Unrolled);
+        let v = tune::cache_value(&cfg, 123.5);
+        assert_eq!(tune::parse_value(&v), Some((scheme, 8, 64, 123.5)), "{v}");
+    }
+    // 13-bit winners keep the exact text older versions wrote and read.
+    let c13 = KernelConfig::for_bits_scheme(Limb13, 1019, 16, 128, Variant::Unrolled);
+    assert_eq!(tune::cache_value(&c13, 123.5), "unrolled 16 128|123.5");
+    let c32 = KernelConfig::for_bits_scheme(Limb32, 1019, 16, 128, Variant::Unrolled);
+    assert_eq!(tune::cache_value(&c32, 9.5), "unrolled32 16 128|9.5");
+
+    assert_eq!(tune::parse_value("unrolled 8 64|123.5"), Some((Limb13, 8, 64, 123.5)));
+    assert_eq!(tune::parse_value("unrolled32 8 64|9.5"), Some((Limb32, 8, 64, 9.5)));
+    for bad in ["unrolled64 8 64|9.5", "rolled 8 64|9.5", "unrolled32 8|9.5", "unrolled32 8 64|nan", "unrolled32 8 64|-1", "unrolled32 x 64|1", "", "|", "unrolled 8 64"] {
+        assert_eq!(tune::parse_value(bad), None, "{bad:?} must be a miss");
+    }
+}
+
+#[test]
+fn a_forced_scheme_has_its_own_cache_key_and_never_touches_the_auto_entry() {
+    use bigmont_cli::tune::cache_key_text;
+    let class = tune::limb_class(1019);
+    let auto = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Auto);
+    let f13 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb13));
+    let f32 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb32));
+    // The Auto key is what older versions wrote: name|backend|driver driver_info|class.
+    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|{class}"));
+    assert_eq!(f13, format!("Some GPU|Vulkan|drv info|only-13|{class}"));
+    assert_eq!(f32, format!("Some GPU|Vulkan|drv info|only-32|{class}"));
+    for (a, b) in [(&auto, &f13), (&auto, &f32), (&f13, &f32)] {
+        assert_ne!(a, b);
+        assert!(!b.starts_with(&format!("{a}|")) && !a.starts_with(&format!("{b}|")), "neither key is a prefix of the other");
+    }
+    // Same class, same adapter: the key is still shared across the class.
+    assert_eq!(cache_key_text("Some GPU", "Vulkan", "drv", "info", tune::class_bits(class), Only(Limb32)), f32);
+
+    let dir = std::env::temp_dir().join(format!("bigmont-key-test-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let cache = dir.join("tune.cache");
+    tune::write_cache(&cache, &auto, "unrolled 8 64|1");
+    tune::write_cache(&cache, &f32, "unrolled32 8 64|2");
+    tune::write_cache(&cache, &f13, "unrolled 4 64|3");
+    // Rewriting each key replaces only its own line.
+    tune::write_cache(&cache, &auto, "unrolled 16 64|4");
+    tune::write_cache(&cache, &f32, "unrolled32 16 64|5");
+    let mut lines: Vec<String> = std::fs::read_to_string(&cache).unwrap().lines().map(str::to_string).collect();
+    lines.sort();
+    let mut want = vec![format!("{auto}|unrolled 16 64|4"), format!("{f32}|unrolled32 16 64|5"), format!("{f13}|unrolled 4 64|3")];
+    want.sort();
+    assert_eq!(lines, want);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// ---- the limb scheme dimension on a real adapter ----
+
+fn skip_without_int64(gpu: &Gpu) -> bool {
+    skip_unless(gpu.has_int64, "this adapter lacks SHADER_INT64, so no 32-bit kernel can run")
+}
+
+#[test]
+fn candidates_offer_a_scheme_only_when_the_adapter_caps_allow_it() {
+    let Some(gpu) = gpu() else { return };
+    if skip_unless(gpu.has_subgroups, "no subgroups on this adapter, so there are no candidates at all") {
+        return;
+    }
+    let bits = tune::class_bits(tune::limb_class(1019));
+    let auto = tune::candidates(&gpu, bits, Auto);
+    let c13 = tune::candidates(&gpu, bits, Only(Limb13));
+    let c32 = tune::candidates(&gpu, bits, Only(Limb32));
+    assert_eq!(auto.iter().any(|c| c.scheme == Limb32), gpu.has_int64, "Auto offers 32-bit kernels iff the adapter has int64");
+    assert!(auto.iter().any(|c| c.scheme == Limb13));
+    assert!(c13.iter().all(|c| c.scheme == Limb13) && !c13.is_empty());
+    assert_eq!(c32.is_empty(), !gpu.has_int64);
+    assert!(c32.iter().all(|c| c.scheme == Limb32));
+    // Auto is exactly the union of the two forced sets.
+    assert_eq!(auto.len(), c13.len() + c32.len());
+    for cfg in &auto {
+        assert!(gpu.caps().satisfies(cfg.requires()), "{cfg:?}");
+        assert!(cfg.validate().is_ok(), "{cfg:?}");
+        assert!(gpu.check_subgroups(cfg.tpi).is_ok());
+        assert_eq!(*cfg, KernelConfig::for_bits_scheme(cfg.scheme, bits, cfg.tpi, cfg.wg, Variant::Unrolled));
+    }
+}
+
+#[test]
+fn a_forced_32_bit_autotune_returns_a_verified_32_bit_kernel() {
+    let Some(gpu) = gpu() else { return };
+    if skip_without_int64(&gpu) || skip_unless(gpu.has_subgroups, "no subgroups") {
+        return;
+    }
+    let (dir, cache) = temp_cache("only32");
+    let t = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect("forced 32-bit autotune");
+    assert_eq!(t.cfg.scheme, Limb32);
+    assert!(!t.from_cache && t.squarings_per_sec > 0.0);
+    let bits = tune::class_bits(tune::limb_class(1019));
+    assert!(tune::candidates(&gpu, bits, Only(Limb32)).contains(&t.cfg));
+    tune::self_test(&gpu, t.cfg, bits).expect("the winner passes its self-test again");
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.contains("|only-32|") && text.contains("|unrolled32 "), "{text}");
+    let again = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect("from cache");
+    assert!(again.from_cache);
+    assert_eq!(again.cfg, t.cfg);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_forced_13_bit_autotune_returns_a_13_bit_kernel() {
+    let Some(gpu) = gpu() else { return };
+    if skip_unless(gpu.has_subgroups, "no subgroups") {
+        return;
+    }
+    let (dir, cache) = temp_cache("only13");
+    let t = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb13)).expect("forced 13-bit autotune");
+    assert_eq!(t.cfg.scheme, Limb13);
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(text.contains("|only-13|") && text.contains("|unrolled "), "{text}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn auto_caches_its_winner_with_the_scheme_and_a_forced_run_leaves_that_entry_alone() {
+    let Some(gpu) = gpu() else { return };
+    if skip_unless(gpu.has_subgroups, "no subgroups") {
+        return;
+    }
+    let (dir, cache) = temp_cache("autoscheme");
+    let bits = tune::class_bits(tune::limb_class(1019));
+    let first = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("auto autotune");
+    assert!(!first.from_cache);
+    assert!(tune::candidates(&gpu, bits, Auto).contains(&first.cfg), "{:?}", first.cfg);
+    eprintln!("Auto chose {:?} on {}", first.cfg, gpu.describe());
+    let text = std::fs::read_to_string(&cache).unwrap();
+    let line = text.lines().next().unwrap();
+    let value = line.strip_prefix(&format!("{}|", tune::cache_key(&gpu, 1019, Auto))).expect("the Auto key is unchanged");
+    assert_eq!(tune::parse_value(value).map(|(s, t, w, _)| (s, t, w)), Some((first.cfg.scheme, first.cfg.tpi, first.cfg.wg)));
+    assert!(!line.contains("only-"));
+
+    let second = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("auto from cache");
+    assert!(second.from_cache);
+    assert_eq!(second.cfg, first.cfg);
+
+    // A forced run adds its own line and does not replace or delete the Auto one.
+    let forced = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb13)).expect("forced 13");
+    assert!(!forced.from_cache);
+    let lines = std::fs::read_to_string(&cache).unwrap().lines().filter(|l| !l.is_empty()).count();
+    assert_eq!(lines, 2, "one Auto line and one forced line");
+    let third = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("auto from cache again");
+    assert!(third.from_cache, "the forced run must not have disturbed the Auto entry");
+    assert_eq!(third.cfg, first.cfg);
+    // A forced retune replaces only the forced line.
+    let _ = tune::autotune(&gpu, 1019, Some(&cache), true, Only(Limb13)).expect("forced retune");
+    assert_eq!(std::fs::read_to_string(&cache).unwrap().lines().filter(|l| !l.is_empty()).count(), 2);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_cache_line_from_another_scheme_or_an_unknown_word_is_a_miss() {
+    let Some(gpu) = gpu() else { return };
+    if skip_unless(gpu.has_subgroups, "no subgroups") {
+        return;
+    }
+    let (dir, cache) = temp_cache("foreign");
+    // Under Only(Limb13) a 32-bit line (even one planted under the forced key) is not a candidate.
+    let key = tune::cache_key(&gpu, 1019, Only(Limb13));
+    tune::write_cache(&cache, &key, "unrolled32 8 64|1e9");
+    let t = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb13)).expect("retune");
+    assert!(!t.from_cache);
+    assert_eq!(t.cfg.scheme, Limb13);
+    assert_ne!(t.squarings_per_sec, 1e9);
+    // An unknown first word is a miss under Auto too.
+    let auto_key = tune::cache_key(&gpu, 1019, Auto);
+    tune::write_cache(&cache, &auto_key, "unrolled64 8 64|1e9");
+    let t = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("retune");
+    assert!(!t.from_cache);
+    assert_ne!(t.squarings_per_sec, 1e9);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_32_bit_cache_line_is_ignored_on_an_adapter_that_cannot_run_it() {
+    let Some(gpu) = gpu() else { return };
+    if gpu.has_int64 || !gpu.has_subgroups {
+        // Not applicable here (not a missing environment): a 32-bit line is valid on this adapter.
+        eprintln!("N/A: this adapter has int64 (or no subgroups), so a 32-bit cache line is valid here");
+        return;
+    }
+    let (dir, cache) = temp_cache("noint64");
+    tune::write_cache(&cache, &tune::cache_key(&gpu, 1019, Auto), "unrolled32 8 64|1e9");
+    let t = tune::autotune(&gpu, 1019, Some(&cache), false, Auto).expect("retune");
+    assert!(!t.from_cache);
+    assert_eq!(t.cfg.scheme, Limb13);
+    let err = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect_err("no int64");
+    assert!(err.contains("int64"), "{err}");
     let _ = std::fs::remove_dir_all(dir);
 }

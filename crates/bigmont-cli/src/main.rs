@@ -2,7 +2,11 @@
 //!
 //!   bigmont CAND VERDICT [engine flags]
 //!   bigmont canary CAND EXPECTED [engine flags]
-//!   bigmont tune [--bits N] [--adapter S] [--vk-backend S] [--device N] [--cache PATH | --no-cache]
+//!   bigmont tune [--bits N] [--limbs auto|13|32] [--adapter S] [--vk-backend S] [--device N] [--cache PATH | --no-cache]
+//!
+//! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
+//! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
+//! scheme keeps its own tuning-cache entries.
 //!
 //! Tuning cache: `--cache PATH`, else `$BIGMONT_CACHE`, else a per-user file (`%LOCALAPPDATA%\bigmont\tune.cache`
 //! on Windows, `$XDG_CACHE_HOME/bigmont/tune.cache` or `~/.cache/bigmont/tune.cache` elsewhere); `--no-cache`
@@ -21,9 +25,10 @@ use std::time::Instant;
 const CHUNK: usize = 1 << 15;
 
 const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N]
-                    [--retune] [--cache PATH | --no-cache] [--verify-rate N] [--repeat N] [--lock PATH]
+                    [--limbs auto|13|32] [--retune] [--cache PATH | --no-cache] [--verify-rate N] [--repeat N] [--lock PATH]
        bigmont canary CAND EXPECTED [same engine flags]
-       bigmont tune [--bits N] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
+       bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
+limb scheme: --limbs auto (default) measures every scheme the adapter can run and uses the fastest; 13 or 32 forces one
 tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPPDATA%\\bigmont\\tune.cache on Windows,
               $XDG_CACHE_HOME/bigmont/tune.cache or ~/.cache/bigmont/tune.cache elsewhere); --no-cache disables it";
 
@@ -76,7 +81,7 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             a.no_cache = true;
             continue;
         }
-        if !matches!(flag, "--backend" | "--adapter" | "--vk-backend" | "--device" | "--cache" | "--verify-rate" | "--repeat" | "--lock" | "--bits") {
+        if !matches!(flag, "--backend" | "--adapter" | "--vk-backend" | "--device" | "--cache" | "--verify-rate" | "--repeat" | "--lock" | "--bits" | "--limbs") {
             return Err(usage_err(format!("unknown flag {flag}")));
         }
         let value = match inline {
@@ -98,6 +103,7 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             "--cache" => a.cache_flag = Some(PathBuf::from(value)),
             "--verify-rate" => a.opts.verify_rate = parse(flag, &value)?,
             "--bits" => a.bits = parse(flag, &value)?,
+            "--limbs" => a.opts.scheme = tune::SchemeChoice::parse(&value).map_err(|e| usage_err(format!("--limbs: {e}")))?,
             _ => eprintln!("bigmont: note: {flag} is accepted and ignored"), // --repeat, --lock
         }
     }
@@ -179,6 +185,14 @@ fn cmd_canary(a: Args) -> Result<ExitCode, String> {
     }
 }
 
+/// The `--limbs` spelling of `choice`.
+fn choice_name(choice: tune::SchemeChoice) -> &'static str {
+    match choice {
+        tune::SchemeChoice::Auto => "auto",
+        tune::SchemeChoice::Only(s) => s.name(),
+    }
+}
+
 fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     if !a.positional.is_empty() {
         return Err(usage_err("tune takes no positional arguments"));
@@ -187,23 +201,25 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     println!("adapter: {}", gpu.describe());
     // Tuning is per limb class: test and time at the class's representative length.
     let (class, bits) = (tune::limb_class(a.bits), tune::class_bits(tune::limb_class(a.bits)));
-    let cands = tune::candidates(&gpu, bits);
+    let choice = a.opts.scheme;
+    let cands = tune::candidates(&gpu, bits, choice);
     if cands.is_empty() {
-        return Err(format!("bigmont: no kernel configuration fits {} for {} bits", gpu.describe(), a.bits));
+        return Err(format!("bigmont: no kernel configuration fits {} for {} bits with --limbs {}", gpu.describe(), a.bits, choice_name(choice)));
     }
-    println!("{} bits: limb class {class}, tuned at {bits} bits, {} candidate configurations", a.bits, cands.len());
-    println!("{:>4} {:>5} {:>16}  {}", "tpi", "wg", "squarings/s", "status");
+    println!("{} bits: limb class {class}, tuned at {bits} bits, --limbs {}, {} candidate configurations", a.bits, choice_name(choice), cands.len());
+    println!("{:>6} {:>4} {:>5} {:>16}  {}", "scheme", "tpi", "wg", "squarings/s", "status");
     let mut best: Option<(f64, KernelConfig)> = None;
     for cfg in cands {
+        let scheme = cfg.scheme.name();
         match tune::self_test(&gpu, cfg, bits).and_then(|()| tune::measure(&gpu, cfg)) {
             Ok(rate) => {
-                println!("{:>4} {:>5} {:>16.0}  ok", cfg.tpi, cfg.wg, rate);
+                println!("{scheme:>6} {:>4} {:>5} {:>16.0}  ok", cfg.tpi, cfg.wg, rate);
                 if best.as_ref().is_none_or(|(r, _)| rate > *r) {
                     best = Some((rate, cfg));
                 }
             }
             Err(e) => {
-                println!("{:>4} {:>5} {:>16}  FAILED: {e}", cfg.tpi, cfg.wg, "-");
+                println!("{scheme:>6} {:>4} {:>5} {:>16}  FAILED: {e}", cfg.tpi, cfg.wg, "-");
                 if let Err(problem) = gpu.check_health() {
                     return Err(format!("bigmont: the GPU failed during tuning ({problem}); nothing cached, rerun `bigmont tune`"));
                 }
@@ -212,10 +228,10 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     }
     match best {
         Some((rate, cfg)) => {
-            println!("best: tpi {} wg {} at {rate:.0} squarings/s", cfg.tpi, cfg.wg);
+            println!("best: scheme {} tpi {} wg {} at {rate:.0} squarings/s", cfg.scheme.name(), cfg.tpi, cfg.wg);
             match &a.opts.cache {
                 Some(path) => {
-                    tune::store(&gpu, bits, &cfg, rate, path);
+                    tune::store(&gpu, bits, choice, &cfg, rate, path);
                     println!("cached in {}", path.display());
                 }
                 None => println!("not cached (--no-cache, or no cache location)"),

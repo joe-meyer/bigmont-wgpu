@@ -13,7 +13,7 @@
 
 use crate::tune;
 use bigmont_core::gpu::{AdapterSelector, Gpu, is_device_error};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::KernelConfig;
 use bigmont_core::runner::Runner;
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, HashMap};
@@ -40,6 +40,9 @@ pub struct Options {
     /// `BIGMONT_CACHE` or the per-user default; the library default is no cache.)
     pub cache: Option<PathBuf>,
     pub retune: bool,
+    /// Which limb schemes the tuner may pick from (`--limbs`): `Auto` (the default) takes whichever
+    /// the adapter runs fastest, `Only(s)` forces one. A forced scheme has its own cache entries.
+    pub scheme: tune::SchemeChoice,
     /// One in `verify_rate` GPU composites is re-checked on the CPU (0 = never). Every GPU
     /// probable prime is always re-checked.
     pub verify_rate: u32,
@@ -76,6 +79,7 @@ impl Default for Options {
             selector: AdapterSelector::default(),
             cache: None,
             retune: false,
+            scheme: tune::SchemeChoice::Auto,
             verify_rate: 4096,
             min_gpu_batch: 64,
             capacity: 16384,
@@ -412,7 +416,7 @@ impl Engine {
             // Tune once per limb class, not per bit length; the Runner is still per exact length.
             let class = tune::limb_class(bits);
             if !self.tuned.contains_key(&class) {
-                let tuned = tune::autotune(gpu, bits, self.opts.cache.as_deref(), self.opts.retune).map(|t| t.cfg);
+                let tuned = tune::autotune(gpu, bits, self.opts.cache.as_deref(), self.opts.retune, self.opts.scheme).map(|t| t.cfg);
                 if let Err(e) = &tuned
                     && device_failure(gpu, e)
                 {
@@ -423,11 +427,10 @@ impl Engine {
                 self.tuned.insert(class, tuned);
             }
             let built = match &self.tuned[&class] {
-                // The class's kernel shape (tpi, wg) at this exact length: same limb count by construction.
-                Ok(tuned) => {
-                    let cfg = KernelConfig::for_bits(bits, tuned.tpi, tuned.wg, Variant::Unrolled);
-                    Runner::new(gpu, cfg, bits, self.opts.capacity)
-                }
+                // The class's kernel shape (scheme, tpi, wg) at this exact length. A 32-bit kernel's
+                // limb count can be smaller than at the class's representative length, which the
+                // self-test at the representative covers (see `tune::autotune`).
+                Ok(tuned) => Runner::new(gpu, tuned.retarget(bits), bits, self.opts.capacity),
                 Err(e) => Err(e.clone()),
             };
             self.report.tune_secs += t.elapsed().as_secs_f64();
