@@ -1,0 +1,79 @@
+== limbs 13 run 1
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 80961150 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 83067309 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 85437414 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 79714688 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 80955341 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 81248574 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 61279949 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 64115154 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 66787818 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 42975955 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 46154824 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 49088571 squarings/s
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 11.83 s (8.19 s tuning) | 35972.3 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 13 run 2
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 4.57 s (0.90 s tuning) | 35740.1 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 13 run 3
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 4.57 s (0.90 s tuning) | 35701.2 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 1
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 139127917 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 146155096 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 152513482 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 124537149 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 131504485 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 136877709 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 102281999 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 108656150 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 113214498 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 74445751 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 80142863 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 83021432 squarings/s
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 7.99 s (5.86 s tuning) | 61616.5 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 2
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 2.77 s (0.62 s tuning) | 61038.3 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 3
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 2.74 s (0.60 s tuning) | 61231.7 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 1
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 81252814 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 82432589 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 85324707 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 79966024 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 80718994 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 80872159 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 61013340 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 64085704 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 66388304 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13 }: 43035537 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13 }: 46152634 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13 }: 48955971 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 138974420 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 146653614 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 152496289 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 124563588 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 130375951 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 136201301 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 101631401 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 107887087 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 112314226 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32 }: 73674185 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32 }: 79754167 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64, scheme: Limb32 }: 83330232 squarings/s
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 15.72 s (13.64 s tuning) | 62973.3 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 2
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 2.80 s (0.66 s tuning) | 61299.3 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 3
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+bigmont: GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 2.75 s (0.62 s tuning) | 61298.5 tests/s excluding tuning | PRP 197 | disagreements: prp 0, composite 0 | rechecks 222 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+76b44291e86faa81  <home>/fx-13.verdict
+76b44291e86faa81  <home>/fx-32.verdict
+76b44291e86faa81  <home>/fx-auto.verdict
+76b44291e86faa81  out/rtx4070-gpu131k.verdict

@@ -1,0 +1,62 @@
+wrote 16387 candidates (16384 random + 3 probable primes, 2029 bits, 2048-bit container) to <root>/cand_16384.bin
+== tune auto
+adapter: Quadro P4000 [Vulkan, DiscreteGpu] subgroup 32..32
+2029 bits: limb class 157, tuned at 2037 bits, --limbs auto, 24 candidate configurations
+scheme  tpi    wg      squarings/s  status
+    13    4    64          4129302  ok
+    13    4   128          4145570  ok
+    13    4   256          4318322  ok
+    13    8    64         10237394  ok
+    13    8   128         11791266  ok
+    13    8   256         12722497  ok
+    13   16    64         11512253  ok
+    13   16   128         12419993  ok
+    13   16   256         12157023  ok
+    13   32    64          9195893  ok
+    13   32   128         10038577  ok
+    13   32   256          9835654  ok
+    32    4    64         17438685  ok
+    32    4   128         17552478  ok
+    32    4   256         14075600  ok
+    32    8    64         17847590  ok
+    32    8   128         19376446  ok
+    32    8   256         20799185  ok
+    32   16    64         18929060  ok
+    32   16   128         19876463  ok
+    32   16   256         20938176  ok
+    32   32    64         15126044  ok
+    32   32   128         15591441  ok
+    32   32   256         15627965  ok
+best: scheme 32 tpi 16 wg 256 at 20938176 squarings/s
+not cached (--no-cache, or no cache location)
+== limbs 13 run 1
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 20.96 s (17.87 s tuning) | 5309.9 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 13 run 2
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 4.70 s (1.55 s tuning) | 5190.1 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 13 run 3
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 4.67 s (1.69 s tuning) | 5503.4 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 1
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 12.99 s (10.96 s tuning) | 8090.6 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 2
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 3.20 s (1.10 s tuning) | 7834.1 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 3
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 3.47 s (1.35 s tuning) | 7739.2 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 1
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 31.46 s (29.48 s tuning) | 8273.7 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 2
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 3.43 s (1.42 s tuning) | 8152.6 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 3
+bigmont: GPU: Quadro P4000 [Vulkan]
+bigmont: GPU: Quadro P4000 [Vulkan] | tests 16387 (gpu 16387, cpu 0) | 3.42 s (1.48 s tuning) | 8451.0 tests/s excluding tuning | PRP 31 | disagreements: prp 0, composite 0 | rechecks 34 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+5a2a3e407d0ce2fb  <root>/fx-13.verdict
+5a2a3e407d0ce2fb  <root>/fx-32.verdict
+5a2a3e407d0ce2fb  <root>/fx-auto.verdict
+DONE

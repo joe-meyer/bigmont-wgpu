@@ -116,3 +116,14 @@ Phase 1 delivered: reusable Fermat `Runner`, size classes, `Target::Browser` sou
 - (Done, trigger shown) Windows exit crash 0xC0000409 with all backends (6/60) vs Vulkan only, Vulkan + Dx12 and the new default (0/60 each): default instance backends are now Vulkan, Dx12, Metal; `BIGMONT_INSTANCE_BACKENDS` overrides. Mechanism inside AMD's `atio6axx.dll` not shown; `engine` and `chain` binaries not re-looped under the new default.
 - Open: NVIDIA Xid 32 / "Parent device is lost" / rare hangs on the RTX 4070 laptop, about 0.7% to 4% of processes, independent of kernels, backends, TLS and device count (no-op dispatch 1/150, `vulkaninfo` alone 0/150); also hit gapsieve and broken_fast_pat earlier. The engine now survives it: device-lost and uncaptured-error handlers, a poll timeout, and re-open/retry followed by CPU fallback (done; see the item above and investigation doc section 4). Still the user's decision: whether to try another NVIDIA driver build or the proprietary kernel module.
 - Open: share one `Gpu` per process in the test helpers (`tests/common`) to cut device churn.
+
+## Limb-scheme factory (2026-11-25; see `results/2026-11-25-limb-factory-validation.md`)
+
+- **Forced scheme without the capability**: `--limbs 32` on an adapter without `SHADER_INT64` sends every bucket to the CPU with a per-bucket message. Check the capability once at `Engine::open` and fail (or report once).
+- **Squaring symmetry**: a squaring needs about half the multiplies of a general product; neither scheme uses it. Try it on the one-thread kernel first (as the 13-bit vs 32-bit comparison did), then the cooperative kernel.
+- **What the NVIDIA compiler emits** for the 32-bit kernel is unknown (no SASS inspection); CUDA's per-squaring dynamic instruction counts are unobtainable without profiler counters. The remaining gap to Beacon on the RTX 4070 is about 1.8x in the kernel and about 18% in the engine.
+- **The 13-bit TPI 8 kernel is 20x slower than TPI 4 on the RX 6700 XT** (3.9 M against 84 M squarings/s at workgroup 64). Predates this work; not investigated.
+- **Untested**: adapters without int64, Intel, Apple, DX12/Metal int64, a real browser compile of the 13-bit sources.
+- **The `wrap` branch** of the 32-bit carry logic is argued correct but unreachable by random tests (about a 2^-30 event per element). A host-side model that searches for a state hitting it would close this.
+- **Test strictness**: `the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu` used to skip silently when a subgroup width did not fit; it now fails in strict mode on narrow-subgroup adapters (per the plan's strict policy).
+- **Plan text** `docs/superpowers/plans/2026-11-25-limb-scheme-factory.md` still says the Auto cache key is unchanged; the implemented key carries an `any` token (see the validation document).

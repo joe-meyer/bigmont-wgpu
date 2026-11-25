@@ -1,0 +1,8 @@
+== auto run 1 (final binary)
+tests 131075 (gpu 131072, cpu 3) | 15.60 s (13.53 s tuning) | 63330.5 tests/s excluding tuning
+== auto run 2 (final binary)
+tests 131075 (gpu 131072, cpu 3) | 2.76 s (0.64 s tuning) | 61700.8 tests/s excluding tuning
+== cache line
+NVIDIA GeForce RTX 4070 Laptop GPU|Vulkan|NVIDIA 580.178.04|any|157|unrolled32 4 256|152355255.51664314
+76b44291e86faa81  <home>/fxf-auto.verdict
+76b44291e86faa81  out/rtx4070-gpu131k.verdict

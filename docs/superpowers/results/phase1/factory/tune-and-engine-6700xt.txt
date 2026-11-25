@@ -1,0 +1,62 @@
+wrote 131075 candidates (131072 random + 3 probable primes, 2029 bits, 2048-bit container) to <tmp>/cand_131072.bin
+== tune auto
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+2029 bits: limb class 157, tuned at 2037 bits, --limbs auto, 24 candidate configurations
+scheme  tpi    wg      squarings/s  status
+    13    4    64         58850905  ok
+    13    4   128         84226862  ok
+    13    4   256         57945261  ok
+    13    8    64          3927433  ok
+    13    8   128          4729442  ok
+    13    8   256         10089854  ok
+    13   16    64         32284042  ok
+    13   16   128         31595177  ok
+    13   16   256         34433166  ok
+    13   32    64         36597020  ok
+    13   32   128         41228873  ok
+    13   32   256         44604928  ok
+    32    4    64         12534843  ok
+    32    4   128          8358677  ok
+    32    4   256         13993682  ok
+    32    8    64         48203797  ok
+    32    8   128         49213555  ok
+    32    8   256         49565055  ok
+    32   16    64         39718637  ok
+    32   16   128         41218096  ok
+    32   16   256         41681779  ok
+    32   32    64         29256898  ok
+    32   32   128         31134647  ok
+    32   32   256         32115454  ok
+best: scheme 13 tpi 4 wg 128 at 84226862 squarings/s
+not cached (--no-cache, or no cache location)
+== limbs 13 run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 12.70 s (8.57 s tuning) | 31729.0 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 13 run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 4.97 s (0.98 s tuning) | 32871.0 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 13 run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 5.72 s (0.95 s tuning) | 27463.2 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 13.79 s (7.52 s tuning) | 20905.5 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 6.97 s (0.68 s tuning) | 20861.6 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs 32 run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 7.00 s (0.69 s tuning) | 20802.1 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 1
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 21.68 s (16.30 s tuning) | 24335.6 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 2
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 5.08 s (0.98 s tuning) | 31915.5 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+== limbs auto run 3
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
+bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan] | tests 131075 (gpu 131072, cpu 3) | 5.39 s (1.10 s tuning) | 30523.4 tests/s excluding tuning | PRP 196 | disagreements: prp 0, composite 0 | rechecks 221 | gpu errors 0 | device losses 0 (recovered 0, poll timeouts 0)
+ab0d502b17b2bcdb *<tmp>/fx-13.verdict
+ab0d502b17b2bcdb *<tmp>/fx-32.verdict
+ab0d502b17b2bcdb *<tmp>/fx-auto.verdict
+DONE
