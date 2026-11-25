@@ -1,0 +1,221 @@
+# note: machine-specific home paths (/home/<user>) replaced with ~ after the run (9 lines); nothing else changed
+# command: BIGMONT_ADAPTER=4070 CARGO_TARGET_DIR=$HOME/bigmont-devloss-target cargo test --release -p bigmont-core --lib --test devloss -- --test-threads=1 2>&1; cargo test --release -p bigmont-cli --no-fail-fast --lib --test devloss --test canary -- --test-threads=1 --nocapture 2>&1
+# host: test-laptop
+# adapter: NVIDIA GeForce RTX 4070 Laptop GPU, 580.178.04
+# commit: db7b8e7
+# date: 2026-11-25T04:52:38Z
+# Xid lines in kernel log before: 98
+   Compiling bigmont-oracle v0.1.0 (~/bigmont-devloss/crates/bigmont-oracle)
+   Compiling bigmont-core v0.1.0 (~/bigmont-devloss/crates/bigmont-core)
+    Finished `release` profile [optimized] target(s) in 1.06s
+     Running unittests src/lib.rs (~/bigmont-devloss-target/release/build/bigmont-core/4000a2deb77d063f/out/bigmont_core-4000a2deb77d063f)
+
+running 8 tests
+test gpu::tests::a_first_loss_by_destroy_is_idle_and_dropped_normally ... ok
+test gpu::tests::classifies_device_level_errors ... ok
+test gpu::tests::health_reports_the_most_serious_problem_first ... ok
+test gpu::tests::parses_backend_lists ... ok
+test gpu::tests::parses_poll_timeouts ... ok
+test gpu::tests::rejects_unknown_or_empty_lists ... ok
+test gpu::tests::same_adapter_compares_identity_and_driver ... ok
+test gpu::tests::the_default_leaves_gl_out ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/devloss.rs (~/bigmont-devloss-target/release/build/bigmont-core/ad32b640dbf84c8f/out/devloss-ad32b640dbf84c8f)
+
+running 7 tests
+test a_destroyed_device_gives_device_lost_errors_not_panics ... ok
+test a_panicking_poll_is_a_driver_loss_and_the_device_is_leaked_on_drop ... ok
+test a_poll_that_never_returns_is_abandoned_after_the_grace_period ... ok
+test a_wait_longer_than_the_poll_timeout_is_a_timed_out_error ... ok
+test an_uncaptured_wgpu_error_is_recorded_instead_of_panicking ... ok
+test the_device_lost_callback_and_handlers_survive_from_parts ... ok
+test the_poll_panic_hook_reaches_the_entry_points ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.90s
+
+   Compiling bigmont-cpu v0.1.0 (~/bigmont-devloss/crates/bigmont-cpu)
+   Compiling bigmont-cli v0.1.0 (~/bigmont-devloss/crates/bigmont-cli)
+    Finished `release` profile [optimized] target(s) in 0.76s
+     Running unittests src/lib.rs (~/bigmont-devloss-target/release/build/bigmont-cli/3b435291acf84588/out/bigmont_cli-3b435291acf84588)
+
+running 2 tests
+test engine::tests::a_reopened_adapter_without_subgroups_follows_the_open_rules ... ok
+test engine::tests::the_same_adapter_keeps_its_tuning_and_a_different_one_is_retuned ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/canary.rs (~/bigmont-devloss-target/release/build/bigmont-cli/f961ae30158e19bc/out/canary-f961ae30158e19bc)
+
+running 11 tests
+test a_cpu_run_passes_without_gpu_tests ... ok
+test a_differing_verdict_fails_and_names_the_index ... ok
+test a_gpu_run_that_tested_nothing_on_the_gpu_fails ... ok
+test a_length_mismatch_fails ... ok
+test a_lost_device_fails_the_canary_even_when_it_recovered ... ok
+test all_failing_conditions_are_reported_together ... ok
+test canary_exits_0_for_a_matching_verdict_file ... ok
+test canary_exits_1_on_a_length_mismatch ... ok
+test canary_exits_1_when_one_verdict_byte_is_flipped ... ok
+test every_gpu_disagreement_or_error_fails_even_when_the_final_verdicts_match ... ok
+test matching_verdicts_and_a_healthy_gpu_pass ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/devloss.rs (~/bigmont-devloss-target/release/build/bigmont-cli/7178146366baafa5/out/devloss-7178146366baafa5)
+
+running 7 tests
+test a_different_adapter_after_a_reopen_is_tuned_again ... tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: 453399909 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: 466772172 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: 480047195 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: 346679972 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: 369256744 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: 383230924 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: 216351124 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: 230108285 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: 243959577 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: 112376400 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: 120349991 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: 129330825 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: 316933671 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: 320185557 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: 320981505 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: 241999923 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: 253981937 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: 263161262 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: 163991109 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: 173743257 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: 183530152 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: 78719147 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: 85046348 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: 91294148 squarings/s
+bigmont: test hook: destroying the current device
+bigmont: GPU device failure on the 777-bit bucket: device lost: Destroyed
+bigmont: the re-opened GPU is a different adapter (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); tuning again
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+adapter change: EngineReport { gpu_tests: 42, cpu_tests: 2, rechecks: 4, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 10.043283659, tuned_classes: 4, device_losses: 1, device_recoveries: 1, poll_timeouts: 0 }
+ok
+test a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu ... GPU: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan]
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: 454026228 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: 465500366 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: 480239860 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: 345921391 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: 369024414 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: 382923852 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: 215903188 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: 230154928 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: 243826514 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: 112096364 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: 120455275 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: 129917820 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: 315669592 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: 319813695 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: 321993958 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: 241071053 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: 254165195 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: 264909389 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: 163003977 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: 173743687 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: 184362167 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: 77928543 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: 85220361 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: 91035836 squarings/s
+before: EngineReport { gpu_tests: 21, cpu_tests: 1, rechecks: 2, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 9.864706275, tuned_classes: 2, device_losses: 0, device_recoveries: 0, poll_timeouts: 0 }
+bigmont: test hook: destroying the current device
+bigmont: GPU device failure on the 777-bit bucket: device lost: Destroyed
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+after: EngineReport { gpu_tests: 42, cpu_tests: 2, rechecks: 4, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 9.916075877, tuned_classes: 2, device_losses: 1, device_recoveries: 1, poll_timeouts: 0 }
+ok
+test a_panicking_poll_is_recovered_like_a_lost_device ... tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: 454595899 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: 466995841 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: 482466326 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: 346927210 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: 368212897 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: 383485245 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: 215867533 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: 230153561 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: 243509065 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: 112351453 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: 119902042 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: 129453873 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: 312991861 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: 319823218 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: 321897878 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: 241148365 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: 253023022 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: 265163169 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: 164045210 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: 173531874 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: 184342011 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: 78332867 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: 84920546 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: 91377160 squarings/s
+bigmont: test hook: the next GPU wait panics
+
+thread 'bigmont-gpu-wait' (488572) panicked at crates/bigmont-core/src/gpu.rs:391:42:
+Error in Device::poll: Parent device is lost (injected by a test hook)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+bigmont: GPU device failure on the 777-bit bucket: device lost: poll panicked: Error in Device::poll: Parent device is lost (injected by a test hook)
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+poll panic: EngineReport { gpu_tests: 42, cpu_tests: 2, rechecks: 4, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 0, tune_secs: 9.897837098, tuned_classes: 2, device_losses: 1, device_recoveries: 1, poll_timeouts: 0 }
+ok
+test a_poll_timeout_is_counted_and_the_verdicts_come_from_the_cpu ... bigmont: GPU device failure on the 777-bit bucket: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: GPU wait timed out after 0.001 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+bigmont: GPU device failure on the 777-bit bucket: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: GPU wait timed out after 0.001 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+bigmont: GPU device failure on the 777-bit bucket: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: GPU wait timed out after 0.001 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work
+bigmont: GPU device failure, not recovered within 2 re-opens in this call (device_retries): KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: GPU wait timed out after 0.001 ms (BIGMONT_POLL_TIMEOUT_MS); the device may never finish its work; using the CPU for the rest of this process
+timeout: EngineReport { gpu_tests: 0, cpu_tests: 22, rechecks: 0, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 1, tune_secs: 0.08806264899999999, tuned_classes: 0, device_losses: 3, device_recoveries: 2, poll_timeouts: 3 }
+ok
+test more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process ... bigmont: test hook: destroying the freshly opened device
+bigmont: GPU device failure on the 777-bit bucket: device lost: Destroyed
+bigmont: test hook: destroying the freshly opened device
+bigmont: the re-opened GPU device is unusable: device lost: Destroyed
+bigmont: test hook: destroying the freshly opened device
+bigmont: the re-opened GPU device is unusable: device lost: Destroyed
+bigmont: GPU device failure, not recovered within 2 re-opens in this call (device_retries): device lost: Destroyed; using the CPU for the rest of this process
+first: EngineReport { gpu_tests: 0, cpu_tests: 22, rechecks: 0, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 1, tune_secs: 6.112e-6, tuned_classes: 0, device_losses: 1, device_recoveries: 0, poll_timeouts: 0 }
+second: EngineReport { gpu_tests: 0, cpu_tests: 44, rechecks: 0, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 1, tune_secs: 6.112e-6, tuned_classes: 0, device_losses: 1, device_recoveries: 0, poll_timeouts: 0 }
+ok
+test the_default_allows_two_device_retries ... ok
+test the_lifetime_reopen_cap_makes_the_engine_cpu_only ... tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64 }: 454069544 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64 }: 466423313 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 64 }: 480734085 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 64 }: 345577923 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 64 }: 369356292 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 64 }: 383386202 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 64 }: 216575041 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 64 }: 229811872 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 64 }: 242754795 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 64 }: 112542607 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 64 }: 119843638 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 64 }: 129805769 squarings/s
+tune KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 80 }: 315213479 squarings/s
+tune KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 80 }: 320349515 squarings/s
+tune KernelConfig { tpi: 4, wg: 256, variant: Unrolled, limbs: 80 }: 322211968 squarings/s
+tune KernelConfig { tpi: 8, wg: 64, variant: Unrolled, limbs: 80 }: 241039954 squarings/s
+tune KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 80 }: 252942185 squarings/s
+tune KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 80 }: 263237158 squarings/s
+tune KernelConfig { tpi: 16, wg: 64, variant: Unrolled, limbs: 80 }: 163264734 squarings/s
+tune KernelConfig { tpi: 16, wg: 128, variant: Unrolled, limbs: 80 }: 173635549 squarings/s
+tune KernelConfig { tpi: 16, wg: 256, variant: Unrolled, limbs: 80 }: 183128909 squarings/s
+tune KernelConfig { tpi: 32, wg: 64, variant: Unrolled, limbs: 96 }: 78374411 squarings/s
+tune KernelConfig { tpi: 32, wg: 128, variant: Unrolled, limbs: 96 }: 84871522 squarings/s
+tune KernelConfig { tpi: 32, wg: 256, variant: Unrolled, limbs: 96 }: 90802590 squarings/s
+bigmont: test hook: destroying the current device
+bigmont: GPU device failure on the 777-bit bucket: device lost: Destroyed
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+bigmont: test hook: destroying the current device
+bigmont: GPU device failure on the 777-bit bucket: device lost: Destroyed
+bigmont: GPU device re-opened (NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32); re-running the 777-bit bucket
+bigmont: test hook: destroying the current device
+bigmont: GPU device failure on the 777-bit bucket: device lost: Destroyed
+bigmont: GPU device failure, the engine's limit of 2 re-opens (device_retries_total) is used up: device lost: Destroyed; using the CPU for the rest of this process
+cap: EngineReport { gpu_tests: 63, cpu_tests: 25, rechecks: 6, prp_disagreements: 0, composite_disagreements: 0, gpu_errors: 1, tune_secs: 9.784467410000001, tuned_classes: 2, device_losses: 3, device_recoveries: 2, poll_timeouts: 0 }
+ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.07s
+
+# exit code: 0
+# Xid lines in kernel log after: 98
