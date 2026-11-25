@@ -6,7 +6,7 @@
 #   so the end-to-end rate is tests / total seconds: roughly 0.35-0.5 M/s warm. CPU runs print 0.00 s; 4.3-4.6 M tests/s.
 
 # host: J-DESK ; 2026-11-24T19:03:50
-# commit: eed9a1e ; binary C:\Users\<user>\AppData\Local\Temp\claude\615dca6f1938ad93\00661eb5-a96b-411c-8b4d-f33601cea314\scratchpad\bigmont-eed9a1e.exe ; as committed (autotuned)
+# commit: eed9a1e ; binary <scratch>/bigmont-eed9a1e.exe ; as committed (autotuned)
 # candidates: make_candidates --bits 40 20000 7 c40.bin (20003 candidates, 64-bit container)
 --- GPU run 1 (empty cache): bigmont c40.bin v40-gpu.bin --backend gpu --cache c40.cache
 bigmont: GPU: AMD Radeon RX 6700 XT [Vulkan]
@@ -49,7 +49,12 @@ bigmont: CPU: 16 threads | tests 20003 (gpu 0, cpu 20003) | 0.00 s (0.00 s tunin
 AMD Radeon RX 6700 XT|Vulkan|AMD proprietary driver 26.10.1 (AMD proprietary shader compiler)|4|unrolled 4 256|9020493574.923382
 
 # Section 2: forced configuration, throwaway local patch (NOT committed): engine.rs read BIGMONT_FORCE_CFG=tpi,wg and used it
-#   instead of the tuned (tpi, wg). Single runs, warm cache; run-to-run noise is about +-30%.
+#   instead of the tuned (tpi, wg). Single runs, warm cache; run-to-run noise is about +-30%. Only 4 of the 12 configurations were forced.
+#   The patch source was not saved; this is a reconstruction of the edit (in the Ok(tuned) arm of Engine::try_gpu), so the section is
+#   not reproducible byte for byte:
+#     let (mut tpi, mut wg) = (tuned.tpi, tuned.wg);
+#     if let Ok(v) = std::env::var("BIGMONT_FORCE_CFG") { let mut it = v.split(',').map(|x| x.parse::<u32>().unwrap()); tpi = it.next().unwrap(); wg = it.next().unwrap(); }
+#     let cfg = KernelConfig::for_bits(bits, tpi, wg, Variant::Unrolled);
 
 # throwaway BIGMONT_FORCE_CFG patch (not committed) on eed9a1e; cache warm (tpi 4 wg 256); engine --backend gpu, 20003 40-bit candidates
 --- forced tpi,wg=4,64 run 1
@@ -111,7 +116,7 @@ rep 3: fermat() wall 25.1 ms = gpu dispatch+wait 11.9 ms + host prep 4.9 ms + ot
 # use bigmont_core::kernel::{KernelConfig, Variant};
 # use bigmont_core::runner::Runner;
 # use std::time::Instant;
-# 
+#
 # fn main() {
 #     let args: Vec<String> = std::env::args().skip(1).collect();
 #     let file = bigmont_cli::formats::read_candidates(args[0].as_ref()).unwrap();

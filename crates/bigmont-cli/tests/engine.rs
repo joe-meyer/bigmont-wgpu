@@ -107,7 +107,7 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
     assert!(r.rechecks >= 7);
 }
 
-// ---- small bit lengths run on the GPU; bucket size is the only reason to skip it ----
+// ---- small bit lengths run on the GPU; a bucket skips the GPU only for size (min_gpu_batch), besides a failed autotune or Runner Err ----
 
 /// The limb-class field of every line of a tuning cache file, sorted (the line format is
 /// `name|backend|driver|class|unrolled tpi wg|rate`). Read from the file, independent of the engine's
