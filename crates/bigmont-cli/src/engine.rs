@@ -44,6 +44,10 @@ pub struct Options {
     pub capacity: u32,
     /// CPU worker threads, 0 = all cores.
     pub threads: usize,
+    pub device_retries: u32,
+    pub poll_timeout: Option<std::time::Duration>,
+    #[doc(hidden)]
+    pub inject_loss_on_open: u32,
 }
 
 impl Default for Options {
@@ -57,6 +61,9 @@ impl Default for Options {
             min_gpu_batch: 64,
             capacity: 16384,
             threads: 0,
+            device_retries: 2,
+            poll_timeout: None,
+            inject_loss_on_open: 0,
         }
     }
 }
@@ -81,6 +88,9 @@ pub struct EngineReport {
     /// Limb classes autotuned (or loaded from the cache) by this engine: one per distinct
     /// `tune::limb_class` among the GPU buckets, however many bit lengths share it.
     pub tuned_classes: u64,
+    pub device_losses: u64,
+    pub device_recoveries: u64,
+    pub poll_timeouts: u64,
 }
 
 pub struct Engine {
@@ -106,7 +116,12 @@ impl Engine {
                     let why = format!("{} lacks subgroup support", g.describe());
                     (None, Some(why))
                 }
-                Ok(g) => (Some(g), None),
+                Ok(g) => {
+                    if opts.inject_loss_on_open > 0 {
+                        g.device.destroy();
+                    }
+                    (Some(g), None)
+                }
                 Err(e) => (None, Some(e)),
             },
         };
@@ -129,6 +144,13 @@ impl Engine {
     /// Whether a GPU is in use (the backend resolved to the GPU rather than the CPU).
     pub fn gpu_active(&self) -> bool {
         self.gpu.is_some()
+    }
+
+    #[doc(hidden)]
+    pub fn inject_device_loss(&mut self) {
+        if let Some(g) = &self.gpu {
+            g.device.destroy();
+        }
     }
 
     pub fn report(&self) -> EngineReport {

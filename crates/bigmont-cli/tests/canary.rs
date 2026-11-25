@@ -58,6 +58,21 @@ fn every_gpu_disagreement_or_error_fails_even_when_the_final_verdicts_match() {
 }
 
 #[test]
+fn a_lost_device_fails_the_canary_even_when_it_recovered() {
+    // A recovered loss leaves correct verdicts and no gpu error, but the device was still lost.
+    let r = EngineReport { device_losses: 2, device_recoveries: 1, ..healthy_gpu_report() };
+    let f = failures(&[0, 1], &[0, 1], &r, true);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(f[0].contains("device lost 2 times, recovered 1"), "{f:?}");
+    let r = EngineReport { device_losses: 1, device_recoveries: 1, poll_timeouts: 1, ..healthy_gpu_report() };
+    let f = failures(&[0, 1], &[0, 1], &r, true);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert!(f[0].contains("device lost 1 times, recovered 1") && f[0].contains("1 poll timeout"), "{f:?}");
+    // No loss, no failure from this condition.
+    assert!(failures(&[0, 1], &[0, 1], &EngineReport { device_recoveries: 0, ..healthy_gpu_report() }, true).is_empty());
+}
+
+#[test]
 fn a_gpu_run_that_tested_nothing_on_the_gpu_fails() {
     let r = EngineReport { cpu_tests: 400, ..EngineReport::default() };
     let f = failures(&[0, 1], &[0, 1], &r, true);
@@ -67,9 +82,9 @@ fn a_gpu_run_that_tested_nothing_on_the_gpu_fails() {
 
 #[test]
 fn all_failing_conditions_are_reported_together() {
-    let r = EngineReport { prp_disagreements: 2, composite_disagreements: 3, gpu_errors: 1, ..EngineReport::default() };
+    let r = EngineReport { prp_disagreements: 2, composite_disagreements: 3, gpu_errors: 1, device_losses: 1, ..EngineReport::default() };
     let f = failures(&[1, 1], &[0, 1], &r, true);
-    assert_eq!(f.len(), 5, "mismatch, prp, composite, gpu errors, no gpu tests: {f:?}");
+    assert_eq!(f.len(), 6, "mismatch, prp, composite, gpu errors, device lost, no gpu tests: {f:?}");
 }
 
 // ---- the real binary ----

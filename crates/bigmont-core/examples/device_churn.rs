@@ -31,7 +31,7 @@ fn make_gpu(vkonly: bool) -> Gpu {
         let has_subgroups = adapter.features().contains(wgpu::Features::SUBGROUP);
         let features = if has_subgroups { wgpu::Features::SUBGROUP } else { wgpu::Features::empty() };
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor { required_features: features, ..Default::default() }).await.expect("device");
-        Gpu { info, has_subgroups, device, queue }
+        Gpu::from_parts(info, has_subgroups, device, queue)
     })
 }
 

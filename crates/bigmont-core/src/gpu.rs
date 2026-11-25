@@ -36,6 +36,7 @@ pub struct Gpu {
     pub has_subgroups: bool,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
+    pub poll_timeout: std::time::Duration,
 }
 
 /// Parses a `BIGMONT_INSTANCE_BACKENDS` value: a comma list of `vulkan`, `dx12`, `metal`, `gl`,
@@ -154,12 +155,34 @@ impl Gpu {
                 .request_device(&wgpu::DeviceDescriptor { required_features: features, ..Default::default() })
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(Gpu { info, has_subgroups, device, queue })
+            Ok(Gpu::from_parts(info, has_subgroups, device, queue))
         })
     }
 
-    pub fn list_adapters() -> Vec<String> {
-        pollster::block_on(async {
+    // RED-phase stubs: no health tracking yet.
+    pub fn from_parts(info: wgpu::AdapterInfo, has_subgroups: bool, device: wgpu::Device, queue: wgpu::Queue) -> Gpu {
+        Gpu { info, has_subgroups, device, queue, poll_timeout: std::time::Duration::from_secs(30) }
+    }
+    pub fn set_poll_timeout(&mut self, t: std::time::Duration) {
+        self.poll_timeout = t;
+    }
+    pub fn is_lost(&self) -> bool {
+        false
+    }
+    pub fn is_poisoned(&self) -> bool {
+        false
+    }
+    pub fn uncaptured_errors(&self) -> Vec<String> {
+        Vec::new()
+    }
+    pub fn check_health(&self) -> Result<(), String> {
+        Ok(())
+    }
+    pub fn wait(&self) -> Result<(), String> {
+        self.device.poll(wgpu::PollType::wait_indefinitely()).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    pub fn list_adapters() -> Vec<String> {        pollster::block_on(async {
             let instance = shared_instance();
             instance
                 .enumerate_adapters(wgpu::Backends::all())
