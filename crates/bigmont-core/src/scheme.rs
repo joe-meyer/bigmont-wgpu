@@ -2,7 +2,10 @@
 //! representation (limb count for a bit length, R, host-side packing, the Montgomery factor) lives
 //! here, so the runner and the tuner never name a limb width.
 
-use bigmont_oracle::{LIMB_BITS, LIMB_MASK, limbs_for_bits, mont_square_chain_bits, neg_inv_limb, neg_inv_u32, pack_limbs_n, pack_u32_limbs, unpack_limbs, unpack_u32_limbs};
+use bigmont_oracle::{
+    LIMB_BITS, LIMB_MASK, limbs_for_bits, mont_square_chain_bits, neg_inv_limb, neg_inv_u32,
+    pack_limbs_n, pack_u32_limbs, unpack_limbs, unpack_u32_limbs,
+};
 use num_bigint::BigUint;
 
 /// What a device offers, or what a kernel needs.
@@ -14,7 +17,10 @@ pub struct Caps {
 
 impl Caps {
     /// What a browser (WebGPU) target offers: subgroups, no 64-bit integers.
-    pub const BROWSER: Caps = Caps { subgroups: true, int64: false };
+    pub const BROWSER: Caps = Caps {
+        subgroups: true,
+        int64: false,
+    };
 
     /// Capabilities of `need` that `self` lacks, as words ("subgroups", "int64").
     pub fn missing(self, need: Caps) -> Vec<&'static str> {
@@ -73,7 +79,10 @@ impl LimbScheme {
     pub fn requires(self) -> Caps {
         match self {
             LimbScheme::Limb13 => Caps::default(),
-            LimbScheme::Limb32 => Caps { subgroups: false, int64: true },
+            LimbScheme::Limb32 => Caps {
+                subgroups: false,
+                int64: true,
+            },
         }
     }
 

@@ -16,13 +16,23 @@ fn main() {
         eprintln!("usage: fermat_stats CAND [CAPACITY]");
         std::process::exit(2);
     };
-    let capacity: u32 = args.get(1).map_or(16384, |c| c.parse().expect("CAPACITY must be a number"));
+    let capacity: u32 = args
+        .get(1)
+        .map_or(16384, |c| c.parse().expect("CAPACITY must be a number"));
     let file = formats::read_candidates(Path::new(cand)).expect("read candidates");
-    let bits = file.numbers.iter().map(|n| n.bits()).max().expect("no candidates") as u32;
+    let bits = file
+        .numbers
+        .iter()
+        .map(|n| n.bits())
+        .max()
+        .expect("no candidates") as u32;
     let gpu = Gpu::open(&bigmont_core::gpu::AdapterSelector::from_env()).expect("no GPU");
     println!("adapter: {}", gpu.describe());
     let tuned = tune::autotune(&gpu, bits, None, true, SchemeChoice::Auto).expect("autotune");
-    println!("config: {:?} ({:.0} squarings/s measured by autotune)", tuned.cfg, tuned.squarings_per_sec);
+    println!(
+        "config: {:?} ({:.0} squarings/s measured by autotune)",
+        tuned.cfg, tuned.squarings_per_sec
+    );
     // The tuned shape at this exact length (a 32-bit limb count can differ within a tuning class).
     let cfg = tuned.cfg.retarget(bits);
     let mut runner = Runner::new(&gpu, cfg, bits, capacity).expect("runner");
@@ -30,7 +40,12 @@ fn main() {
     let t = Instant::now();
     let mut prps = 0usize;
     for chunk in file.numbers.chunks(cap) {
-        prps += runner.fermat(&gpu, chunk).expect("fermat").iter().filter(|&&v| v).count();
+        prps += runner
+            .fermat(&gpu, chunk)
+            .expect("fermat")
+            .iter()
+            .filter(|&&v| v)
+            .count();
     }
     let wall = t.elapsed().as_secs_f64();
     let s = runner.stats;

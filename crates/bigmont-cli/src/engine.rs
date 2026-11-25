@@ -256,7 +256,9 @@ impl Engine {
         };
         if e.opts.backend != Backend::Cpu {
             match e.open_device() {
-                Ok(g) if e.opts.backend == Backend::Auto && !g.has_subgroups => e.gpu_err = Some(format!("{} lacks subgroup support", g.describe())),
+                Ok(g) if e.opts.backend == Backend::Auto && !g.has_subgroups => {
+                    e.gpu_err = Some(format!("{} lacks subgroup support", g.describe()))
+                }
                 Ok(g) => e.gpu = Some(g),
                 Err(why) => e.gpu_err = Some(why),
             }
@@ -279,15 +281,26 @@ impl Engine {
     }
 
     fn cpu_threads(&self) -> usize {
-        if self.opts.threads == 0 { std::thread::available_parallelism().map_or(1, |n| n.get()) } else { self.opts.threads }
+        if self.opts.threads == 0 {
+            std::thread::available_parallelism().map_or(1, |n| n.get())
+        } else {
+            self.opts.threads
+        }
     }
 
     pub fn describe(&self) -> String {
         match (&self.gpu, &self.gpu_err, &self.cpu_only) {
             (Some(g), _, _) => format!("GPU: {} [{:?}]", g.info.name, g.info.backend),
-            (None, _, Some(why)) => format!("CPU: {} threads (GPU disabled: {why})", self.cpu_threads()),
-            (None, Some(why), None) if self.opts.backend == Backend::Gpu => format!("GPU unavailable: {why}"),
-            (None, Some(why), None) => format!("CPU: {} threads (GPU unavailable: {why})", self.cpu_threads()),
+            (None, _, Some(why)) => {
+                format!("CPU: {} threads (GPU disabled: {why})", self.cpu_threads())
+            }
+            (None, Some(why), None) if self.opts.backend == Backend::Gpu => {
+                format!("GPU unavailable: {why}")
+            }
+            (None, Some(why), None) => format!(
+                "CPU: {} threads (GPU unavailable: {why})",
+                self.cpu_threads()
+            ),
             (None, None, None) => format!("CPU: {} threads", self.cpu_threads()),
         }
     }
@@ -349,7 +362,10 @@ impl Engine {
             if n < &two || !n.bit(0) {
                 out[i] = u8::from(n == &two);
             } else {
-                buckets.entry(u32::try_from(n.bits()).unwrap_or(u32::MAX)).or_default().push(i);
+                buckets
+                    .entry(u32::try_from(n.bits()).unwrap_or(u32::MAX))
+                    .or_default()
+                    .push(i);
             }
         }
         let mut composites_seen = 0u64;
@@ -407,36 +423,59 @@ impl Engine {
                 continue;
             }
             let forced_change = std::mem::take(&mut self.inject_adapter_change);
-            let same = !forced_change && lost_info.as_ref().is_some_and(|old| bigmont_core::gpu::same_adapter(old, &g.info));
+            let same = !forced_change
+                && lost_info
+                    .as_ref()
+                    .is_some_and(|old| bigmont_core::gpu::same_adapter(old, &g.info));
             match reopen_decision(self.opts.backend, same, g.has_subgroups) {
                 Reopen::Keep => {}
                 Reopen::Retune => {
-                    eprintln!("bigmont: the re-opened GPU is a different adapter ({}); tuning again", g.describe());
+                    eprintln!(
+                        "bigmont: the re-opened GPU is a different adapter ({}); tuning again",
+                        g.describe()
+                    );
                     self.tuned.clear();
                     self.retarget_checked.clear();
                 }
                 Reopen::CpuOnly => {
-                    let reason = format!("the re-opened GPU {} lacks subgroup support (after: {why})", g.describe());
+                    let reason = format!(
+                        "the re-opened GPU {} lacks subgroup support (after: {why})",
+                        g.describe()
+                    );
                     eprintln!("bigmont: {reason}; using the CPU for the rest of this process");
                     self.cpu_only = Some(reason);
                     return Recovery::CpuOnly;
                 }
                 Reopen::Fail => {
-                    let reason = format!("the GPU device failed ({why}) and re-opening it gave a different adapter without subgroup support: {}", g.describe());
+                    let reason = format!(
+                        "the GPU device failed ({why}) and re-opening it gave a different adapter without subgroup support: {}",
+                        g.describe()
+                    );
                     eprintln!("bigmont: {reason}");
                     self.gpu_err = Some(reason.clone());
-                    return Recovery::Fatal(format!("GPU backend requested but unavailable: {reason}"));
+                    return Recovery::Fatal(format!(
+                        "GPU backend requested but unavailable: {reason}"
+                    ));
                 }
             }
             self.report.device_recoveries += 1;
-            eprintln!("bigmont: GPU device re-opened ({}); re-running the {bits}-bit bucket", g.describe());
+            eprintln!(
+                "bigmont: GPU device re-opened ({}); re-running the {bits}-bit bucket",
+                g.describe()
+            );
             self.gpu = Some(g);
             return Recovery::Recovered;
         }
         let limit = if self.reopens_done >= self.opts.device_retries_total {
-            format!("the engine's limit of {} re-opens (device_retries_total) is used up", self.opts.device_retries_total)
+            format!(
+                "the engine's limit of {} re-opens (device_retries_total) is used up",
+                self.opts.device_retries_total
+            )
         } else {
-            format!("not recovered within {} re-opens in this call (device_retries)", self.opts.device_retries)
+            format!(
+                "not recovered within {} re-opens in this call (device_retries)",
+                self.opts.device_retries
+            )
         };
         let reason = format!("device failure, {limit}: {why}");
         eprintln!("bigmont: GPU {reason}; using the CPU for the rest of this process");
@@ -451,7 +490,9 @@ impl Engine {
     /// error): nothing of the attempt is kept, a failed tuning is not cached, and the caller
     /// re-opens the device and calls again.
     fn try_gpu(&mut self, bits: u32, nums: &[BigUint], composites_seen: &mut u64) -> GpuRun {
-        let Some(gpu) = self.gpu.as_ref() else { return GpuRun::Cpu };
+        let Some(gpu) = self.gpu.as_ref() else {
+            return GpuRun::Cpu;
+        };
         // The only size rule: a bucket under min_gpu_batch is not worth the GPU. Any bit length from 2
         // (n = 3) up is fine; buckets only hold odd n >= 3.
         if nums.len() < self.opts.min_gpu_batch {
@@ -462,7 +503,14 @@ impl Engine {
             // Tune once per limb class, not per bit length; the Runner is still per exact length.
             let class = tune::limb_class(bits);
             if !self.tuned.contains_key(&class) {
-                let tuned = tune::autotune(gpu, bits, self.opts.cache.as_deref(), self.opts.retune, self.opts.scheme).map(|t| t.cfg);
+                let tuned = tune::autotune(
+                    gpu,
+                    bits,
+                    self.opts.cache.as_deref(),
+                    self.opts.retune,
+                    self.opts.scheme,
+                )
+                .map(|t| t.cfg);
                 if let Err(e) = &tuned
                     && device_failure(gpu, e)
                 {
@@ -478,8 +526,15 @@ impl Engine {
                 // different program from the one the tuner self-tested: check it once first.
                 Ok(tuned) => {
                     let cfg = tuned.retarget(bits);
-                    retarget_check(gpu, &mut self.retarget_checked, &mut self.report, class, &tuned, &cfg)
-                        .and_then(|()| Runner::new(gpu, cfg, bits, self.opts.capacity))
+                    retarget_check(
+                        gpu,
+                        &mut self.retarget_checked,
+                        &mut self.report,
+                        class,
+                        &tuned,
+                        &cfg,
+                    )
+                    .and_then(|()| Runner::new(gpu, cfg, bits, self.opts.capacity))
                 }
                 Err(e) => Err(e),
             };
@@ -500,7 +555,10 @@ impl Engine {
             Ok(v) => v,
             Err(e) if device_failure(gpu, &e) => return GpuRun::DeviceFailure(e),
             Err(e) => {
-                eprintln!("bigmont: GPU error on a {bits}-bit bucket of {} candidates, using the CPU: {e}", nums.len());
+                eprintln!(
+                    "bigmont: GPU error on a {bits}-bit bucket of {} candidates, using the CPU: {e}",
+                    nums.len()
+                );
                 // The runner's buffers may be in an unknown state: drop it, later buckets use the CPU.
                 self.runners.insert(bits, None);
                 self.report.gpu_errors += 1;
@@ -516,7 +574,9 @@ impl Engine {
                 recheck.push(i);
             } else {
                 *composites_seen += 1;
-                if self.opts.verify_rate > 0 && *composites_seen % u64::from(self.opts.verify_rate) == 0 {
+                if self.opts.verify_rate > 0
+                    && *composites_seen % u64::from(self.opts.verify_rate) == 0
+                {
                     recheck.push(i);
                 }
             }
@@ -528,10 +588,14 @@ impl Engine {
             if verdicts[i] != cpu {
                 if verdicts[i] {
                     self.report.prp_disagreements += 1;
-                    eprintln!("bigmont: GPU/CPU disagreement: GPU said PRP, CPU says composite ({bits}-bit candidate); using the CPU verdict");
+                    eprintln!(
+                        "bigmont: GPU/CPU disagreement: GPU said PRP, CPU says composite ({bits}-bit candidate); using the CPU verdict"
+                    );
                 } else {
                     self.report.composite_disagreements += 1;
-                    eprintln!("bigmont: GPU/CPU disagreement: GPU said composite, CPU says PRP ({bits}-bit candidate); using the CPU verdict");
+                    eprintln!(
+                        "bigmont: GPU/CPU disagreement: GPU said composite, CPU says PRP ({bits}-bit candidate); using the CPU verdict"
+                    );
                 }
                 verdicts[i] = cpu;
             }
@@ -547,8 +611,16 @@ mod tests {
     #[test]
     fn the_same_adapter_keeps_its_tuning_and_a_different_one_is_retuned() {
         for backend in [Backend::Auto, Backend::Gpu] {
-            assert_eq!(reopen_decision(backend, true, true), Reopen::Keep, "{backend:?}");
-            assert_eq!(reopen_decision(backend, false, true), Reopen::Retune, "{backend:?}");
+            assert_eq!(
+                reopen_decision(backend, true, true),
+                Reopen::Keep,
+                "{backend:?}"
+            );
+            assert_eq!(
+                reopen_decision(backend, false, true),
+                Reopen::Retune,
+                "{backend:?}"
+            );
         }
     }
 
@@ -559,7 +631,10 @@ mod tests {
         let gpu = match Gpu::new() {
             Ok(g) => g,
             Err(e) => {
-                assert!(std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"), "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
+                assert!(
+                    std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
+                    "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
+                );
                 eprintln!("SKIP no adapter: {e}");
                 return;
             }
@@ -567,26 +642,48 @@ mod tests {
         let mut done = HashMap::new();
         let mut report = EngineReport::default();
         // Same limb count as the tuned shape: the same program, nothing to test.
-        let tuned = KernelConfig::for_bits_scheme(LimbScheme::Limb13, 256, 8, 64, Variant::Unrolled);
-        assert!(retarget_check(&gpu, &mut done, &mut report, 20, &tuned, &tuned.retarget(252)).is_ok());
+        let tuned =
+            KernelConfig::for_bits_scheme(LimbScheme::Limb13, 256, 8, 64, Variant::Unrolled);
+        assert!(
+            retarget_check(
+                &gpu,
+                &mut done,
+                &mut report,
+                20,
+                &tuned,
+                &tuned.retarget(252)
+            )
+            .is_ok()
+        );
         assert_eq!(report.retarget_self_tests, 0);
         // A different limb count whose self-test fails (the workgroup size is invalid): the error is
         // returned, counted once and remembered for the same (class, limbs).
-        let mut broken = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 252, 8, 64, Variant::Unrolled);
+        let mut broken =
+            KernelConfig::for_bits_scheme(LimbScheme::Limb32, 252, 8, 64, Variant::Unrolled);
         broken.wg = 300;
-        let wider = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 256, 8, 64, Variant::Unrolled);
+        let wider =
+            KernelConfig::for_bits_scheme(LimbScheme::Limb32, 256, 8, 64, Variant::Unrolled);
         assert_ne!(broken.limbs, wider.limbs);
         let first = retarget_check(&gpu, &mut done, &mut report, 20, &wider, &broken);
-        assert!(first.as_ref().is_err_and(|e| e.contains("workgroup")), "{first:?}");
+        assert!(
+            first.as_ref().is_err_and(|e| e.contains("workgroup")),
+            "{first:?}"
+        );
         let second = retarget_check(&gpu, &mut done, &mut report, 20, &wider, &broken);
         assert_eq!(first, second);
-        assert_eq!(report.retarget_self_tests, 1, "the failed self-test is not repeated");
+        assert_eq!(
+            report.retarget_self_tests, 1,
+            "the failed self-test is not repeated"
+        );
     }
 
     #[test]
     fn a_reopened_adapter_without_subgroups_follows_the_open_rules() {
         // Auto refuses an adapter without subgroups, as Engine::open does: CPU from then on.
-        assert_eq!(reopen_decision(Backend::Auto, false, false), Reopen::CpuOnly);
+        assert_eq!(
+            reopen_decision(Backend::Auto, false, false),
+            Reopen::CpuOnly
+        );
         assert_eq!(reopen_decision(Backend::Auto, true, false), Reopen::CpuOnly);
         // Gpu: a silent switch to a different adapter without subgroups is an error; the same
         // adapter is what Engine::open already accepted.

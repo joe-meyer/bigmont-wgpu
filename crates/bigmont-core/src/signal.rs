@@ -22,7 +22,10 @@ pub struct Sender<T>(Arc<Mutex<State<T>>>);
 pub struct Receiver<T>(Arc<Mutex<State<T>>>);
 
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
-    let state = Arc::new(Mutex::new(State { value: None, waker: None }));
+    let state = Arc::new(Mutex::new(State {
+        value: None,
+        waker: None,
+    }));
     (Sender(state.clone()), Receiver(state))
 }
 
@@ -43,7 +46,10 @@ impl<T> Receiver<T> {
     /// Resolves with the sent value, or with `Err(reason)` as soon as `abort` returns one (it is
     /// called on every poll with the task's waker, so the caller can register it to be woken when
     /// the answer may change, for example from the device-lost callback).
-    pub fn recv_or(self, abort: impl Fn(&Waker) -> Option<String> + Unpin) -> impl Future<Output = Result<T, String>> {
+    pub fn recv_or(
+        self,
+        abort: impl Fn(&Waker) -> Option<String> + Unpin,
+    ) -> impl Future<Output = Result<T, String>> {
         Recv { rx: self, abort }
     }
 }
@@ -96,14 +102,20 @@ mod tests {
     #[test]
     fn an_abort_reason_resolves_the_future_with_an_error() {
         let (_tx, rx) = channel::<u32>();
-        assert_eq!(pollster::block_on(rx.recv_or(|_| Some("device lost".to_string()))), Err("device lost".to_string()));
+        assert_eq!(
+            pollster::block_on(rx.recv_or(|_| Some("device lost".to_string()))),
+            Err("device lost".to_string())
+        );
     }
 
     #[test]
     fn a_sent_value_wins_over_an_abort_reason() {
         let (tx, rx) = channel();
         tx.send(1u8);
-        assert_eq!(pollster::block_on(rx.recv_or(|_| Some("late".to_string()))), Ok(1));
+        assert_eq!(
+            pollster::block_on(rx.recv_or(|_| Some("late".to_string()))),
+            Ok(1)
+        );
     }
 
     #[test]
@@ -126,7 +138,8 @@ mod tests {
         });
         let out = pollster::block_on(rx.recv_or(move |waker| {
             *waker_slot.lock().unwrap() = Some(waker.clone());
-            lost.load(Ordering::SeqCst).then(|| "device lost".to_string())
+            lost.load(Ordering::SeqCst)
+                .then(|| "device lost".to_string())
         }));
         assert_eq!(out, Err("device lost".to_string()));
         flipper.join().unwrap();

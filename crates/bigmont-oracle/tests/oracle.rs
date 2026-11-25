@@ -44,7 +44,10 @@ fn pack_unpack_roundtrip() {
 fn unpack_accepts_unnormalized_limbs() {
     // 2 * 2^13 + 5 written as limbs [5 + 2^13 * 2, 0] must equal limbs [5, 2].
     assert_eq!(unpack_limbs(&[5 + (2 << 13), 0]), unpack_limbs(&[5, 2]));
-    assert_eq!(unpack_limbs(&[0xffff_ffff, 0xffff_ffff]), (BigUint::from(0xffff_ffffu32) * ((BigUint::one() << 13) + 1u32)));
+    assert_eq!(
+        unpack_limbs(&[0xffff_ffff, 0xffff_ffff]),
+        (BigUint::from(0xffff_ffffu32) * ((BigUint::one() << 13) + 1u32))
+    );
 }
 
 #[test]
@@ -65,7 +68,11 @@ fn neg_inv_limb_property() {
         let n0 = n.to_u32_digits()[0] & LIMB_MASK;
         let ninv = neg_inv_limb(&n);
         assert!(ninv <= LIMB_MASK);
-        assert_eq!((n0 * ninv + 1) & LIMB_MASK, 0, "n * ninv must be -1 mod 2^13");
+        assert_eq!(
+            (n0 * ninv + 1) & LIMB_MASK,
+            0,
+            "n * ninv must be -1 mod 2^13"
+        );
     }
 }
 
@@ -161,7 +168,10 @@ fn chain_bits_matches_chain_n_at_13_bit_radices() {
         let n = random_odd_modulus(&mut rng, bits);
         let x = random_below(&mut rng, &n);
         for sq in [0u32, 1, 5] {
-            assert_eq!(mont_square_chain_bits(&n, &x, sq, 13 * limbs as u32), mont_square_chain_n(&n, &x, sq, limbs));
+            assert_eq!(
+                mont_square_chain_bits(&n, &x, sq, 13 * limbs as u32),
+                mont_square_chain_n(&n, &x, sq, limbs)
+            );
         }
     }
 }
@@ -179,26 +189,45 @@ fn chain_bits_satisfies_the_montgomery_relation_at_32_bit_radices() {
         assert_eq!((&y << r_bits) % &n, (&x * &x) % &n, "bits={bits}");
         // composition
         let three = mont_square_chain_bits(&n, &x, 3, r_bits);
-        assert_eq!(three, mont_square_chain_bits(&n, &mont_square_chain_bits(&n, &x, 1, r_bits), 2, r_bits));
+        assert_eq!(
+            three,
+            mont_square_chain_bits(&n, &mont_square_chain_bits(&n, &x, 1, r_bits), 2, r_bits)
+        );
     }
     // u128 cross-check at a small modulus, R = 2^96.
     let (n, x0) = (1_000_003u128, 777_777u128);
     let rinv = inv_u128(modpow_u128(2, 96, n), n);
     let one = x0 * x0 % n * rinv % n;
-    assert_eq!(mont_square_chain_bits(&BigUint::from(n), &BigUint::from(x0), 1, 96), BigUint::from(one));
+    assert_eq!(
+        mont_square_chain_bits(&BigUint::from(n), &BigUint::from(x0), 1, 96),
+        BigUint::from(one)
+    );
 }
 
 #[test]
 fn pack_unpack_u32_limbs_round_trip() {
     let mut rng = XorShift64::new(23);
-    for (bits, limbs) in [(1u32, 1usize), (32, 1), (33, 2), (64, 3), (258, 9), (1056, 33)] {
+    for (bits, limbs) in [
+        (1u32, 1usize),
+        (32, 1),
+        (33, 2),
+        (64, 3),
+        (258, 9),
+        (1056, 33),
+    ] {
         let x = random_bits(&mut rng, bits);
         let packed = pack_u32_limbs(&x, limbs);
         assert_eq!(packed.len(), limbs);
         assert_eq!(unpack_u32_limbs(&packed), x, "bits={bits}");
     }
-    assert_eq!(pack_u32_limbs(&BigUint::from(0x1_0000_0002u64), 3), vec![2, 1, 0]);
-    assert_eq!(unpack_u32_limbs(&[0xffff_ffff, 0xffff_ffff]), BigUint::from(u64::MAX));
+    assert_eq!(
+        pack_u32_limbs(&BigUint::from(0x1_0000_0002u64), 3),
+        vec![2, 1, 0]
+    );
+    assert_eq!(
+        unpack_u32_limbs(&[0xffff_ffff, 0xffff_ffff]),
+        BigUint::from(u64::MAX)
+    );
     assert_eq!(unpack_u32_limbs(&[]), BigUint::from(0u32));
 }
 
@@ -214,7 +243,11 @@ fn neg_inv_u32_property() {
     for _ in 0..50 {
         let n = random_odd_modulus(&mut rng, 300);
         let n0 = n.to_u32_digits()[0];
-        assert_eq!(n0.wrapping_mul(neg_inv_u32(&n)), u32::MAX, "n * ninv must be -1 mod 2^32");
+        assert_eq!(
+            n0.wrapping_mul(neg_inv_u32(&n)),
+            u32::MAX,
+            "n * ninv must be -1 mod 2^32"
+        );
     }
 }
 
