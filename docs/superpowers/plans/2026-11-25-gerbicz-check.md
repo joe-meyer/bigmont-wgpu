@@ -17,7 +17,7 @@
 - `bigmont-core` must keep compiling for wasm32 (CI `wasm-check`): no blocking waits, threads or `std::time::Instant` outside `#[cfg(not(target_arch = "wasm32"))]`; real work in `async fn`s with blocking native wrappers.
 - Handle device loss: GPU calls return `Err`, never panic or hang. No `unsafe`.
 - GEC is **opt-in**, default off (the reference defaults it off since v3.5). With GEC off, behaviour and speed are exactly as before.
-- Block size is `GEC_BLOCK = 40` ladder iterations (the reference's `w*J = 5*8`). The last `(bits - 1) % 40` iterations run unprotected, as in the reference (documented, not fixed here).
+- Block size is `GEC_BLOCK = 40` ladder iterations (the reference's `w*J = 5*8`). The last `(bits - 1) % 40` iterations (the tail) belong to no block. The reference leaves them unprotected; we protect them by recomputation: after the last block boundary `y_prev` holds a copy of `x`, the tail runs on both, and the two must agree mod n (cost: at most 39 extra iterations, 28 at 2029 bits). A candidate too short for any block is fully covered this way.
 - Exit statuses: 2 = usage/input/config, 3 = failure while testing, canary mismatch 1 (unchanged).
 - Clean runs must never alarm; verdicts with GEC on must be byte-identical to GEC off on clean runs.
 - Never commit machine-identifying details (hostnames, usernames, local paths). Describe hardware by model only. Do not invent performance numbers; only cite what was run, naming hardware and driver.
@@ -471,23 +471,23 @@ git commit -m "feat(core): general Montgomery multiply kernel for both limb sche
   - `pub enum Verdict { Composite, Prp, Alarm }` with `pub fn byte(self) -> u8` (0, 1, 2), `Clone, Copy, Debug, PartialEq, Eq`.
   - `Runner::enable_gec(&mut self, gpu: &Gpu) -> Result<(), String>` (native) and `pub async fn enable_gec_async(&mut self, gpu: &Gpu) -> Result<(), String>`; idempotent; allocates three extra numbers per candidate (A, B, y_prev) plus small buffers.
   - `Runner::fermat_checked(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<Verdict>, String>` (native) and `fermat_checked_async`. `Err` if `enable_gec` was not called.
-  - `#[doc(hidden)] pub struct Fault { pub index: usize, pub block: u32 }` and `#[doc(hidden)] pub fault: Option<Fault>` on `Runner`: in the next `fermat_checked` call, candidate `index` (into that call's `ns`) has bit 17 of its ladder state flipped after 20 iterations of block `block` (0-based; the reference flips after 4 of its 8 chunks). A block number `>= gec_blocks(bits, 40)` flips nothing. Cleared at the end of the call.
+  - `#[doc(hidden)] pub struct Fault { pub index: usize, pub block: u32 }` and `#[doc(hidden)] pub fault: Option<Fault>` on `Runner`: in the next `fermat_checked` call, candidate `index` (into that call's `ns`) has bit 17 of its ladder state flipped after 20 iterations of block `block` (0-based; the reference flips after 4 of its 8 chunks). Block number `gec_blocks(bits, 40)` (= `nb`) targets the tail: the flip happens in the `x` copy after `tail / 2` of the tail's iterations (nothing is flipped when the tail has fewer than 2 iterations). A larger block number flips nothing. The copy used for the tail recomputation is never corrupted by the hook. Cleared at the end of the call.
   - `Runner::fermat` is unchanged in behaviour.
 
 **Design notes the implementer must follow**
 - Refactor `fermat_chunk` into reusable private steps without changing the non-GEC path: `validate_chunk(ns, base)`, `upload_chunk(gpu, ns) -> Vec<Prep>` (host prep + the four `write_buffer`s), `ladder_range(gpu, count, from, to)` (the existing adaptive segment loop, with `total` replaced by `to` and `done` starting at `from`), and `read_x(gpu, count) -> Vec<u32>` (copy `x_buf` to `staging`, read back, check `normalised`). `fermat_chunk` becomes `validate; upload; ladder_range(0, bits-1); read_x; verdicts`. Run the existing tests after this refactor alone (commit it separately).
 - Per-candidate extra state lives in `struct Gec` (a private field `gec: Option<Gec>`): `mul_pipeline`, `mul_params` (uniform, 16 bytes, `[count, 1, 0, 0]`), buffers `a_buf`, `b_buf`, `y_buf` (storage, `COPY_DST`, `a_buf`/`y_buf` also `COPY_SRC` not needed; `x_buf -> y_buf` is a copy so `y_buf` needs `COPY_DST`), `zero_e` (`cap * 2` words, never written, so all zero), `sumv` (`cap * 2` words), `staging2` (`MAP_READ | COPY_DST`, `2 * limb_bytes`; `a_buf` and `b_buf` are copied into it, so both need `COPY_SRC`), and bind groups `bg_mul_a` (binding 3 = `a_buf`, 4 = `y_buf`), `bg_mul_b` (3 = `b_buf`, 4 = `x_buf`), `bg_lad_a` (the ladder layout `self.pipeline.get_bind_group_layout(0)` with 3 = `a_buf`, 4 = `zero_e`), `bg_lad_y` (3 = `y_buf`, 4 = `sumv`); bindings 0, 1, 2, 5 of the ladder groups are the runner's existing `params`, `n_buf`, `ninv_buf`, `fp`; bindings 0, 1, 2 of the multiply groups are `mul_params`, `n_buf`, `ninv_buf`. Build them with `guarded(...)` like `build` does; errors go through `gpu.explain` at the call site.
-- The check, per chunk of `count` candidates (`nb = gec_blocks(bits, 40)`; when `nb == 0` skip the blocks and the check, the run is unprotected, as in the reference):
+- The check, per chunk of `count` candidates (`nb = gec_blocks(bits, 40)`, `tail = bits - 1 - nb*40`; when `nb == 0` skip the blocks and the span check; the tail check below still applies and then covers the whole run):
   1. Upload: `n, x0, ninv, e` as today; `a_buf` and `b_buf` = packed `p.r` (`R mod n` = `1~`) for every candidate; `y_buf` = the packed `x0`s; `sumv` = per candidate `[lo, hi]` words of `gec_window_sum_words(&p.e, bits, 40)`.
   2. For `blk in 0..nb`: `block_step(first = blk*40, iters = 40, boundary = true)`. If the fault applies to this block (`fault.block == blk` and the candidate is in this chunk), do instead `block_step(first, 20, boundary=false)`, then corrupt, then `block_step(first + 20, 20, boundary=true)`.
   3. `block_step(count, first, iters, boundary)`: `queue.write_buffer(params, [count, iters, 0, 0])`, `queue.write_buffer(fp, [first, bits, words, 0])`; one encoder: a compute pass with the ladder pipeline + `bind_group`; if `boundary`: a pass with `mul_pipeline` + `bg_mul_a` (`A <- A * y_prev`), a pass with `mul_pipeline` + `bg_mul_b` (`B <- B * x`), then `encoder.copy_buffer_to_buffer(x_buf, 0, y_buf, 0, count*limbs*4)`. Submit, `gpu.wait_async().await?`, add elapsed to `stats.gpu_secs`. (The order inside the encoder is the contract: the multiplies use the OLD `y_prev`, the copy comes last.)
-  4. Tail: `ladder_range(gpu, count, nb*40, bits-1)`.
+  4. Tail (only when `tail > 0`): `y_buf` equals `x` (after the last boundary copy; with `nb == 0` both equal `x0`, which is uploaded to `y_buf` in step 1). Run the tail iterations on both with `tail_step(count, first = nb*40, iters = tail)`: one submission with two ladder passes with identical `params`/`fp` (`bind_group` for `x`, and a new `bg_lad_tail` for `y_buf` whose binding 4 is the real `e_buf`). If the fault targets the tail (`fault.block == nb`, `tail >= 2`): run the first `tail / 2` iterations on both, `corrupt` the `x` copy only, then run the rest. Then copy `y_buf` into `staging2[0..bytes)`, read it back and keep it on the host as `tail_copy` (normalised check as below). The tail runs in a single submission per half (at most 39 iterations); it needs no adaptive segmenting.
   5. Check, only when `nb > 0`:
      - a. squarings of A: `params = [count, 40, 0, 0]`, `fp = [0, 42, 2, 0]`, ladder pipeline with `bg_lad_a`. (`gi = fp.y - 2 - (fp.x + s)` runs 40..1 and reads the all-zero `zero_e`, so no doubling: 40 pure squarings.) Submit and wait.
-     - b. `2^(sum V)`: `queue.write_buffer(y_buf, packed 1~ for every candidate)` (the old `y_prev` is dead), then `L = 40 + (32 - nb.leading_zeros())` (an upper bound of the bit length of `sum V`, at most 64), `params = [count, L, 0, 0]`, `fp = [0, L + 1, 2, 0]`, ladder with `bg_lad_y` (starting from `1~` and reading the exponent bits `L-1..0` of `sumv` gives `(2^sum V)~`). Submit and wait.
+     - b. `2^(sum V)`: `queue.write_buffer(y_buf, packed 1~ for every candidate)` (the old `y_prev` and the tail copy are dead; `tail_copy` is already on the host), then `L = 40 + (32 - nb.leading_zeros())` (an upper bound of the bit length of `sum V`, at most 64), `params = [count, L, 0, 0]`, `fp = [0, L + 1, 2, 0]`, ladder with `bg_lad_y` (starting from `1~` and reading the exponent bits `L-1..0` of `sumv` gives `(2^sum V)~`). Submit and wait.
      - c. `A <- A * y_prev` with `mul_pipeline` + `bg_mul_a` (`mul_params`). Submit and wait.
      - d. copy `a_buf` to `staging2[0..bytes)` and `b_buf` to `staging2[bytes..2*bytes)`, read back, `scheme.normalised` check (else `Err("kernel returned an unnormalised limb")`). Candidate `i` raises an alarm unless `a == b` or `|a - b| == n` (both are in `[0, 2n)`).
-  6. `read_x`, then verdict `Alarm` if alarmed, else `Prp` if `unpack(x) % n == p.r`, else `Composite`. `stats.tests += count`.
+  6. `read_x`; a candidate also raises an alarm unless `x` and `tail_copy` are equal or differ by exactly `n` (both are in `[0, 2n)`; skip when `tail == 0`). Verdict `Alarm` if alarmed, else `Prp` if `unpack(x) % n == p.r`, else `Composite`. `stats.tests += count`.
 - Fault corruption (`corrupt(gpu, idx)`): the limb holding bit 17 is `17 / limb_bits` at bit `17 % limb_bits`; copy that one word of `x_buf` (offset `(idx * limbs + limb) * 4`) into `staging`, `read_back_async(&staging, 4)`, XOR the bit, `queue.write_buffer(x_buf, offset, ..)`.
 - `fermat_checked_async` mirrors `fermat_async` (health check, chunks of `cap`, `gpu.explain` on errors), computing the per-chunk fault `(index - base, block)` when `base <= index < base + chunk.len()`, and clearing `self.fault` at the end (also on error).
 - `#[cfg(not(target_arch = "wasm32"))]` wrappers use `pollster::block_on`, like the existing ones. Use `web_time::Instant` as the file already does.
@@ -555,7 +555,7 @@ fn truth(ns: &[BigUint]) -> Vec<Verdict> {
 fn a_clean_checked_run_equals_the_oracle_and_never_alarms() {
     let Some(gpu) = open() else { return };
     for scheme in LimbScheme::ALL.iter().copied() {
-        // 3 bits: no full block (unprotected); 41/42: one block with a 0/1 iteration tail; then
+        // 3 bits: no full block (the tail check covers it); 41/42: one block with a 0/1 iteration tail; then
         // several blocks; 2029 is the production size.
         for bits in [3u32, 41, 42, 81, 130, 300, 2029] {
             let Some(mut r) = runner(&gpu, scheme, 8, bits, 64) else { break };
@@ -601,8 +601,17 @@ fn an_injected_fault_alarms_only_its_candidate() {
         }
         // The fault was consumed: a following clean run is clean.
         assert_eq!(r.fermat_checked(&gpu, &ns).expect("clean"), want);
+        // A fault in the tail (block number nb = 7, a 19-iteration tail) is caught by the recomputation.
+        for index in [0usize, 6, 11] {
+            r.fault = Some(Fault { index, block: 7 });
+            let got = r.fermat_checked(&gpu, &ns).expect("tail fault");
+            for (i, v) in got.iter().enumerate() {
+                let expect = if i == index { Verdict::Alarm } else { want[i] };
+                assert_eq!(*v, expect, "{scheme:?} tail fault in {index}, candidate {i}");
+            }
+        }
         // A block that does not exist flips nothing.
-        r.fault = Some(Fault { index: 2, block: 7 });
+        r.fault = Some(Fault { index: 2, block: 8 });
         assert_eq!(r.fermat_checked(&gpu, &ns).expect("no such block"), want);
     }
 }
@@ -837,7 +846,7 @@ Run: `cargo test -p bigmont-cli --test engine --test cli -- --test-threads=1`
 
 - [ ] **Step 3: Implement** engine and CLI per "Behaviour". Add unit tests for the argument parsing where the file has them (`--inject` consumes exactly two values; `--inject=1` is a usage error because it needs two values).
 
-- [ ] **Step 4: Docs** - `README.md`: a short "Error checking (Gerbicz)" section: what `--gec` does, that it is off by default (the CUDA driver's production default too), the verdict-2 contract, `--inject IDX BDRY` as the fault drill, the unprotected tail of `(bits - 1) % 40` iterations, that CPU-answered buckets are unchecked, and the measured overhead from Task 5 once known (leave the number out until then; do not invent it). `CHANGELOG.md` `[Unreleased]` / Added: one entry covering `--gec`, `--inject`, verdict 2, `gec_alarm`, and "closes #17 and #12".
+- [ ] **Step 4: Docs** - `README.md`: a short "Error checking (Gerbicz)" section: what `--gec` does, that it is off by default (the CUDA driver's production default too), the verdict-2 contract, `--inject IDX BDRY` as the fault drill, that the last `(bits - 1) % 40` iterations are covered by recomputation rather than by a block, that CPU-answered buckets are unchecked, and the measured overhead from Task 5 once known (leave the number out until then; do not invent it). `CHANGELOG.md` `[Unreleased]` / Added: one entry covering `--gec`, `--inject`, verdict 2, `gec_alarm`, and "closes #17 and #12".
 
 - [ ] **Step 5: Run everything**
 
@@ -893,5 +902,5 @@ Title `Opt-in Gerbicz error check and the --inject fault drill (closes #17, clos
 ## Self-review notes
 
 - Spec coverage: general multiply mode in both schemes (Task 2); per-candidate state, block bookkeeping, span check (Task 3); choosing block size and measuring overhead (Tasks 3, 5; single span argued in "The math"); tests with injected faults, clean runs, verdicts unchanged (Tasks 1, 3, 4, 5); opt-in default and the CPU re-check of PRPs retained (Task 4); #12 `--inject` folded in because the reference harness's drill depends on it.
-- Known limitation kept from the reference: the last `(bits - 1) % 40` iterations are unprotected (tested by the model in Task 1 so it is documented behaviour, not an accident).
+- Beyond the reference: the last `(bits - 1) % 40` iterations, which no block covers (the Task 1 model documents this), are protected by recomputation on a copy of `y_prev`. Cost: at most 39 iterations.
 - One submission and wait per 40-iteration block is the first implementation; Task 5 decides whether that costs too much.
