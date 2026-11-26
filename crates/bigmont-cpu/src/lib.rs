@@ -157,11 +157,19 @@ impl Mont {
     }
 }
 
-/// a * b + t + c as (low, high) limbs; it cannot overflow 128 bits: (2^64-1)^2 + 2 (2^64-1) = 2^128 - 1.
+/// a * b + t + c as (low, high) limbs; it cannot overflow 128 bits: (2^64-1)^2 + 2 (2^64-1) = 2^128 - 1,
+/// so the high limb plus the two carries below never wraps either.
+///
+/// Written as one widening multiply and two `overflowing_add`s on the low limb rather than as a
+/// 128-bit sum of three terms: LLVM compiles the sum to about 10 instructions per limb product
+/// (it builds each carry bit in a register), and this form to about 9, which measured about 10%
+/// faster for the whole test (see `docs/results/2026-11-26-cpu-backend-vs-gmp.md`).
 #[inline(always)]
 fn mac(a: u64, b: u64, t: u64, c: u64) -> (u64, u64) {
-    let s = u128::from(a) * u128::from(b) + u128::from(t) + u128::from(c);
-    (s as u64, (s >> 64) as u64)
+    let p = u128::from(a) * u128::from(b);
+    let (s, c1) = (p as u64).overflowing_add(c);
+    let (s, c2) = s.overflowing_add(t);
+    (s, ((p >> 64) as u64) + u64::from(c1) + u64::from(c2))
 }
 
 fn ge(a: &[u64], b: &[u64]) -> bool {

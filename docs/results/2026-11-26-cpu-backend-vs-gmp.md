@@ -40,15 +40,24 @@ fewer products; 1.22x was measured on top of the bounds-check removal.
 ## 3. After the change (this branch)
 
 `Mont::sqr` is a dedicated squaring plus a word-by-word reduction that parks each row's carry in the dead low limb;
-`Mont::mul` runs its loops over equal-length sub-slices. No `unsafe`. The disassembly of `Mont::sqr` has no
+`Mont::mul` runs its loops over equal-length sub-slices, and the multiply-accumulate step is written for fewer instructions. No `unsafe`. The disassembly of `Mont::sqr` has no
 bounds-check panics. Same machine and method as section 1, interleaved with the old build and GMP:
 
-| | before | after | GMP |
-|---|---|---|---|
-| 1 thread | 282 to 293 tests/s (5 runs) | 428 to 433 tests/s (5 runs, 1.48x) | 658 to 662 tests/s |
-| 16 threads | 2,008 to 2,133 tests/s (5 runs) | 3,198 to 3,357 tests/s (5 runs, 1.58x) | not re-run |
+| | before | squaring + no bounds checks | + compact multiply-accumulate (this branch) | GMP |
+|---|---|---|---|---|
+| 1 thread | 290 to 294 tests/s (5 runs) | 432 to 434 (5 runs, 1.48x) | 477 to 480 (5 runs, 1.63x) | 655 to 663 |
+| 16 threads | 2,026 to 2,135 (5 runs) | 3,111 to 3,369 (5 runs, 1.58x) | 3,500 to 3,514 (5 runs, 1.65x) | not re-run |
 
-The gap to GMP is now about 1.5x on one thread; the rest is GMP's hand-written assembly kernels.
+`mac` is the one-limb multiply-accumulate every inner loop uses. Written as a 128-bit sum of three terms, LLVM emits about
+10 instructions per limb product (it builds each carry bit in a register with `xor`/`setb`/`mov`); written as one widening
+multiply and two `overflowing_add`s it emits about 9, and the test is 10% faster on one thread (5% on 16, where the cores
+share more). Neither form reaches the compact `add`/`adc $0` sequence GMP's loop uses.
+
+The gap to GMP is now about 1.4x on one thread; the rest is GMP's hand-written assembly kernels.
+
+Not a bottleneck, measured in a scratch copy (not in this branch): interleaving 2 to 6 independent candidates in one loop
+(each lane's carry chain in registers, checked in the disassembly) gave no speedup (434 against 420 to 444 tests/s), so
+the loop is limited by instruction count per limb product, not by carry-chain latency.
 
 ## Not covered
 
