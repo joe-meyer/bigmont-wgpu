@@ -12,6 +12,8 @@ bigmont-cpu = { path = "../bigmont-cpu" }
 bigmont-oracle = { path = "../bigmont-oracle" }
 num-bigint = "0.5"
 num-traits = "0.2"
+# The engine is async-only; the driver blocks on it where it runs (see AGENTS.md).
+pollster = "1.0.3"
 # Pinned to wgpu trunk for gfx-rs/wgpu#10265 (merged 2026-10-10): the web backend maps the browser's
 # `subgroups` feature to `Features::SUBGROUP`, which the browser build needs. Released wgpu 30.0.2 lacks it.
 # Go back to a crates.io version (`wgpu = "31"` or the first release with #10265) once one ships.

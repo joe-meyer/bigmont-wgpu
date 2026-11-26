@@ -1,5 +1,5 @@
 mod common;
-use bigmont_core::gpu::{Batch, run};
+use bigmont_core::gpu::{Batch, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_oracle::*;
 use num_bigint::BigUint;
@@ -29,7 +29,8 @@ fn check_chain(cfg: KernelConfig, random: u32, squarings: u32) {
     values.push((sparse.clone(), &sparse - 1u32));
 
     let batch = Batch::from_values(&values);
-    let result = run(&gpu, cfg, &batch, squarings, 1).expect("run failed");
+    let result =
+        pollster::block_on(run_async(&gpu, cfg, &batch, squarings, 1)).expect("run failed");
     for (i, (n, x0)) in values.iter().enumerate() {
         let limbs = &result.x[i * LIMBS..(i + 1) * LIMBS];
         assert!(

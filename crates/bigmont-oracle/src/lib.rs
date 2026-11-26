@@ -224,3 +224,105 @@ pub fn random_prp(rng: &mut XorShift64, bits: u32) -> BigUint {
         }
     }
 }
+
+/// Gerbicz block size in ladder iterations: the CUDA driver's `w * J = 5 * 8`.
+pub const GEC_BLOCK: u32 = 40;
+
+/// x <- a * b * R^-1 mod n with R = 2^r_bits; the result is in `[0, n)`. `n` must be odd.
+pub fn mont_mul_bits(n: &BigUint, a: &BigUint, b: &BigUint, r_bits: u32) -> BigUint {
+    assert!(n.bit(0), "modulus must be odd");
+    let mask = (BigUint::one() << r_bits) - 1u32;
+    let ninv = inv_mod_pow2(n, r_bits);
+    let p = a * b;
+    // m = -p * n^-1 mod R, so that p + m*n is divisible by R
+    let m = ((&mask + 1u32) - ((&p * &ninv) & &mask)) & &mask;
+    ((p + m * n) >> r_bits) % n
+}
+
+/// Full Gerbicz blocks of `s` iterations in a ladder of `bits - 1` iterations.
+pub fn gec_blocks(bits: u32, s: u32) -> u32 {
+    (bits - 1) / s
+}
+
+/// Sum over the full blocks `j = 1..=gec_blocks(bits, s)` of the block exponent
+/// `V_j = (e >> (bits - 1 - j*s)) & (2^s - 1)`, for the base-2 ladder over `e = n - 1`.
+/// Panics if the sum does not fit 64 bits (`s` up to 40 and any size this crate supports fit).
+pub fn gec_window_sum(e: &BigUint, bits: u32, s: u32) -> u64 {
+    assert!((1..=48).contains(&s), "block size must be 1..=48");
+    let mask = (BigUint::one() << s) - 1u32;
+    (1..=gec_blocks(bits, s)).fold(0u64, |acc, j| {
+        let v = ((e >> (bits - 1 - j * s)) & &mask)
+            .to_u64_digits()
+            .first()
+            .copied()
+            .unwrap_or(0);
+        acc.checked_add(v).expect("window sum overflows 64 bits")
+    })
+}
+
+/// `s` bits of the little-endian word array starting at bit `lo` (zero beyond its end).
+fn bits_at(words: &[u32], lo: u32, width: u32) -> u64 {
+    let (mut v, mut got) = (0u64, 0u32);
+    while got < width {
+        let pos = lo + got;
+        let (w, off) = ((pos / 32) as usize, pos % 32);
+        let take = (32 - off).min(width - got);
+        let word = u64::from(words.get(w).copied().unwrap_or(0));
+        v |= ((word >> off) & ((1u64 << take) - 1)) << got;
+        got += take;
+    }
+    v
+}
+
+/// [`gec_window_sum`] over the little-endian u32 words of `e` (no big-integer shifts).
+pub fn gec_window_sum_words(e_words: &[u32], bits: u32, s: u32) -> u64 {
+    assert!((1..=48).contains(&s), "block size must be 1..=48");
+    (1..=gec_blocks(bits, s)).fold(0u64, |acc, j| {
+        acc.checked_add(bits_at(e_words, bits - 1 - j * s, s))
+            .expect("window sum overflows 64 bits")
+    })
+}
+
+/// What [`gerbicz_model`] found.
+pub struct GecModel {
+    /// Whether `A^(2^s) * 2^(sum V) == B (mod n)` held.
+    pub consistent: bool,
+    /// The ladder's final value (`2^(n-1) mod n` when no fault was injected).
+    pub result: BigUint,
+}
+
+/// The Gerbicz check on plain modular arithmetic: the executable specification the GPU runner is
+/// tested against. Runs the base-2 ladder over `e = n - 1` (`n` odd, at least 2 bits), multiplies the
+/// state at every block boundary (every `s` iterations) into `A` (the previous boundary's state) and
+/// `B` (the new one), and tests the identity at the end. `fault = Some((i, b))` flips bit `b` of the
+/// state after iteration `i` completes and reduces it mod n. The last `(bits - 1) % s` iterations are
+/// not covered by any block.
+pub fn gerbicz_model(n: &BigUint, s: u32, fault: Option<(u32, u32)>) -> GecModel {
+    let bits = n.bits() as u32;
+    let e = n - 1u32;
+    let two = BigUint::from(2u32);
+    let mut x = &two % n;
+    let (mut y_prev, mut a, mut b) = (x.clone(), BigUint::one(), BigUint::one());
+    for i in 0..bits - 1 {
+        x = (&x * &x) % n;
+        if e.bit(u64::from(bits - 2 - i)) {
+            x = (&x * 2u32) % n;
+        }
+        if let Some((fi, fb)) = fault
+            && fi == i
+        {
+            x = (&x ^ (BigUint::one() << fb)) % n;
+        }
+        if (i + 1) % s == 0 {
+            a = (&a * &y_prev) % n;
+            b = (&b * &x) % n;
+            y_prev = x.clone();
+        }
+    }
+    let sum = gec_window_sum(&e, bits, s);
+    let lhs = (a.modpow(&(BigUint::one() << s), n) * two.modpow(&BigUint::from(sum), n)) % n;
+    GecModel {
+        consistent: lhs == b % n,
+        result: x,
+    }
+}

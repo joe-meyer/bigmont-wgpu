@@ -2,7 +2,7 @@
 //!
 //! Both start with a 16-byte little-endian header: magic `u32`, container bits `u32`, count `u64`.
 //! A candidate body is `count` numbers of `ceil(bits / 32)` little-endian `u32` limbs; a verdict
-//! body is `count` bytes (0 composite, 1 probable prime, 2 GEC alarm; this driver never writes 2).
+//! body is `count` bytes (0 composite, 1 probable prime, 2 GEC alarm; this driver writes 2 only with `--gec`).
 
 use num_bigint::BigUint;
 use std::path::{Path, PathBuf};

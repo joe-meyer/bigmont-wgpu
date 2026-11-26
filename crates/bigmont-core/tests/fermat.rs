@@ -62,9 +62,10 @@ fn verify_on(
     capacity: u32,
 ) -> usize {
     let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled);
-    let mut runner = Runner::new(gpu, cfg, bits, capacity).expect("runner");
+    let mut runner =
+        pollster::block_on(Runner::new_async(gpu, cfg, bits, capacity)).expect("runner");
     runner.segment_override = segment;
-    let got = runner.fermat(gpu, ns).expect("fermat failed");
+    let got = pollster::block_on(runner.fermat_async(gpu, ns)).expect("fermat failed");
     assert_eq!(got.len(), ns.len());
     for (i, n) in ns.iter().enumerate() {
         assert_eq!(
@@ -181,10 +182,10 @@ fn rejects_candidates_of_the_wrong_length_or_even() {
             continue;
         }
         let cfg = KernelConfig::for_bits_scheme(scheme, 2029, 8, 64, Variant::Unrolled);
-        let mut runner = Runner::new(&gpu, cfg, 2029, 16).unwrap();
-        assert!(runner.fermat(&gpu, &[mersenne(521)]).is_err());
+        let mut runner = pollster::block_on(Runner::new_async(&gpu, cfg, 2029, 16)).unwrap();
+        assert!(pollster::block_on(runner.fermat_async(&gpu, &[mersenne(521)])).is_err());
         let even = BigUint::one() << 2028u32;
-        assert!(runner.fermat(&gpu, &[even]).is_err());
+        assert!(pollster::block_on(runner.fermat_async(&gpu, &[even])).is_err());
     }
 }
 
@@ -196,10 +197,10 @@ fn runner_is_reusable_across_calls() {
             continue;
         }
         let cfg = KernelConfig::for_bits_scheme(scheme, 1019, 8, 64, Variant::Unrolled);
-        let mut runner = Runner::new(&gpu, cfg, 1019, 64).unwrap();
+        let mut runner = pollster::block_on(Runner::new_async(&gpu, cfg, 1019, 64)).unwrap();
         for seed in [1u64, 2, 3] {
             let ns = mixed(1019, 10, 1, seed);
-            let got = runner.fermat(&gpu, &ns).unwrap();
+            let got = pollster::block_on(runner.fermat_async(&gpu, &ns)).unwrap();
             for (n, g) in ns.iter().zip(got) {
                 assert_eq!(g, fermat_base2(n), "{cfg:?} seed {seed}");
             }
@@ -273,15 +274,17 @@ fn the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu() {
                 continue;
             }
             let cfg = KernelConfig::for_bits_scheme(scheme, 2, tpi, 64, Variant::Unrolled);
-            let mut runner = Runner::new(&gpu, cfg, 2, 16).expect("a 2-bit runner");
+            let mut runner =
+                pollster::block_on(Runner::new_async(&gpu, cfg, 2, 16)).expect("a 2-bit runner");
             assert_eq!(
-                runner.fermat(&gpu, &[BigUint::from(3u32)]).unwrap(),
+                pollster::block_on(runner.fermat_async(&gpu, &[BigUint::from(3u32)])).unwrap(),
                 [true],
                 "{scheme:?} tpi {tpi}"
             );
             // Several copies, and a sub-wave count, still give one verdict each.
             assert_eq!(
-                runner.fermat(&gpu, &vec![BigUint::from(3u32); 5]).unwrap(),
+                pollster::block_on(runner.fermat_async(&gpu, &vec![BigUint::from(3u32); 5]))
+                    .unwrap(),
                 [true; 5],
                 "{scheme:?} tpi {tpi}"
             );
@@ -387,7 +390,7 @@ fn runner_rejects_fewer_than_two_bits() {
         }
         let cfg = KernelConfig::for_bits_scheme(scheme, 2, 8, 64, Variant::Unrolled);
         for bits in [0u32, 1] {
-            let err = Runner::new(&gpu, cfg, bits, 16)
+            let err = pollster::block_on(Runner::new_async(&gpu, cfg, bits, 16))
                 .err()
                 .unwrap_or_else(|| panic!("{bits} bits must be rejected"));
             assert!(
@@ -396,7 +399,7 @@ fn runner_rejects_fewer_than_two_bits() {
             );
         }
         assert!(
-            Runner::new(&gpu, cfg, 2, 16).is_ok(),
+            pollster::block_on(Runner::new_async(&gpu, cfg, 2, 16)).is_ok(),
             "2 bits is the smallest supported length"
         );
     }

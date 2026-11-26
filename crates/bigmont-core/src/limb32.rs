@@ -8,6 +8,9 @@
 //! number, lane `l` holds limbs `l * LPL .. (l + 1) * LPL` as named scalars, `L = TPI * LPL` limbs
 //! with `R = 2^(32 L)`, `L >= ceil((bits + 4) / 32)` (so R > 16 n). Per instance
 //! `x <- x^2 R^-1 mod n`, `params.y` times, the result in [0, 2n) with every limb a full 32-bit word.
+//! In [`Mode::Mul`] the multiplier limbs come from the read-only `b_limbs` (binding 4) instead of
+//! `x`, giving `x <- x b R^-1 mod n`; `b` limbs are u32 words like `x`, so the chain bounds in
+//! [`step`] are unchanged, and for `x, b < 4n` the result is below `16n^2 / R + n < 2n`.
 //!
 //! ## Carries
 //!
@@ -38,7 +41,8 @@ use crate::unrolled::Mode;
 /// `tpi` 4, 8, 16 or 32). Same bindings as the 13-bit unrolled kernel: `params`, `n_limbs`,
 /// `ninv_buf`, `x_limbs`, plus in [`Mode::Fermat`] `e_words` and `fp` (see
 /// `KernelConfig::fermat_wgsl_for`), where every squaring is followed by the conditional doubling
-/// selected by the exponent bit (see [`conditional_double`]).
+/// selected by the exponent bit (see [`conditional_double`]), and in [`Mode::Mul`] `b_limbs` (the
+/// right operand, see `KernelConfig::try_mul_wgsl_for`).
 pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
     if !matches!(cfg.tpi, 4 | 8 | 16 | 32) {
         return Err(format!(
@@ -62,12 +66,17 @@ pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
     g.line("");
     if mode == Mode::Fermat {
         g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch");
+    } else if mode == Mode::Mul {
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = multiplications");
     } else {
         g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
     }
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");
     g.line("@group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;   // -n^-1 mod 2^32");
     g.line("@group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;");
+    if mode == Mode::Mul {
+        g.line("@group(0) @binding(4) var<storage, read> b_limbs: array<u32>;   // right operand");
+    }
     if mode == Mode::Fermat {
         g.line("@group(0) @binding(4) var<storage, read> e_words: array<u32>;   // n - 1, words per instance = fp.z");
         g.line("@group(0) @binding(5) var<uniform> fp: vec4<u32>;               // x = first iteration, y = nbits, z = words per instance");
@@ -88,6 +97,11 @@ pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
     for c in 0..lpl {
         g.line(format!("let n{c} = n_limbs[off + {c}u];"));
     }
+    if mode == Mode::Mul {
+        for c in 0..lpl {
+            g.line(format!("let b{c} = b_limbs[off + {c}u];"));
+        }
+    }
     for c in 0..lpl {
         g.line(format!("var t{c} = 0u;"));
     }
@@ -105,8 +119,10 @@ pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
     g.line("var pend = 0lu;                                   // deferred carry into this lane's last limb (below 2^34)");
     g.line("for (var owner = 0u; owner < TPI; owner++) {");
     g.depth += 1;
+    // The multiplier limbs: `x` itself when squaring, the read-only `b` when multiplying.
+    let mult = if mode == Mode::Mul { "b" } else { "x" };
     for w in 0..lpl {
-        step(&mut g, lpl, w);
+        step(&mut g, lpl, w, mult);
     }
     g.depth -= 1;
     g.line("}");
@@ -166,7 +182,8 @@ fn conditional_double(g: &mut Gen, lpl: usize) {
     }
 }
 
-/// One multiplier limb (`x{w}` of lane `owner`): `t <- (t + x b + n m) / 2^32` over this lane's limbs.
+/// One multiplier limb (`{mult}{w}` of lane `owner`, where `mult` is `x` when squaring and `b` when
+/// multiplying): `t <- (t + x b + n m) / 2^32` over this lane's limbs.
 ///
 /// Why the `wrap` branch of the last element is exact. Every chain input is a u32, so the carries
 /// `c1`, `c2` are at most 2^32 - 1, and `a` and `q` (each a product of two u32 plus two u32 terms)
@@ -177,11 +194,11 @@ fn conditional_double(g: &mut Gen, lpl: usize) {
 /// `s2 >> 32 < 4` and the new `pend = (s2 >> 32) + wrap + (a >> 32)` is below 4 + 2^32 + 2^32 =
 /// 2^33 + 4; without a wrap it is below 2^32 + 2^32 = 2^33. Either way `pend` stays below 2^34, the
 /// bound the next step relies on.
-fn step(g: &mut Gen, lpl: usize, w: usize) {
+fn step(g: &mut Gen, lpl: usize, w: usize, mult: &str) {
     g.line("{");
     g.depth += 1;
     g.line(format!(
-        "let bb = u64(bcast(x{w}, owner, base));       // multiplier limb"
+        "let bb = u64(bcast({mult}{w}, owner, base));       // multiplier limb"
     ));
     g.line("let T0 = bcast(t0, 0u, base);                   // accumulator limb 0 of lane 0");
     g.line("let TN = down1(t0, lane);                       // next lane's accumulator limb 0 (0 for the last lane)");

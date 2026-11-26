@@ -41,5 +41,6 @@ Build and serve:
     wasm-bindgen --target web --out-dir web/pkg target/wasm32-unknown-unknown/release/bigmont_wasm.wasm
     python3 -m http.server 8765 --directory web
     # then open http://localhost:8765/rust.html?bits=255,1019,2029&tpi=8
+    # add &gec=1 to run with the Gerbicz error check (every verdict must still match, no alarms)
 
 **wgpu is pinned to trunk for now.** Released wgpu 30.0.2 does not map the browser's `subgroups` feature to `wgpu::Features::SUBGROUP`, so a device cannot ask for it and the kernels' `enable subgroups;` is rejected (the page would report "needs subgroups, which the adapter lacks"). That is fixed upstream by [gfx-rs/wgpu#10265](https://github.com/gfx-rs/wgpu/pull/10265) (fixing [#10146](https://github.com/gfx-rs/wgpu/issues/10146)), merged to trunk on 2026-10-10 but not in 30.0.2, which is a patch release off an older branch. So `bigmont-core` and `bigmont-cli` depend on wgpu at trunk commit `60cef2be` (see the comment in their `Cargo.toml`), and the builds above need no patch. Switch back to a crates.io version as soon as a release contains #10265. Compiling for wasm32 does not depend on it; only running on the GPU does.

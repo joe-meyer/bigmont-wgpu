@@ -34,7 +34,7 @@ Raw speed matters, but it comes second: where portability and speed conflict, po
 
 ## What it does
 
-- The engine (`bigmont-core`, `Runner::fermat`) takes plain big integers and returns Fermat verdicts. The `bigmont`
+- The engine (`bigmont-core`, `Runner::fermat_async`) takes plain big integers and returns Fermat verdicts. The `bigmont`
   command-line driver is one ready-made front end on top of it.
 - The driver also implements the in-driver early-exit interface (`--bins`, `--ee SIZES`, `--chunk`, `--growth`, `--marker`,
   `--lock`) used by the existing CUDA pipeline's feeders: candidates are grouped into ks, tested in waves, and a k stops at its
@@ -80,9 +80,61 @@ cargo run --release -p bigmont-cli --example make_candidates -- --bits 2029 1310
 ```
 
 Useful flags: `--backend auto|gpu|cpu`, `--adapter SUBSTR` and `--vk-backend SUBSTR` to pick a device, `--limbs
-auto|13|32`, `--retune`, `--cache PATH | --no-cache`, `--verify-rate N`, `--repeat N`. Run `bigmont` with no
+auto|13|32`, `--retune`, `--cache PATH | --no-cache`, `--verify-rate N`, `--gec`, `--repeat N`. Run `bigmont` with no
 arguments for the full usage. The tuning cache lives at `$BIGMONT_CACHE`, else `%LOCALAPPDATA%\bigmont\tune.cache`
 (Windows) or `$XDG_CACHE_HOME/bigmont/tune.cache` / `~/.cache/bigmont/tune.cache`.
+
+## Error checking (Gerbicz)
+
+`--gec` runs every Fermat test with the Gerbicz-Li error check, on the GPU and on the CPU. It is off by default, as
+it is in the CUDA driver this one replaces, and with it off nothing changes. The ladder is split into blocks of 40 squarings; at each block boundary the
+state is folded into two running products, and at the end one extra exponentiation checks that they agree mod n, so a
+bit flipped anywhere in a block's computation is caught with overwhelming probability. The last `(bits - 1) % 40` iterations belong to no block, so
+they are covered by recomputation instead: they are run twice, once on the ladder state and once on a copy taken at the
+last block boundary, and the two results must agree. A candidate shorter than one block is covered entirely this way.
+
+A candidate that fails either check gets **verdict byte 2** in the verdict file: neither composite nor probable
+prime, a request to test it again (the same contract the CUDA driver has). It is counted in the summary line (`GEC
+alarms`) and, with `--ee`, in the `gec_alarm=` field of the `g1_fermat[EE]` line, and a k with a verdict 2 is retired
+like one with a probable prime, as the CUDA driver does. Clean runs never alarm, and their verdicts are byte-identical
+to a run without `--gec`. Every probable prime is still re-checked on the CPU, as before; an alarm is not re-checked,
+since the point of 2 is to leave the decision to the caller. The CPU runs the same check: buckets it answers
+(`--backend cpu`, fewer candidates than the GPU threshold, or after a GPU error) and its re-checks of GPU verdicts are
+checked too, so with `--gec` every verdict is either checked or 2. A re-check that alarms makes the candidate 2 as well,
+since neither computation can then be trusted. On the CPU the check adds two multiplies per block of 40 squarings, about
+40 squarings plus the `2^(sum V)` ladder per candidate, and runs the last `(bits - 1) % 40` iterations twice; its cost
+was not measured.
+
+How the detector is tested: the runner tests (`crates/bigmont-core/tests/gec.rs`) build the runner from mutated
+kernel sources that simulate a faulty device, and the real runner, kernels and host comparison run on top of them. The
+simulated faults are a flipped register mid-block and in the tail, a flipped bit arriving from a load at a dispatch
+start, a faulty multiply unit, corrupted memory cells (the modulus, `-n^-1` and the exponent), and a modulus that is
+wrong on every load while the buffer is intact. Each must alarm exactly the hit candidates, a hit probable prime
+included, and a fault condition that never fires must leave the run clean. The algorithm is also checked against a CPU
+model in `bigmont-oracle`, and the engine's handling of an alarm (counted, never re-checked, never overruled) is
+unit-tested without a GPU. The CPU check (`bigmont_cpu::fermat_base2_gec`) is written over a small arithmetic trait, and
+its tests (`crates/bigmont-cpu/tests/cpu.rs`) run it on a wrapper of the real arithmetic that corrupts the output of one
+chosen operation: in a block, at a block boundary, in either tail computation and in the final check. Every such fault
+must alarm, a hit probable prime included, and a fault position past the end must leave the run clean.
+
+What the check does not cover:
+
+- Work done on the host. The Montgomery inputs (`R mod n`, `2R mod n`, `-n^-1`), the exponent sums and the final
+  comparisons are computed on the CPU and are not checked. A fault on the device that keeps the identity intact is
+  possible only with negligible probability. That includes a modulus that every kernel reads wrong: the check's products
+  start from `R mod n`, computed on the host from the true `n`, so the identity fails for the wrong modulus (the tests
+  confirm this). An unchecked run in the same situation gives a silent false composite. Only an independent computation
+  catches errors outside the check: the CPU re-check of probable primes, `--verify-rate` samples, and Beacon's canary
+  and notary.
+- The final read of the result when no tail recomputation runs (a candidate whose `bits - 1` is a multiple of 40, for
+  example 41 or 2,001 bits): the last block is covered by the identity, so a fault in the ladder itself still alarms,
+  but the copy of the final value back to the host is not compared with anything. The window is narrow (corruption
+  of the result after the last block, in device memory or on the read-back); the `--gec` help text says so too.
+
+Cost: on 2,029-bit candidates the check lowered throughput by about 15 % (mean of three plain and three `--gec` runs of
+100,003 candidates, 34,112 against 28,927 tests/s, each pair between 14.9 % and 15.4 %), measured on one AMD Radeon RX 6700 XT
+(AMD proprietary driver 26.10.1, Vulkan, 13-bit limbs, TPI 8). The CUDA driver's kit notes report 514,850 to 581,795 tests/s with and without its check on an RTX 5090, about 11.5 %. Other GPUs
+and drivers were not measured; see [the results](docs/superpowers/results/2026-11-25-gerbicz-check.md).
 
 ## Measurements
 
@@ -128,6 +180,11 @@ scheme choice, untested platforms, and missing features.
 The first use is prime-gap searching. The cooperative kernel design is shaped after NVIDIA's
 [CGBN](https://github.com/NVlabs/CGBN) library; this repository contains none of its source files. The kernels are
 generated WGSL; the tests compare them with independent big-integer references.
+
+The `bigmont` driver follows the contract of [Beacon](https://github.com/djuk8/beacon)'s `g1_fermat_v3` CUDA driver
+(the candidate and verdict file formats, the exit codes, the verdict byte for a Gerbicz alarm), and Beacon's
+implementation is the baseline we compare correctness and throughput against. Thanks to its author, djuk8, for
+publishing it.
 
 ## License
 

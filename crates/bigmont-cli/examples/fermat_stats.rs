@@ -35,13 +35,13 @@ fn main() {
     );
     // The tuned shape at this exact length (a 32-bit limb count can differ within a tuning class).
     let cfg = tuned.cfg.retarget(bits);
-    let mut runner = Runner::new(&gpu, cfg, bits, capacity).expect("runner");
+    let mut runner =
+        pollster::block_on(Runner::new_async(&gpu, cfg, bits, capacity)).expect("runner");
     let cap = runner.capacity() as usize;
     let t = Instant::now();
     let mut prps = 0usize;
     for chunk in file.numbers.chunks(cap) {
-        prps += runner
-            .fermat(&gpu, chunk)
+        prps += pollster::block_on(runner.fermat_async(&gpu, chunk))
             .expect("fermat")
             .iter()
             .filter(|&&v| v)

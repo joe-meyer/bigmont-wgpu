@@ -286,4 +286,24 @@ impl KernelConfig {
             crate::unrolled::Mode::Fermat,
         ))
     }
+
+    /// The Montgomery multiply source (unrolled variant only): bindings 0..3 as in squaring mode
+    /// plus `@binding(4) b_limbs` (read-only). Per instance `x <- x * b * R^-1 mod n`, `params.y`
+    /// times, with the result in `[0, 2n)` for `x, b < 4n` (needs R > 16n, see `for_bits`).
+    pub fn try_mul_wgsl_for(&self, target: Target) -> Result<String, String> {
+        self.check_target(target)?;
+        if self.variant != Variant::Unrolled {
+            return Err(
+                "the multiply kernel is generated for the unrolled variant only".to_string(),
+            );
+        }
+        if self.scheme == LimbScheme::Limb32 {
+            return crate::limb32::wgsl(self, crate::unrolled::Mode::Mul);
+        }
+        Ok(crate::unrolled::wgsl(
+            self,
+            target,
+            crate::unrolled::Mode::Mul,
+        ))
+    }
 }

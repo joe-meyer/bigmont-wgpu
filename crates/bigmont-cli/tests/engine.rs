@@ -77,6 +77,32 @@ fn cpu_backend_matches_the_oracle_including_degenerate_inputs() {
 }
 
 #[test]
+fn the_cpu_backend_with_gec_gives_the_plain_verdicts_and_no_alarms() {
+    let (ns, want) = batch();
+    let mut plain = Engine::open(opts(Backend::Cpu));
+    let mut checked = Engine::open(Options {
+        gec: true,
+        ..opts(Backend::Cpu)
+    });
+    assert_eq!(plain.verdicts(&ns).unwrap(), want);
+    assert_eq!(checked.verdicts(&ns).unwrap(), want);
+    let backend = ns.iter().filter(|n| needs_backend(n)).count() as u64;
+    let r = checked.report();
+    assert_eq!(r.gec_alarms, 0);
+    assert_eq!(r.cpu_tests, backend);
+    assert_eq!(
+        r.cpu_checked, backend,
+        "every candidate that needs a backend ran the checked CPU test"
+    );
+    assert_eq!(r.gpu_tests, 0);
+    assert_eq!(
+        plain.report().cpu_checked,
+        0,
+        "without gec nothing is checked"
+    );
+}
+
+#[test]
 fn gpu_backend_matches_the_oracle_and_buckets_by_bit_length() {
     if !common::usable_gpu() {
         return;
@@ -576,12 +602,55 @@ fn a_retargeted_32_bit_kernel_that_is_smaller_than_the_self_tested_one_gives_ora
         tune::self_test(&gpu, tuned, CLASS_REP).unwrap_or_else(|e| panic!("{e}"));
         let exact = tuned.retarget(SHORTER);
         assert!(exact.limbs < tuned.limbs, "{tuned:?} -> {exact:?}");
-        let mut runner = Runner::new(&gpu, exact, SHORTER, 32).expect("runner at the exact length");
-        let got = runner.fermat(&gpu, &ns).expect("fermat");
+        let mut runner = pollster::block_on(Runner::new_async(&gpu, exact, SHORTER, 32))
+            .expect("runner at the exact length");
+        let got = pollster::block_on(runner.fermat_async(&gpu, &ns)).expect("fermat");
         assert_eq!(
             got, want,
             "tpi {tpi}: {} limbs at {SHORTER} bits (self-tested with {})",
             exact.limbs, tuned.limbs
         );
     }
+}
+
+fn gec_opts() -> Options {
+    Options {
+        backend: Backend::Gpu,
+        gec: true,
+        min_gpu_batch: 1,
+        capacity: 32,
+        verify_rate: 0,
+        ..Options::default()
+    }
+}
+
+#[test]
+fn gec_verdicts_equal_plain_verdicts_on_clean_input_and_never_alarm() {
+    if !common::usable_gpu() {
+        return;
+    }
+    let mut rng = XorShift64::new(21);
+    let mut ns: Vec<BigUint> = (0..40)
+        .map(|_| random_odd_modulus(&mut rng, 1019))
+        .collect();
+    ns.extend((0..2).map(|_| random_prp(&mut rng, 1019)));
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    assert!(want.contains(&1), "the batch must contain a probable prime");
+    let mut checked = Engine::open(gec_opts());
+    assert_eq!(checked.verdicts(&ns).unwrap(), want);
+    let r = checked.report();
+    assert_eq!(r.gec_alarms, 0);
+    assert!(r.rechecks >= 2, "every PRP is re-checked: {r:?}");
+    assert_eq!(
+        r.rechecks_checked, r.rechecks,
+        "with gec every re-check is the checked CPU run"
+    );
+    let mut plain = Engine::open(Options {
+        gec: false,
+        ..gec_opts()
+    });
+    assert_eq!(plain.verdicts(&ns).unwrap(), want);
+    let r = plain.report();
+    assert!(r.rechecks >= 2);
+    assert_eq!(r.rechecks_checked, 0);
 }

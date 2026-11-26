@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+pub mod faults;
 use bigmont_core::gpu::Gpu;
 use bigmont_core::kernel::KernelConfig;
 

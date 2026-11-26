@@ -22,6 +22,18 @@ fn js(e: String) -> JsError {
     JsError::new(&e)
 }
 
+/// Candidates given as hex strings.
+fn parse_hex(candidates: &[String]) -> Result<Vec<BigUint>, JsError> {
+    candidates
+        .iter()
+        .enumerate()
+        .map(|(i, h)| {
+            BigUint::parse_bytes(h.as_bytes(), 16)
+                .ok_or_else(|| JsError::new(&format!("candidate {i} is not a hex number")))
+        })
+        .collect()
+}
+
 /// An open WebGPU device.
 #[wasm_bindgen]
 pub struct Engine {
@@ -59,14 +71,7 @@ impl Engine {
         tpi: u32,
         wg: u32,
     ) -> Result<Vec<u8>, JsError> {
-        let ns = candidates
-            .iter()
-            .enumerate()
-            .map(|(i, h)| {
-                BigUint::parse_bytes(h.as_bytes(), 16)
-                    .ok_or_else(|| JsError::new(&format!("candidate {i} is not a hex number")))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let ns = parse_hex(&candidates)?;
         let cfg =
             KernelConfig::for_bits_scheme(LimbScheme::Limb13, bits, tpi, wg, Variant::Unrolled);
         let mut runner = Runner::new_async(&self.gpu, cfg, bits, CAPACITY)
@@ -74,5 +79,28 @@ impl Engine {
             .map_err(js)?;
         let verdicts = runner.fermat_async(&self.gpu, &ns).await.map_err(js)?;
         Ok(verdicts.into_iter().map(u8::from).collect())
+    }
+
+    /// [`Engine::fermat_hex`] with the Gerbicz error check: verdict bytes are 0 (composite), 1
+    /// (probable prime) or 2 (the check failed, so the verdict cannot be trusted).
+    pub async fn fermat_checked_hex(
+        &self,
+        bits: u32,
+        candidates: Vec<String>,
+        tpi: u32,
+        wg: u32,
+    ) -> Result<Vec<u8>, JsError> {
+        let ns = parse_hex(&candidates)?;
+        let cfg =
+            KernelConfig::for_bits_scheme(LimbScheme::Limb13, bits, tpi, wg, Variant::Unrolled);
+        let mut runner = Runner::new_async(&self.gpu, cfg, bits, CAPACITY)
+            .await
+            .map_err(js)?;
+        runner.enable_gec_async(&self.gpu).await.map_err(js)?;
+        let verdicts = runner
+            .fermat_checked_async(&self.gpu, &ns)
+            .await
+            .map_err(js)?;
+        Ok(verdicts.into_iter().map(|v| v.byte()).collect())
     }
 }

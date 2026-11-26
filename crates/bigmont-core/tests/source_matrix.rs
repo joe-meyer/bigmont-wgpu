@@ -80,6 +80,37 @@ fn every_fermat_source_that_generates_validates_with_exactly_that_targets_capabi
 }
 
 #[test]
+fn every_multiply_source_that_generates_validates_with_exactly_that_targets_capabilities() {
+    let native = Caps {
+        subgroups: true,
+        int64: true,
+    };
+    let mut generated = 0;
+    for &scheme in LimbScheme::ALL {
+        for tpi in [4u32, 8, 16, 32] {
+            for bits in [64u32, 254, 1019, 2029] {
+                let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, 64, Variant::Unrolled);
+                for (target, caps) in [(Target::Native, native), (Target::Browser, Caps::BROWSER)] {
+                    match cfg.try_mul_wgsl_for(target) {
+                        Ok(src) => {
+                            assert!(src.contains("b_limbs"), "{cfg:?} {target:?}");
+                            validate(&src, caps)
+                                .unwrap_or_else(|e| panic!("{cfg:?} {target:?} mul: {e}"));
+                            generated += 1;
+                        }
+                        Err(_) => assert!(
+                            !caps.satisfies(cfg.requires()),
+                            "{cfg:?} {target:?} mul refused although the target can run it"
+                        ),
+                    }
+                }
+            }
+        }
+    }
+    assert!(generated > 0);
+}
+
+#[test]
 fn a_32_bit_kernel_is_never_generated_for_the_browser() {
     let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 2029, 8, 64, Variant::Unrolled);
     let e = cfg.try_wgsl_for(Target::Browser).unwrap_err();
@@ -122,6 +153,26 @@ fn a_32_bit_kernel_is_never_generated_for_the_browser() {
         .try_fermat_wgsl_for(Target::Browser)
         .unwrap();
     assert!(!f13.contains("u64"));
+
+    // and for the multiply kernel.
+    let e = cfg.try_mul_wgsl_for(Target::Browser).unwrap_err();
+    assert!(e.contains("int64"), "{e}");
+    let mul = cfg.try_mul_wgsl_for(Target::Native).unwrap();
+    assert!(mul.contains("u64") && mul.contains("b_limbs"));
+    assert!(
+        validate(
+            &mul,
+            Caps {
+                subgroups: true,
+                int64: false
+            }
+        )
+        .is_err()
+    );
+    let m13 = KernelConfig::for_bits(2029, 8, 64, Variant::Unrolled)
+        .try_mul_wgsl_for(Target::Browser)
+        .unwrap();
+    assert!(!m13.contains("u64"));
 }
 
 #[test]

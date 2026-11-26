@@ -47,6 +47,7 @@ dependencies = [
  "bigmont-oracle",
  "num-bigint",
  "num-traits",
+ "pollster",
  "wgpu",
 ]
 

@@ -712,24 +712,23 @@ impl Gpu {
         Ok(x)
     }
 
+    /// One line per adapter wgpu can enumerate (name, backend, driver, subgroup support).
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn list_adapters() -> Vec<String> {
-        pollster::block_on(async {
-            let instance = shared_instance();
-            instance
-                .enumerate_adapters(wgpu::Backends::all())
-                .await
-                .iter()
-                .map(|a| {
-                    let i = a.get_info();
-                    format!(
-                        "{} subgroups={}",
-                        describe(&i),
-                        a.features().contains(wgpu::Features::SUBGROUP)
-                    )
-                })
-                .collect()
-        })
+    pub async fn list_adapters_async() -> Vec<String> {
+        let instance = shared_instance();
+        instance
+            .enumerate_adapters(wgpu::Backends::all())
+            .await
+            .iter()
+            .map(|a| {
+                let i = a.get_info();
+                format!(
+                    "{} subgroups={}",
+                    describe(&i),
+                    a.features().contains(wgpu::Features::SUBGROUP)
+                )
+            })
+            .collect()
     }
 
     pub fn describe(&self) -> String {
@@ -753,7 +752,7 @@ impl Gpu {
 
 /// Input arrays, one entry per instance: moduli, -n^-1 mod 2^limb_bits, and starting values, as limbs.
 ///
-/// A `Batch` does not record which [`LimbScheme`] packed it: [`run`] only checks that the limb count
+/// A `Batch` does not record which [`LimbScheme`] packed it: [`run_async`] only checks that the limb count
 /// matches the configuration's. A batch packed for one scheme and run with a configuration of the
 /// other scheme (with the same limb count) gives garbage without an error. Build the batch for the
 /// configuration you run it with (`Batch::from_values_cfg`).
@@ -853,18 +852,6 @@ pub(crate) async fn guarded<T>(
 ///
 /// `batch` must have been packed for `cfg`'s limb scheme (see the warning on [`Batch`]): only the
 /// limb count is checked.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn run(
-    gpu: &Gpu,
-    cfg: KernelConfig,
-    batch: &Batch,
-    squarings: u32,
-    repeats: u32,
-) -> Result<Run, String> {
-    pollster::block_on(run_async(gpu, cfg, batch, squarings, repeats))
-}
-
-/// [`run`] as a future: the form a browser needs (see [`Gpu::wait_async`]).
 pub async fn run_async(
     gpu: &Gpu,
     cfg: KernelConfig,
@@ -911,7 +898,7 @@ pub async fn run_async(
         .map_err(|e| gpu.explain(e))
 }
 
-/// The device part of [`run`] (inputs already validated); any `Err` is passed through
+/// The device part of [`run_async`] (inputs already validated); any `Err` is passed through
 /// [`Gpu::explain`] by the caller.
 async fn run_on_device(
     gpu: &Gpu,
@@ -1027,6 +1014,166 @@ async fn run_on_device(
     queue.submit([enc.finish()]);
     let x = gpu.read_back_async(&staging, words * 4).await?;
     Ok(Run { x, best_secs: best })
+}
+
+/// Multiplies each `(n, a, b)` `times` times on the device (`a <- a * b * R^-1 mod n`) and returns the
+/// result limbs (`values.len() * cfg.limbs` words, in `cfg`'s limb scheme). Every `n` must be odd
+/// with `16n < R`, and every `a` and `b` below `4n`. A differential-test harness for the multiply
+/// kernel the Gerbicz check uses.
+pub async fn run_mul_async(
+    gpu: &Gpu,
+    cfg: KernelConfig,
+    values: &[(BigUint, BigUint, BigUint)],
+    times: u32,
+) -> Result<Vec<u32>, String> {
+    cfg.validate()?;
+    cfg.check_caps(gpu.caps())?;
+    if values.is_empty() {
+        return Err("no values to multiply".into());
+    }
+    let count = u32::try_from(values.len())
+        .map_err(|_| format!("{} values exceed the u32 instance count", values.len()))?;
+    let r_bits = u64::from(cfg.r_bits());
+    for (i, (n, a, b)) in values.iter().enumerate() {
+        // R > 16n: n has at most r_bits - 4 bits.
+        if !n.bit(0) || n.bits() + 4 > r_bits {
+            return Err(format!(
+                "value {i}: n must be odd with 16n < R = 2^{r_bits} for {cfg:?}"
+            ));
+        }
+        let four_n = n * 4u32;
+        if *a >= four_n || *b >= four_n {
+            return Err(format!("value {i}: operands must be below 4n"));
+        }
+    }
+    let groups = count.div_ceil(cfg.instances_per_workgroup());
+    if groups > 65535 {
+        return Err(format!(
+            "{groups} workgroups exceeds the 65535 per dispatch limit"
+        ));
+    }
+    if cfg.needs_subgroups() {
+        gpu.check_subgroups(cfg.tpi)?;
+    }
+    gpu.check_health()?;
+    mul_on_device(gpu, cfg, values, times, count, groups)
+        .await
+        .map_err(|e| gpu.explain(e))
+}
+
+/// The device part of [`run_mul_async`] (inputs already validated); any `Err` is passed through
+/// [`Gpu::explain`] by the caller.
+async fn mul_on_device(
+    gpu: &Gpu,
+    cfg: KernelConfig,
+    values: &[(BigUint, BigUint, BigUint)],
+    times: u32,
+    count: u32,
+    groups: u32,
+) -> Result<Vec<u32>, String> {
+    let limbs = cfg.limbs as usize;
+    let scheme = cfg.scheme;
+    let mut n_words = Vec::with_capacity(values.len() * limbs);
+    let mut ninv_words = Vec::with_capacity(values.len());
+    let mut a_words = Vec::with_capacity(values.len() * limbs);
+    let mut b_words = Vec::with_capacity(values.len() * limbs);
+    for (n, a, b) in values {
+        n_words.extend(scheme.pack(n, limbs));
+        ninv_words.push(scheme.neg_inv(n));
+        a_words.extend(scheme.pack(a, limbs));
+        b_words.extend(scheme.pack(b, limbs));
+    }
+    let (device, queue) = (&gpu.device, &gpu.queue);
+    let bytes = (values.len() * limbs * 4) as u64;
+    let (params, n_buf, ninv_buf, x_buf, b_buf, staging) =
+        guarded(device, "buffer creation", || {
+            let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(label),
+                    size,
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | extra,
+                    mapped_at_creation: false,
+                })
+            };
+            let params = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("params"),
+                size: 16,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let n_buf = storage("n", bytes, wgpu::BufferUsages::empty());
+            let ninv_buf = storage("ninv", u64::from(count) * 4, wgpu::BufferUsages::empty());
+            let x_buf = storage("x", bytes, wgpu::BufferUsages::COPY_SRC);
+            let b_buf = storage("b", bytes, wgpu::BufferUsages::empty());
+            let staging = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("staging"),
+                size: bytes,
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            queue.write_buffer(
+                &params,
+                0,
+                bytemuck::cast_slice(&[count, times, 0u32, 0u32]),
+            );
+            queue.write_buffer(&n_buf, 0, bytemuck::cast_slice(&n_words));
+            queue.write_buffer(&ninv_buf, 0, bytemuck::cast_slice(&ninv_words));
+            queue.write_buffer(&x_buf, 0, bytemuck::cast_slice(&a_words));
+            queue.write_buffer(&b_buf, 0, bytemuck::cast_slice(&b_words));
+            (params, n_buf, ninv_buf, x_buf, b_buf, staging)
+        })
+        .await?;
+
+    let source = cfg.try_mul_wgsl_for(crate::kernel::Target::host())?;
+    let module = guarded(
+        device,
+        &format!("multiply shader module for {cfg:?}"),
+        || {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("mont_mul"),
+                source: wgpu::ShaderSource::Wgsl(source.into()),
+            })
+        },
+    )
+    .await?;
+    let pipeline = guarded(device, &format!("multiply pipeline for {cfg:?}"), || {
+        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("mont_mul"),
+            layout: None,
+            module: &module,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        })
+    })
+    .await?;
+    let bind_group = guarded(device, "bind group creation", || {
+        let entries: Vec<wgpu::BindGroupEntry> = [&params, &n_buf, &ninv_buf, &x_buf, &b_buf]
+            .into_iter()
+            .zip(0u32..)
+            .map(|(buf, binding)| wgpu::BindGroupEntry {
+                binding,
+                resource: buf.as_entire_binding(),
+            })
+            .collect();
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &entries,
+        })
+    })
+    .await?;
+    let mut enc = device.create_command_encoder(&Default::default());
+    {
+        let mut pass = enc.begin_compute_pass(&Default::default());
+        pass.set_pipeline(&pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.dispatch_workgroups(groups, 1, 1);
+    }
+    enc.copy_buffer_to_buffer(&x_buf, 0, &staging, 0, bytes);
+    queue.submit([enc.finish()]);
+    gpu.wait_async().await?;
+    gpu.read_back_async(&staging, bytes).await
 }
 
 #[cfg(test)]

@@ -124,6 +124,32 @@ fn a_lost_device_between_calls_is_reopened_and_the_buckets_rerun_on_the_gpu() {
 }
 
 #[test]
+fn a_lost_device_with_the_gerbicz_check_on_is_reopened_and_the_checked_runners_rebuilt() {
+    if !common::usable_gpu() {
+        return;
+    }
+    let (ns, want, gpu_candidates) = batch();
+    let (o, _cleanup) = opts("reopen-gec");
+    let mut e = Engine::open(Options { gec: true, ..o });
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    e.inject_device_loss();
+    assert_eq!(
+        e.verdicts(&ns).unwrap(),
+        want,
+        "verdicts after a device loss must equal the oracle"
+    );
+    let r = e.report();
+    show("gec after", &r);
+    assert_eq!(
+        (r.device_losses, r.device_recoveries, r.gpu_errors),
+        (1, 1, 0)
+    );
+    assert_eq!(r.gpu_tests, 2 * gpu_candidates, "both calls ran on the GPU");
+    assert_eq!(r.gec_alarms, 0, "a lost device is not a Gerbicz alarm");
+    assert!(e.gpu_active());
+}
+
+#[test]
 fn more_losses_than_retries_fall_back_to_the_cpu_for_the_rest_of_the_process() {
     if !common::usable_gpu() {
         return;

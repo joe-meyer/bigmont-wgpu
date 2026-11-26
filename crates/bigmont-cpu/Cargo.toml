@@ -7,8 +7,6 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+bigmont-oracle = { path = "../bigmont-oracle" }
 num-bigint = "0.5"
 num-traits = "0.2"
-
-[dev-dependencies]
-bigmont-oracle = { path = "../bigmont-oracle" }

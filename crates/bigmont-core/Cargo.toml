@@ -17,7 +17,8 @@ web-time = "1"
 # Go back to a crates.io version (`wgpu = "31"` or the first release with #10265) once one ships.
 wgpu = { git = "https://github.com/gfx-rs/wgpu", rev = "60cef2be828e03ba54e2e1598001b4625c0c2163" }
 
-# Blocking wrappers around the async API; a browser cannot block, so it gets none.
+# Only for `Gpu::open`, which holds the open lock while it blocks on `open_async` (a browser cannot
+# block, so it gets none). Everything else in this crate is async; callers block themselves.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pollster = "1.0.3"
 

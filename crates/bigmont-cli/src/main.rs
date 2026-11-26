@@ -1,6 +1,6 @@
 //! `bigmont`: tests candidate files and writes verdict files, a drop-in for an existing CUDA-based Fermat driver.
 //!
-//!   bigmont CAND VERDICT [engine flags]
+//!   bigmont CAND VERDICT [engine flags] [--gec]
 //!   bigmont CAND|LIST VERDICT --ee SIZES [--bins] [--chunk N] [--growth F] [--marker N] [engine flags]
 //!   bigmont canary CAND EXPECTED [engine flags]
 //!   bigmont tune [--bits N] [--limbs auto|13|32] [--adapter S] [--vk-backend S] [--device N] [--cache PATH | --no-cache]
@@ -11,6 +11,9 @@
 //! candidate files (one path per line) that are concatenated. `--lock FILE` serialises the GPU phase
 //! between processes (an exclusive lock taken after the inputs are read, released before the output is
 //! written; in plain mode it surrounds the engine run).
+//!
+//! Error check: `--gec` runs every Fermat test (GPU and CPU buckets, and the CPU re-checks) with the Gerbicz
+//! check; a candidate that fails it gets verdict byte 2 instead of 0 or 1.
 //!
 //! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
 //! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
@@ -37,9 +40,15 @@ const CHUNK: usize = 1 << 15;
 
 const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N]
                     [--limbs auto|13|32] [--retune] [--cache PATH | --no-cache] [--verify-rate N] [--repeat N] [--lock FILE]
+                    [--gec]
                     [--ee SIZES [--bins] [--chunk N] [--growth F] [--marker N]]
        bigmont canary CAND EXPECTED [same engine flags]
        bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
+error check: --gec runs every Fermat test with the Gerbicz error check (off by default), on the GPU and on the CPU
+              (--backend cpu, buckets below the GPU threshold, after a GPU error, and the CPU re-checks): a candidate
+              whose computation fails the check gets verdict byte 2 (neither composite nor probable prime; retest
+              it) and is counted as a GEC alarm in the summary. Not covered: the final copy of the result back to
+              the host when (bits - 1) is a multiple of 40 (no tail recomputation runs for that length).
 early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
               prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
               candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
@@ -117,6 +126,13 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
         }
         if UNSUPPORTED.contains(&flag) {
             return Err(format!("bigmont: {flag} is not supported yet"));
+        }
+        if flag == "--gec" {
+            if inline.is_some() {
+                return Err(usage_err("--gec takes no value"));
+            }
+            a.opts.gec = true;
+            continue;
         }
         if flag == "--retune" {
             a.opts.retune = true;
@@ -293,7 +309,7 @@ fn print_engine_summary(engine: &Engine, secs: f64, prps: u64) -> EngineReport {
     let tests = r.gpu_tests + r.cpu_tests;
     let work_secs = (secs - r.tune_secs).max(1e-9);
     eprintln!(
-        "bigmont: {} | tests {tests} (gpu {}, cpu {}) | {secs:.2} s ({:.2} s tuning) | {:.1} tests/s excluding tuning | PRP {prps} | disagreements: prp {}, composite {} | rechecks {} | gpu errors {} | device losses {} (recovered {}, poll timeouts {})",
+        "bigmont: {} | tests {tests} (gpu {}, cpu {}) | {secs:.2} s ({:.2} s tuning) | {:.1} tests/s excluding tuning | PRP {prps} | disagreements: prp {}, composite {} | rechecks {} | GEC alarms {} | gpu errors {} | device losses {} (recovered {}, poll timeouts {})",
         engine.describe(),
         r.gpu_tests,
         r.cpu_tests,
@@ -302,6 +318,7 @@ fn print_engine_summary(engine: &Engine, secs: f64, prps: u64) -> EngineReport {
         r.prp_disagreements,
         r.composite_disagreements,
         r.rechecks,
+        r.gec_alarms,
         r.gpu_errors,
         r.device_losses,
         r.device_recoveries,
@@ -616,6 +633,23 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn args(list: &[&str]) -> Result<Args, String> {
+        let raw: Vec<String> = list.iter().map(|s| s.to_string()).collect();
+        parse_args(&raw)
+    }
+
+    #[test]
+    fn gec_is_a_flag_without_a_value_and_inject_is_still_unsupported() {
+        assert!(args(&["c", "v", "--gec", "--no-cache"]).unwrap().opts.gec);
+        assert!(!args(&["c", "v", "--no-cache"]).unwrap().opts.gec);
+        assert!(args(&["c", "v", "--gec=1"]).is_err());
+        let err = args(&["c", "v", "--inject", "1", "3"]).err().unwrap();
+        assert!(
+            err.contains("--inject") && err.contains("not supported"),
+            "{err}"
+        );
+    }
 
     /// Input and configuration problems exit 2, a failure while testing exits 3, so a caller can tell a
     /// bad request from a device that gave up.

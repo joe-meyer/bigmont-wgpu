@@ -270,3 +270,93 @@ fn random_prp_passes_the_fermat_test() {
     assert_eq!(p.bits(), 160);
     assert!(fermat_base2(&p));
 }
+
+#[test]
+fn mont_mul_matches_plain_modular_arithmetic() {
+    let mut rng = XorShift64::new(11);
+    for bits in [3u32, 64, 200] {
+        let limbs = limbs_for_bits(bits);
+        let r_bits = LIMB_BITS * limbs as u32;
+        let r = BigUint::one() << r_bits;
+        for _ in 0..20 {
+            let n = random_odd_modulus(&mut rng, bits);
+            let a = random_below(&mut rng, &(&n * 4u32));
+            let b = random_below(&mut rng, &(&n * 4u32));
+            let got = mont_mul_bits(&n, &a, &b, r_bits);
+            assert!(got < n, "result must be reduced");
+            assert_eq!((&got * &r) % &n, (&a * &b) % &n, "bits {bits}");
+        }
+    }
+}
+
+#[test]
+fn window_sum_words_matches_the_bigint_form() {
+    let mut rng = XorShift64::new(12);
+    for (bits, s) in [
+        (2u32, 40u32),
+        (41, 40),
+        (42, 40),
+        (81, 40),
+        (300, 40),
+        (2029, 40),
+        (300, 7),
+    ] {
+        for _ in 0..10 {
+            let n = random_odd_modulus(&mut rng, bits);
+            let e = &n - 1u32;
+            let words = e.to_u32_digits();
+            assert_eq!(
+                gec_window_sum_words(&words, bits, s),
+                gec_window_sum(&e, bits, s),
+                "bits {bits} s {s}"
+            );
+        }
+    }
+}
+
+#[test]
+fn window_sum_adds_the_block_exponents() {
+    // e = n - 1 with n = 2^10 + 1 is 2^10: one set bit at position 10 (bits = 11, 10 iterations).
+    let n = (BigUint::one() << 10u32) + 1u32;
+    // s = 5: blocks cover iterations 0..5 and 5..10, i.e. exponent bits 9..5 and 4..0, all zero.
+    assert_eq!(gec_window_sum(&(&n - 1u32), 11, 5), 0);
+    // n = 2^10 + 2^9 + 1: e = 2^10 + 2^9, bit 9 is the first bit a block reads: V_1 = 0b10000.
+    let n = (BigUint::one() << 10u32) + (BigUint::one() << 9u32) + 1u32;
+    assert_eq!(gec_window_sum(&(&n - 1u32), 11, 5), 0b10000);
+}
+
+#[test]
+fn the_model_agrees_with_fermat_and_a_clean_run_is_consistent() {
+    let mut rng = XorShift64::new(13);
+    for bits in [2u32, 3, 41, 42, 81, 130, 300] {
+        for _ in 0..8 {
+            let n = random_odd_modulus(&mut rng, bits);
+            let m = gerbicz_model(&n, GEC_BLOCK, None);
+            assert!(m.consistent, "bits {bits} n {n}");
+            assert_eq!(
+                m.result,
+                BigUint::from(2u32).modpow(&(&n - 1u32), &n),
+                "bits {bits}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_fault_inside_the_blocks_is_detected_and_one_in_the_tail_is_not() {
+    let mut rng = XorShift64::new(14);
+    let bits = 300u32; // 299 iterations: 7 blocks (0..280) and a 19-iteration tail
+    for _ in 0..6 {
+        let n = random_odd_modulus(&mut rng, bits);
+        for it in [0u32, 19, 20, 39, 40, 139, 279] {
+            let m = gerbicz_model(&n, GEC_BLOCK, Some((it, 17)));
+            assert!(!m.consistent, "fault after iteration {it} must be detected");
+        }
+        let m = gerbicz_model(&n, GEC_BLOCK, Some((285, 17)));
+        assert!(
+            m.consistent,
+            "a tail fault is not covered (documented limitation)"
+        );
+        assert_ne!(m.result, BigUint::from(2u32).modpow(&(&n - 1u32), &n));
+    }
+}
