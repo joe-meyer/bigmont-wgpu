@@ -95,7 +95,7 @@ them. Interleaving candidates therefore had no spare slots to fill.
 GMP itself (Valgrind instruction profile of the same Ubuntu build, 2,029 bits): 64% in `mpn_redc_1`, 33% in
 `mpn_sqr_basecase`, about 3% in shifts and glue; it special-cases base 2 through `mpn_2powm`. The same algorithm shape as
 ours, so what separates the two is kernel quality, not a missing algorithm. That build is a generic x86-64 one with no
-`mulx`/`adx`; a GMP built for the CPU would be faster than the 659 tests/s used as the reference here.
+`mulx`/`adx`; a GMP built for the CPU is faster, see "Against a GMP built for the CPU" below.
 
 ### Results (2,029-bit base-2 Fermat, `crates/bigmont-cpu/examples/rate.rs`, release build)
 
@@ -108,6 +108,29 @@ ours, so what separates the two is kernel quality, not a missing algorithm. That
 
 On the Xeon the hardware kernel is not used (the CPU has no BMI2 or ADX); the run shows that the fallback is selected, passes
 the tests, and keeps the section 3 gains. Its timings are noisy because the container shares a host.
+
+### Against a GMP built for the CPU
+
+The GMP used so far is Ubuntu's generic x86-64 build. To see what a tuned one does, the same source (Ubuntu's
+`gmp_6.3.0+dfsg.orig.tar.xz`, sha256 checked against its `.dsc`) was built on the Zen 4 laptop with GMP's own CPU detection
+(`config.guess` reports zen4; this GMP version has no Zen 4 directory and takes the Zen 3 path, `x86_64/zen3 zen2 zen x86_64`),
+static, `gcc -std=gnu17` (needed for GMP 6.3's configure on GCC 15). The binary then contains 641 `mulx`/`adcx`/`adox`
+instructions; Ubuntu's has none. Same program (`tools/cpu-baseline/gmp_modexp.c`), same pinned core:
+
+| Zen 4, 2,029 bits | Ubuntu GMP (generic) | GMP built for the CPU | this PR |
+|---|---|---|---|
+| 1 thread, tests/s | 654 to 659 | 905 to 907 | 729 to 739 |
+| 16 threads, tests/s (GMP as 16 processes) | 5,301 to 5,325 | 6,816 to 6,825 (first run, 5,279, was a cold start) | 5,575 to 5,709 |
+
+So against a tuned GMP this PR is at about 0.81x on one thread and 0.82x on 16, not ahead of it. Valgrind (instruction counts,
+whole run): the tuned build executes about 17.6M instructions per test against 22.6M for the generic build, and spends 60% of
+them in `mpn_sbpi1_bdiv_r` (its Hensel-division remainder, the reduction; the Zen directories have a dedicated assembly version
+of it), 30% in `mpn_sqr_basecase`. It does not use `redc_1` here. This PR's earlier `perf` figure was 23.9M instructions per
+test. The remaining gap is again instruction count, about 25% fewer in GMP's kernels.
+
+No GMP code was read into or copied into this crate: GMP is LGPL/GPL and this crate is MIT. The kernel here is our own.
+Ideas that are plausible but untested: unrolling the row loop by 8 instead of 4 (less loop bookkeeping per limb), handling the
+one to three leftover limbs of the triangle rows without the scalar loop, and processing two multiplier limbs per pass.
 
 ## 5. Not covered
 
