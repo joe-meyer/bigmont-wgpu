@@ -98,13 +98,14 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     env:
       BIGMONT_BACKEND: Vulkan
+      # Select lavapipe by name, so a different Vulkan adapter on the runner cannot be
+      # picked up and still pass as "software GPU".
+      BIGMONT_ADAPTER: llvmpipe
       LVP_POISON_MEMORY: "true"
       # Mesa's Windows build (pal1000/mesa-dist-win), pinned by version and checked
       # against the release asset's published SHA-256 before it is used.
       MESA_VERSION: "26.2.6"
       MESA_SHA256: b2e00615feaba45942343c265cc8c5f576142ca682c1ac6661922d4b72492877
-      # The Vulkan SDK (loader) wgpu's own CI installs on Windows runners that have none.
-      VULKAN_SDK_VERSION: 1.4.363.0
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -123,14 +124,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # A runner with no GPU driver may have no Vulkan loader either.
-          if [ -f /c/Windows/System32/vulkan-1.dll ]; then
-            echo "Vulkan loader already present"
-          else
-            curl.exe -L --fail --retry 5 --retry-all-errors \
-              "https://sdk.lunarg.com/sdk/download/$VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$VULKAN_SDK_VERSION.exe" \
-              -o vulkan-sdk-installer.exe
-            ./vulkan-sdk-installer.exe --accept-licenses --default-answer --confirm-command install
+          # The hosted Windows image ships the Vulkan loader. Fail clearly if that changes,
+          # rather than fetching and running an installer we cannot verify.
+          if [ ! -f /c/Windows/System32/vulkan-1.dll ]; then
+            echo "::error::The runner has no Vulkan loader (vulkan-1.dll); this job needs one."
+            exit 1
           fi
           curl.exe -L --fail --retry 5 --retry-all-errors \
             "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z" \
@@ -149,7 +147,8 @@ jobs:
       # Register the driver the way a Windows GPU driver does. The VK_DRIVER_FILES environment
       # variable is no use here: the Vulkan loader ignores it in an elevated process, and the
       # runner's user is an administrator (the loader's debug output showed it going straight to
-      # this registry key and finding it empty).
+      # this registry key and finding it empty). This is a persistent machine change: fine on an
+      # ephemeral hosted runner, so do not copy it to a self-hosted one.
       - name: Register lavapipe with the Vulkan loader (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -171,7 +170,7 @@ jobs:
         run: |
           py=$(command -v python3 || command -v python)
           "$py" .github/scripts/skip_summary.py "$BIGMONT_SKIP_LOG" "gpu-software (${{ matrix.os }})" \
-            --fail-on 'no (int64 )?adapter|lacks subgroup|SUBGROUP'
+            --fail-on 'no (int64 )?adapter|lacks subgroup|SUBGROUP|SHADER_INT64'
       - uses: actions/upload-artifact@v7
         if: always()
         with:

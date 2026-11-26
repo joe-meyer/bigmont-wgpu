@@ -13,7 +13,8 @@ cargo test --workspace --no-fail-fast -- --test-threads=1
 A GPU with a Vulkan, DX12 or Metal driver is needed for the full suite. The GPU
 tests are strict: a missing adapter or capability fails the test. Set
 `BIGMONT_ALLOW_SKIP=1` to turn that into a loud skip (also set `BIGMONT_SKIP_LOG=FILE` to
-collect the skips in a file, as CI does for its job summary), and `BIGMONT_ADAPTER=SUBSTR`
+collect the skips in a file, as CI does for its job summary; skips are appended, so delete the
+file before a run you want to count), and `BIGMONT_ADAPTER=SUBSTR`
 or `BIGMONT_BACKEND=Vulkan|Dx12|...` to pick a device. On Linux,
 `mesa-vulkan-drivers` (lavapipe) provides a software Vulkan device.
 

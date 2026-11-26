@@ -4,6 +4,7 @@
 import contextlib
 import io
 import os
+import re
 import tempfile
 import unittest
 
@@ -90,6 +91,81 @@ class Forbidden(unittest.TestCase):
     def test_a_subgroup_size_that_does_not_fit_is_allowed(self):
         skips = parse("engine\tretarget\ttpi 16: subgroup size does not fit\n")
         self.assertEqual(forbidden(skips, self.PATTERN), [])
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+
+# Every distinct way a GPU test skips, as (static part of the reason as written in the Rust
+# sources, a realistic reason as logged, whether the software-GPU job must fail on it).
+# lavapipe has an adapter, subgroups and SHADER_INT64, so those missing means the job no longer
+# covers the GPU path; a subgroup size that does not fit a tpi is expected there (size 8).
+SKIP_REASONS = [
+    ("no adapter: ", "no adapter: no adapter matches AdapterSelector { name: None }", True),
+    (
+        "the adapter lacks subgroup support, so no tuned kernel can run",
+        "the adapter lacks subgroup support, so no tuned kernel can run",
+        True,
+    ),
+    ("no int64 adapter (found: ", "no int64 adapter (found: None)", True),
+    ("the adapter lacks SHADER_INT64", "the adapter lacks SHADER_INT64", True),
+    (
+        "the adapter lacks SHADER_INT64 or subgroups",
+        "the adapter lacks SHADER_INT64 or subgroups",
+        True,
+    ),
+    (
+        "adapter lacks wgpu::Features::SUBGROUP",
+        "KernelConfig { tpi: 8 }: adapter lacks wgpu::Features::SUBGROUP",
+        True,
+    ),
+    (
+        "is not a multiple of tpi",
+        "KernelConfig { tpi: 16 }: subgroup size 8..8 is not a multiple of tpi 16",
+        False,
+    ),
+    ("subgroup size does not fit", "tpi 16: subgroup size does not fit", False),
+]
+
+
+def rust_sources():
+    text = []
+    for dirpath, dirnames, filenames in os.walk(os.path.join(REPO, "crates")):
+        dirnames[:] = [d for d in dirnames if d != "target"]
+        for name in filenames:
+            if name.endswith(".rs"):
+                with open(os.path.join(dirpath, name), encoding="utf-8") as f:
+                    text.append(f.read())
+    return "\n".join(text)
+
+
+def ci_fail_on():
+    """The --fail-on pattern the gpu-software job passes, read from the workflow itself."""
+    with open(os.path.join(REPO, ".github", "workflows", "ci.yml"), encoding="utf-8") as f:
+        found = re.findall(r"--fail-on\s+'([^']+)'", f.read())
+    return found
+
+
+class CiPatternMatchesTheTests(unittest.TestCase):
+    """The workflow's --fail-on regex depends on the wording of skip reasons in the Rust tests.
+    Pin both ends: the wording must still be in the sources, and the regex must classify it as
+    intended, so rewording a reason cannot quietly stop the guard from matching."""
+
+    def test_the_workflow_passes_one_fail_on_pattern(self):
+        self.assertEqual(len(ci_fail_on()), 1)
+
+    def test_each_reason_is_still_worded_that_way_in_the_sources(self):
+        sources = rust_sources()
+        for static, _, _ in SKIP_REASONS:
+            with self.subTest(reason=static):
+                self.assertIn(static, sources)
+
+    def test_the_pattern_matches_exactly_the_reasons_that_should_fail_the_job(self):
+        (pattern,) = ci_fail_on()
+        for _, logged, must_fail in SKIP_REASONS:
+            with self.subTest(reason=logged):
+                skips = parse(f"bin\ttest\t{logged}\n")
+                self.assertEqual(bool(forbidden(skips, pattern)), must_fail)
 
 
 class Main(unittest.TestCase):

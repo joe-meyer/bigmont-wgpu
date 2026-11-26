@@ -38,9 +38,10 @@ under `crates/*/examples`.
 
 GPU tests are **strict**: a missing adapter or capability fails the test.
 `BIGMONT_ALLOW_SKIP=1` turns that into a loud skip (used on CI runners without a
-GPU); `BIGMONT_SKIP_LOG=FILE` also appends each skip to FILE, which CI summarises. A
-new GPU-dependent test skips through the helper in its crate's `tests/common/mod.rs`,
-never with an inline `eprintln!("SKIP ...")`, so the skip is counted. `BIGMONT_ADAPTER=SUBSTR` and `BIGMONT_BACKEND=Vulkan|Dx12|...` pick the
+GPU); `BIGMONT_SKIP_LOG=FILE` also appends each skip to FILE (delete it before a run you
+want to count), which CI summarises. A new GPU-dependent test skips through the helper in
+its crate's `tests/common/mod.rs`, never with an inline `eprintln!("SKIP ...")`, so the
+skip is counted; the log writer itself lives once, in `crates/bigmont-core/tests/common/skip_log.rs`. `BIGMONT_ADAPTER=SUBSTR` and `BIGMONT_BACKEND=Vulkan|Dx12|...` pick the
 device. Always run the suite with `--test-threads=1`. CI runs it with
 `cargo nextest run --workspace --all-features --no-fail-fast` (plus `cargo test --doc`),
 configured serial in `.config/nextest.toml`: each test gets its own process and a

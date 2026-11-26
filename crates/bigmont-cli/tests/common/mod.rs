@@ -9,6 +9,11 @@
 
 use bigmont_core::gpu::Gpu;
 
+// The one copy of the skip-log writer, shared with bigmont-core's tests.
+#[path = "../../../bigmont-core/tests/common/skip_log.rs"]
+mod skip_log;
+use skip_log::log_skip;
+
 pub fn allow_skip() -> bool {
     std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1")
 }
@@ -30,7 +35,8 @@ fn skip(why: &str) -> bool {
 
 /// A GPU-dependent test cannot run here: fails the test unless `BIGMONT_ALLOW_SKIP=1`, otherwise
 /// prints `SKIP <why>` and, when `BIGMONT_SKIP_LOG` names a file, appends a tab-separated
-/// `binary`, `test`, `reason` line to it. CI summarises that file so reduced coverage is visible instead of reading as a pass.
+/// `binary`, `test`, `reason` line to it (see `skip_log.rs`). CI summarises that file so reduced
+/// coverage is visible instead of reading as a pass.
 pub fn record_skip(why: &str) {
     assert!(
         allow_skip(),
@@ -44,35 +50,4 @@ pub fn record_skip(why: &str) {
 pub fn note_skip(why: &str) {
     eprintln!("SKIP {why}");
     log_skip(why);
-}
-
-fn log_skip(why: &str) {
-    use std::io::Write;
-    let Some(path) = std::env::var_os("BIGMONT_SKIP_LOG") else {
-        return;
-    };
-    let exe = std::env::current_exe().ok();
-    let bin = exe
-        .as_deref()
-        .and_then(|p| p.file_stem())
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    // Cargo names a test binary `<name>-<16 hex digits>`; keep the name.
-    let bin = match bin.rsplit_once('-') {
-        Some((name, hash)) if hash.len() == 16 && hash.bytes().all(|b| b.is_ascii_hexdigit()) => {
-            name
-        }
-        _ => &bin,
-    };
-    // libtest runs every test on a thread named after it.
-    let test = std::thread::current().name().unwrap_or("?").to_string();
-    let why = why.replace(['\t', '\n'], " ");
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        // One write call, so concurrent test binaries cannot interleave a line.
-        let _ = f.write_all(format!("{bin}\t{test}\t{why}\n").as_bytes());
-    }
 }
