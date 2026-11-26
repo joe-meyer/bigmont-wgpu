@@ -142,16 +142,32 @@ jobs:
             "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z" \
             -o mesa.7z
           echo "$MESA_SHA256  mesa.7z" | sha256sum -c -
+          7z.exe l mesa.7z | grep -i -E "vulkan_lvp|lvp_icd|libgallium|libglapi|opengl32" || true
           7z.exe e mesa.7z -omesa 'x64/vulkan_lvp.dll' 'x64/lvp_icd.x86_64.json' \
             'x64/libgallium_wgl.dll' 'x64/libglapi.dll' 'x64/opengl32.dll'
           ls -l mesa
-          # The loader reads only this driver; the DLL's own dependencies sit next to it.
-          echo "VK_DRIVER_FILES=$(cygpath --windows "$PWD/mesa/lvp_icd.x86_64.json")" >> "$GITHUB_ENV"
+          echo "--- shipped ICD manifest:"
+          cat mesa/lvp_icd.x86_64.json
+          echo
+          # Point the loader at the DLL by absolute path, so it does not depend on the DLL search
+          # order, and at this driver only (the runner's other adapters stay out of Vulkan anyway).
+          lib=$(cygpath --windows "$PWD/mesa/vulkan_lvp.dll" | sed 's/\\/\\\\/g')
+          printf '{"file_format_version":"1.0.1","ICD":{"library_path":"%s","api_version":"1.3.0"}}\n' "$lib" > mesa/icd.json
+          echo "--- ICD manifest in use:"
+          cat mesa/icd.json
+          echo "VK_DRIVER_FILES=$(cygpath --windows "$PWD/mesa/icd.json")" >> "$GITHUB_ENV"
           echo "$(cygpath --windows "$PWD/mesa")" >> "$GITHUB_PATH"
           echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
+      - name: Vulkan loader version (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: (Get-Item C:\Windows\System32\vulkan-1.dll).VersionInfo | Format-List FileVersion, ProductVersion
       - run: cargo build --workspace --all-features --locked
       - name: Adapter report
         run: cargo run --locked -q -p bigmont-core --example adapter_report
+        env:
+          # Says why the Vulkan loader skips a driver (Windows only: the Linux leg works).
+          VK_LOADER_DEBUG: ${{ runner.os == 'Windows' && 'error,warn,driver' || '' }}
       - run: cargo nextest run --workspace --all-features --locked --no-fail-fast
       - run: cargo test --workspace --all-features --locked --doc
       - name: Summarise skipped tests
