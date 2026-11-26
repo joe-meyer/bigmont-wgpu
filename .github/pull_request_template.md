@@ -62,6 +62,5 @@ Help wanted testing on: <!-- vendors you could not cover -->
 
 ## AI assistance
 
-- [ ] No AI assistance, or only trivial autocomplete
 - [ ] AI-assisted: tool/model used: `________` (also in an `Assisted-by:` commit trailer)
 - [ ] I have read, run and understand all of this code and can explain it
