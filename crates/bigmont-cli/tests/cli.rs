@@ -228,11 +228,7 @@ fn int64_available() -> bool {
     match has_int64() {
         Some(true) => true,
         other => {
-            assert!(
-                std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-                "no int64 adapter (found: {other:?}); set BIGMONT_ALLOW_SKIP=1 to allow skips"
-            );
-            eprintln!("SKIP no adapter with SHADER_INT64");
+            common::record_skip(&format!("no int64 adapter (found: {other:?})"));
             false
         }
     }

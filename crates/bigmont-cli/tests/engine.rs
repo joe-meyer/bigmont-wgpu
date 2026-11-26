@@ -384,20 +384,12 @@ fn run_with_scheme(
     let gpu = match bigmont_core::gpu::Gpu::new() {
         Ok(g) => g,
         Err(e) => {
-            assert!(
-                std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-                "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-            );
-            eprintln!("SKIP no adapter: {e}");
+            common::record_skip(&format!("no adapter: {e}"));
             return None;
         }
     };
     if scheme == SchemeChoice::Only(bigmont_core::scheme::LimbScheme::Limb32) && !gpu.has_int64 {
-        assert!(
-            std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-            "the adapter lacks SHADER_INT64 (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-        );
-        eprintln!("SKIP the adapter lacks SHADER_INT64");
+        common::record_skip("the adapter lacks SHADER_INT64");
         return None;
     }
     drop(gpu); // one device at a time: the engine opens its own
@@ -574,20 +566,12 @@ fn a_retargeted_32_bit_kernel_that_is_smaller_than_the_self_tested_one_gives_ora
     let gpu = match Gpu::new() {
         Ok(g) => g,
         Err(e) => {
-            assert!(
-                std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-                "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-            );
-            eprintln!("SKIP no adapter: {e}");
+            common::record_skip(&format!("no adapter: {e}"));
             return;
         }
     };
     if !gpu.has_int64 || !gpu.has_subgroups {
-        assert!(
-            std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-            "the adapter lacks SHADER_INT64 or subgroups (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-        );
-        eprintln!("SKIP the adapter lacks SHADER_INT64 or subgroups");
+        common::record_skip("the adapter lacks SHADER_INT64 or subgroups");
         return;
     }
     let ns = bucket(SHORTER, 20, 4, 4242);
@@ -595,7 +579,7 @@ fn a_retargeted_32_bit_kernel_that_is_smaller_than_the_self_tested_one_gives_ora
     assert!(want.iter().any(|&w| w) && want.iter().any(|&w| !w));
     for tpi in [4u32, 8] {
         if gpu.check_subgroups(tpi).is_err() {
-            eprintln!("SKIP tpi {tpi}: subgroup size does not fit");
+            common::note_skip(&format!("tpi {tpi}: subgroup size does not fit"));
             continue;
         }
         let tuned = KernelConfig::for_bits_scheme(Limb32, CLASS_REP, tpi, 64, Variant::Unrolled);

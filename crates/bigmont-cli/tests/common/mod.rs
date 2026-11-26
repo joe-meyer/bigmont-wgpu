@@ -9,6 +9,11 @@
 
 use bigmont_core::gpu::Gpu;
 
+// The one copy of the skip-log writer, shared with bigmont-core's tests.
+#[path = "../../../bigmont-core/tests/common/skip_log.rs"]
+mod skip_log;
+use skip_log::log_skip;
+
 pub fn allow_skip() -> bool {
     std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1")
 }
@@ -24,10 +29,25 @@ pub fn usable_gpu() -> bool {
 }
 
 fn skip(why: &str) -> bool {
+    record_skip(why);
+    false
+}
+
+/// A GPU-dependent test cannot run here: fails the test unless `BIGMONT_ALLOW_SKIP=1`, otherwise
+/// prints `SKIP <why>` and, when `BIGMONT_SKIP_LOG` names a file, appends a tab-separated
+/// `binary`, `test`, `reason` line to it (see `skip_log.rs`). CI summarises that file so reduced
+/// coverage is visible instead of reading as a pass.
+pub fn record_skip(why: &str) {
     assert!(
         allow_skip(),
         "{why} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
     );
+    note_skip(why);
+}
+
+/// Prints `SKIP <why>` and logs it like `record_skip`, without failing the test: for a case that is
+/// skipped even in a strict run (part of a test's matrix does not apply on this adapter).
+pub fn note_skip(why: &str) {
     eprintln!("SKIP {why}");
-    false
+    log_skip(why);
 }

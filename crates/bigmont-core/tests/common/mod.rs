@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 pub mod faults;
+// Shared with bigmont-cli's tests, which include this same file.
+mod skip_log;
 use bigmont_core::gpu::Gpu;
 use bigmont_core::kernel::KernelConfig;
+use skip_log::log_skip;
 
 /// Strict by default: a missing adapter or an unsupported configuration fails the test, so a skip
 /// cannot masquerade as a pass. `BIGMONT_ALLOW_SKIP=1` turns those cases into loud skips.
@@ -16,6 +19,7 @@ pub fn skip(msg: String) {
         panic!("{msg} (set BIGMONT_ALLOW_SKIP=1 to allow skips)");
     }
     eprintln!("SKIP {msg}");
+    log_skip(&msg);
 }
 
 /// The selected adapter, or `None` after a loud skip when it cannot run `cfg`.

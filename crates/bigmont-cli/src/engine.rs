@@ -773,8 +773,16 @@ fn integrity_pass(
     verdicts
 }
 
+// The integration tests' skip helper, so a skip in the unit tests is recorded like theirs. Declared
+// here, not inside `mod tests`: a `#[path]` in an inline module resolves through a directory
+// (`src/engine/tests/`) that does not exist, which only Windows tolerates.
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod test_common;
+
 #[cfg(test)]
 mod tests {
+    use super::test_common as common;
     use super::*;
     use std::cell::RefCell;
 
@@ -1035,11 +1043,7 @@ mod tests {
         let gpu = match Gpu::new() {
             Ok(g) => g,
             Err(e) => {
-                assert!(
-                    std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-                    "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-                );
-                eprintln!("SKIP no adapter: {e}");
+                common::record_skip(&format!("no adapter: {e}"));
                 return;
             }
         };
