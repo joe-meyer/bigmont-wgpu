@@ -7,9 +7,7 @@ use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::scheme::LimbScheme::{Limb13, Limb32};
 use std::path::{Path, PathBuf};
 
-fn allow_skip() -> bool {
-    std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1")
-}
+mod common;
 
 /// Strict-test skip decision: when `ok` is false the test must be skipped, which is only allowed
 /// with BIGMONT_ALLOW_SKIP=1 (otherwise the test fails). Returns true when the caller should return.
@@ -17,8 +15,7 @@ fn skip_unless(ok: bool, why: &str) -> bool {
     if ok {
         return false;
     }
-    assert!(allow_skip(), "{why} (set BIGMONT_ALLOW_SKIP=1 to allow)");
-    eprintln!("SKIP {why}");
+    common::record_skip(why);
     true
 }
 
@@ -26,11 +23,7 @@ fn gpu() -> Option<Gpu> {
     match Gpu::new() {
         Ok(g) => Some(g),
         Err(e) => {
-            assert!(
-                allow_skip(),
-                "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-            );
-            eprintln!("SKIP no adapter: {e}");
+            common::record_skip(&format!("no adapter: {e}"));
             None
         }
     }

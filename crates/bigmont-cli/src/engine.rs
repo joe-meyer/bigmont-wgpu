@@ -778,6 +778,10 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
+    // The integration tests' skip helper, so a skip here is recorded like theirs.
+    #[path = "../../../tests/common/mod.rs"]
+    mod common;
+
     /// Runs `integrity_pass` with a fake CPU that calls exactly the candidates in `primes` probable
     /// primes. Returns the verdicts, the report and the candidates the fake CPU was asked about.
     fn pass(
@@ -1035,11 +1039,7 @@ mod tests {
         let gpu = match Gpu::new() {
             Ok(g) => g,
             Err(e) => {
-                assert!(
-                    std::env::var("BIGMONT_ALLOW_SKIP").is_ok_and(|v| v == "1"),
-                    "no adapter: {e} (set BIGMONT_ALLOW_SKIP=1 to allow skips)"
-                );
-                eprintln!("SKIP no adapter: {e}");
+                common::record_skip(&format!("no adapter: {e}"));
                 return;
             }
         };
