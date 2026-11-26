@@ -1,10 +1,16 @@
 //! Pure-Rust Montgomery base-2 Fermat test with 64-bit limbs (CIOS), used as the CPU fallback and
 //! as an independent check on GPU verdicts. Not constant time. Setup (R mod n) uses num-bigint.
+//!
+//! [`fermat_base2_gec`] and [`fermat_batch_gec`] run the same test under the Gerbicz error check
+//! (the algorithm of `bigmont_oracle::gerbicz_model` and of the GPU's checked runs), so a silent
+//! arithmetic error on the CPU is reported as [`Checked::Alarm`] instead of a wrong verdict.
 
+use bigmont_oracle::{GEC_BLOCK, gec_blocks, gec_window_sum_words};
 use num_bigint::BigUint;
 use num_traits::One;
 
-/// Montgomery context for an odd modulus of `w` 64-bit limbs; R = 2^(64 w).
+/// Montgomery context for an odd modulus of `w` 64-bit limbs; R = 2^(64 w). Every result is fully
+/// reduced, in `[0, n)`.
 pub struct Mont {
     n: Vec<u64>,
     ninv: u64, // -n^-1 mod 2^64
@@ -12,6 +18,8 @@ pub struct Mont {
 }
 
 impl Mont {
+    /// The context for the odd modulus whose little-endian 64-bit limbs are `n` (the top limb may
+    /// be zero).
     pub fn new(n: &[u64]) -> Mont {
         assert!(n[0] & 1 == 1, "modulus must be odd");
         let mut inv = n[0]; // correct to 3 bits
@@ -57,12 +65,13 @@ impl Mont {
         }
     }
 
+    /// out = a * a * R^-1 mod n for a < n (see [`Mont::mul`]).
     pub fn sqr(&self, a: &[u64], out: &mut [u64], t: &mut [u64]) {
         self.mul(a, a, out, t)
     }
 
     /// x = 2x mod n for x < n.
-    fn double(&self, x: &mut [u64]) {
+    pub fn double(&self, x: &mut [u64]) {
         let mut carry = 0u64;
         for v in x.iter_mut() {
             let next = *v >> 63;
@@ -147,6 +156,170 @@ pub fn fermat_batch(ns: &[BigUint], threads: usize) -> Vec<bool> {
             s.spawn(move || {
                 for (n, o) in chunk_in.iter().zip(chunk_out.iter_mut()) {
                     *o = fermat_base2(n);
+                }
+            });
+        }
+    });
+    out
+}
+
+/// The verdict of a Gerbicz-checked run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Checked {
+    Composite,
+    Prp,
+    /// The check failed: the computation went wrong somewhere and its result says nothing.
+    Alarm,
+}
+
+/// The Montgomery arithmetic the checked ladder uses, so that tests can wrap [`Mont`] in an adapter
+/// (for example one that corrupts an output) without any fault code in the algorithm. Every operand
+/// and result is a fully reduced Montgomery value in `[0, n)`; `t` is scratch of length `w + 2`.
+pub trait MontOps {
+    /// out = a * b * R^-1 mod n.
+    fn mul(&mut self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]);
+    /// out = a * a * R^-1 mod n.
+    fn sqr(&mut self, a: &[u64], out: &mut [u64], t: &mut [u64]);
+    /// x = 2x mod n.
+    fn double(&mut self, x: &mut [u64]);
+}
+
+impl MontOps for Mont {
+    fn mul(&mut self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]) {
+        Mont::mul(self, a, b, out, t)
+    }
+    fn sqr(&mut self, a: &[u64], out: &mut [u64], t: &mut [u64]) {
+        Mont::sqr(self, a, out, t)
+    }
+    fn double(&mut self, x: &mut [u64]) {
+        Mont::double(self, x)
+    }
+}
+
+/// Ladder iteration `i` of the base-2 Fermat ladder over `e` (`bits` bits): x <- x^2, then x <- 2x
+/// if bit `bits - 2 - i` of `e` is set. `y` is scratch of length w.
+fn ladder_step<M: MontOps>(
+    ops: &mut M,
+    e: &BigUint,
+    bits: u32,
+    i: u32,
+    x: &mut [u64],
+    y: &mut [u64],
+    t: &mut [u64],
+) {
+    ops.sqr(x, y, t);
+    x.copy_from_slice(y);
+    if e.bit(u64::from(bits - 2 - i)) {
+        ops.double(x);
+    }
+}
+
+/// Base-2 Fermat test under the Gerbicz error check; the degenerate inputs follow
+/// [`fermat_base2`] (below 2 or even is `Composite`, 2 is `Prp`). See [`fermat_base2_gec_with`].
+pub fn fermat_base2_gec(n: &BigUint) -> Checked {
+    fermat_base2_gec_with(n, |m| m)
+}
+
+/// [`fermat_base2_gec`] with its arithmetic done by `wrap(Mont::new(n))`; production passes the
+/// identity, tests pass a faulty adapter.
+///
+/// The algorithm is the GPU path's on fully reduced values (so equal mod n means equal limbs): blocks
+/// of `GEC_BLOCK` (40) ladder iterations, `A = B = 1~` and `y_prev = x = 2~` at the start, and at the
+/// end of each block `A = A * y_prev`, `B = B * x`, `y_prev = x`. After the last full block the
+/// remaining `(bits - 1) % 40` iterations (the whole run when there is no full block) run on `x`
+/// and again on the copy in `y_prev`; the two must agree. With at least one block, `A` squared 40
+/// times and multiplied by `2^(sum V)` (from `1~` by the same ladder over the bits of the window sum)
+/// must equal `B`. Any mismatch is [`Checked::Alarm`]; otherwise the verdict is `Prp` iff `x == 1~`.
+pub fn fermat_base2_gec_with<M: MontOps>(n: &BigUint, wrap: impl FnOnce(Mont) -> M) -> Checked {
+    let two = BigUint::from(2u32);
+    if n < &two {
+        return Checked::Composite;
+    }
+    if n == &two {
+        return Checked::Prp;
+    }
+    if !n.bit(0) {
+        return Checked::Composite;
+    }
+    let w = n.to_u64_digits().len();
+    let nl = to_limbs(n, w);
+    let mut ops = wrap(Mont::new(&nl));
+    let r = (BigUint::one() << (64 * w)) % n; // Montgomery form of 1
+    let one_m = to_limbs(&r, w);
+    let two_m = to_limbs(&((&r << 1u32) % n), w); // Montgomery form of 2 (top exponent bit)
+    let e = n - 1u32;
+    let bits = u32::try_from(n.bits()).expect("candidate too large");
+    let iters = bits - 1;
+    let blocks = gec_blocks(bits, GEC_BLOCK);
+    let full = blocks * GEC_BLOCK;
+    let mut t = vec![0u64; w + 2];
+    let mut y = vec![0u64; w];
+    let mut x = two_m.clone();
+    let mut y_prev = two_m;
+    let (mut a, mut b) = (one_m.clone(), one_m.clone());
+    for i in 0..full {
+        ladder_step(&mut ops, &e, bits, i, &mut x, &mut y, &mut t);
+        if (i + 1) % GEC_BLOCK == 0 {
+            ops.mul(&a, &y_prev, &mut y, &mut t);
+            a.copy_from_slice(&y);
+            ops.mul(&b, &x, &mut y, &mut t);
+            b.copy_from_slice(&y);
+            y_prev.copy_from_slice(&x);
+        }
+    }
+    // The tail belongs to no block: compute it twice, on x and on the copy of it in y_prev.
+    for i in full..iters {
+        ladder_step(&mut ops, &e, bits, i, &mut x, &mut y, &mut t);
+    }
+    for i in full..iters {
+        ladder_step(&mut ops, &e, bits, i, &mut y_prev, &mut y, &mut t);
+    }
+    if x != y_prev {
+        return Checked::Alarm;
+    }
+    if blocks > 0 {
+        // A^(2^40) * 2^(sum V) == B.
+        for _ in 0..GEC_BLOCK {
+            ops.sqr(&a, &mut y, &mut t);
+            a.copy_from_slice(&y);
+        }
+        let sum = gec_window_sum_words(&e.to_u32_digits(), bits, GEC_BLOCK);
+        let mut p = one_m.clone();
+        for k in (0..64 - sum.leading_zeros()).rev() {
+            ops.sqr(&p, &mut y, &mut t);
+            p.copy_from_slice(&y);
+            if (sum >> k) & 1 == 1 {
+                ops.double(&mut p);
+            }
+        }
+        ops.mul(&a, &p, &mut y, &mut t);
+        if y != b {
+            return Checked::Alarm;
+        }
+    }
+    if x == one_m {
+        Checked::Prp
+    } else {
+        Checked::Composite
+    }
+}
+
+/// [`fermat_base2_gec`] for every `n`, in order, with the threading of [`fermat_batch`]
+/// (`threads == 0` uses all cores).
+pub fn fermat_batch_gec(ns: &[BigUint], threads: usize) -> Vec<Checked> {
+    let threads = if threads == 0 {
+        std::thread::available_parallelism().map_or(1, |n| n.get())
+    } else {
+        threads
+    };
+    let threads = threads.min(ns.len()).max(1);
+    let per = ns.len().div_ceil(threads).max(1);
+    let mut out = vec![Checked::Composite; ns.len()];
+    std::thread::scope(|s| {
+        for (chunk_in, chunk_out) in ns.chunks(per).zip(out.chunks_mut(per)) {
+            s.spawn(move || {
+                for (n, o) in chunk_in.iter().zip(chunk_out.iter_mut()) {
+                    *o = fermat_base2_gec(n);
                 }
             });
         }
