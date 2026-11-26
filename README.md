@@ -89,7 +89,7 @@ arguments for the full usage. The tuning cache lives at `$BIGMONT_CACHE`, else `
 `--gec` runs the GPU buckets with the Gerbicz-Li error check. It is off by default, as it is in the CUDA driver this one
 replaces, and with it off nothing changes. The ladder is split into blocks of 40 squarings; at each block boundary the
 state is folded into two running products, and at the end one extra exponentiation checks that they agree mod n, so a
-bit flipped anywhere in a block's computation is caught. The last `(bits - 1) % 40` iterations belong to no block, so
+bit flipped anywhere in a block's computation is caught with overwhelming probability. The last `(bits - 1) % 40` iterations belong to no block, so
 they are covered by recomputation instead: they are run twice, once on the ladder state and once on a copy taken at the
 last block boundary, and the two results must agree. A candidate shorter than one block is covered entirely this way.
 
@@ -103,8 +103,11 @@ threshold, or after a GPU error) are not checked and cannot alarm, because the C
 
 `--inject IDX BDRY` is the fault drill (it needs `--gec` and a plain GPU run): it flips one bit in the computation of
 candidate `IDX` (0-based, in the candidate file) during Gerbicz block `BDRY`, so that candidate must come out as 2 and
-the others unchanged. It also sets the GPU threshold to one candidate, so a three-candidate drill runs on the GPU. For
-example, `bigmont cand.bin verdict.bin --gec --inject 1 3` on three candidates of 2,029 bits.
+the others unchanged. `BDRY` must be at most `(bits - 1) / 40`, the candidate's number of full 40-iteration blocks
+(equal to that number targets the tail recomputation); a larger `BDRY` injects nothing, and neither does a candidate the
+CPU answers, so the drill needs the GPU backend (`--backend cpu` is refused). It also sets the GPU threshold to one
+candidate, so a three-candidate drill runs on the GPU. For example, `bigmont cand.bin verdict.bin --gec --inject 1 3`
+on three candidates of 2,029 bits (50 full blocks).
 
 ## Measurements
 

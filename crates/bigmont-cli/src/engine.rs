@@ -366,9 +366,12 @@ impl Engine {
 
     /// Test and drill hook: flips a bit in the GPU computation of candidate `index` of the next
     /// `verdicts` call's `ns`, in Gerbicz block `block` (see `bigmont_core::runner::Fault`), so a
-    /// checked run (`Options::gec`) must answer 2 for it. It is cleared at the end of that call. It
-    /// does nothing where the candidate is not run on the GPU (a bucket answered by the CPU, a
-    /// degenerate input, `Options::gec` off) or `index` is out of range.
+    /// checked run (`Options::gec`) must answer 2 for it. It is cleared at the end of that call.
+    /// `block` is at most `(bits - 1) / 40`, the candidate's number of full 40-iteration blocks
+    /// (equal to it targets the tail recomputation); a larger `block` injects nothing. It also does
+    /// nothing where the candidate is not run on the GPU (a bucket answered by the CPU, a
+    /// degenerate input, `Options::gec` off) or `index` is out of range, so the drill needs the GPU
+    /// backend and, usually, `min_gpu_batch: 1`.
     #[doc(hidden)]
     pub fn inject_fault(&mut self, index: usize, block: u32) {
         self.fault = Some((index, block));

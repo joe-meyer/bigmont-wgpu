@@ -14,7 +14,9 @@
 //!
 //! Error check: `--gec` runs the GPU buckets with the Gerbicz check; a candidate that fails it gets verdict
 //! byte 2 instead of 0 or 1. `--inject IDX BDRY` (needs `--gec`, plain runs on the GPU only) flips a bit in
-//! candidate IDX (0-based, in the candidate file) during Gerbicz block BDRY, to drill the alarm path.
+//! candidate IDX (0-based, in the candidate file) during Gerbicz block BDRY, to drill the alarm path. BDRY
+//! must be at most (bits - 1) / 40, the candidate's number of full 40-iteration blocks (equal to it targets
+//! the tail recomputation); a larger BDRY, or a candidate the CPU answers, injects nothing.
 //!
 //! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
 //! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
@@ -50,6 +52,8 @@ error check: --gec runs the GPU buckets with the Gerbicz error check (off by def
               as a GEC alarm in the summary. Buckets answered by the CPU (fewer candidates than the GPU threshold,
               or after a GPU error) are not checked. --inject IDX BDRY (with --gec, plain GPU runs only) flips a
               bit in candidate IDX (0-based) during Gerbicz block BDRY, so that candidate must come out as 2.
+              BDRY is at most (bits-1)/40, the number of full 40-iteration blocks (equal to it targets the tail
+              recomputation); a larger BDRY injects nothing, nor does a candidate the CPU answers.
 early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
               prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
               candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
@@ -245,7 +249,9 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             return Err(usage_err("--inject applies to plain runs only (not --ee)"));
         }
         if a.opts.backend == Backend::Cpu {
-            return Err(usage_err("--inject needs the GPU (not --backend cpu)"));
+            return Err(usage_err(
+                "--inject needs the GPU backend (not --backend cpu)",
+            ));
         }
         // The drill runs a handful of candidates: below the default GPU threshold they would be
         // answered by the CPU, which is not checked and injects nothing.

@@ -1166,22 +1166,27 @@ fn inject_usage_errors_exit_2_before_any_work() {
     let v = v.to_str().unwrap();
     let cases: [(&[&str], &str); 5] = [
         (&[c, v, "--inject", "1", "3"], "--inject needs --gec"),
-        (&[c, v, "--gec", "--inject", "5", "3"], "5"),
+        (
+            &[c, v, "--gec", "--inject", "5", "3"],
+            "index 5 is out of range",
+        ),
         (
             &[c, v, "--gec", "--inject", "0", "0", "--ee", "s.bin"],
             "plain runs only",
         ),
         (
             &[c, v, "--gec", "--inject", "0", "0", "--backend", "cpu"],
-            "GPU",
+            "needs the GPU backend",
         ),
-        (&[c, v, "--gec", "--inject=1"], "--inject"),
+        (&[c, v, "--gec", "--inject=1"], "needs two values"),
     ];
     for (args, needle) in cases {
         let out = run(bigmont(args));
         assert_eq!(code(&out), Some(2), "{args:?}");
+        // The message is the first line; the usage text after it names every flag.
         let err = String::from_utf8_lossy(&out.stderr);
-        assert!(err.contains(needle), "{args:?}: {err}");
+        let first = err.lines().next().unwrap_or_default();
+        assert!(first.contains(needle), "{args:?}: {err}");
         assert!(
             !Path::new(v).exists(),
             "{args:?} must not write a verdict file"

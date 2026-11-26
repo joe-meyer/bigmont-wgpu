@@ -636,3 +636,50 @@ fn an_injected_fault_gives_verdict_2_for_that_candidate_only() {
     assert_eq!(e.verdicts(&ns).unwrap(), want);
     assert_eq!(e.report().gec_alarms, 1);
 }
+
+#[test]
+fn a_fault_lands_on_its_input_index_across_interleaved_buckets() {
+    if !common::usable_gpu() {
+        return;
+    }
+    // Two bit lengths interleaved: the injected candidate's position in its bucket differs from its
+    // input index (index 2 is position 1 of the 2029-bit bucket, index 1 position 0 of the 1500-bit one).
+    let mut rng = XorShift64::new(23);
+    let ns: Vec<BigUint> = [2029, 1500, 2029, 1500]
+        .iter()
+        .map(|&bits| random_odd_modulus(&mut rng, bits))
+        .collect();
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    let mut e = Engine::open(gec_opts());
+    for hit in 0..ns.len() {
+        e.inject_fault(hit, 3);
+        let mut expected = want.clone();
+        expected[hit] = 2;
+        assert_eq!(e.verdicts(&ns).unwrap(), expected, "fault at index {hit}");
+        assert_eq!(e.report().gec_alarms, hit as u64 + 1);
+    }
+    assert_eq!(e.verdicts(&ns).unwrap(), want, "the hook is one-shot");
+}
+
+#[test]
+fn an_alarm_is_never_rechecked_or_overruled_by_the_cpu() {
+    if !common::usable_gpu() {
+        return;
+    }
+    let mut rng = XorShift64::new(22);
+    let ns: Vec<BigUint> = (0..3).map(|_| random_odd_modulus(&mut rng, 2029)).collect();
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    // Every composite is re-checked on the CPU; the alarmed candidate must not be.
+    let mut e = Engine::open(Options {
+        verify_rate: 1,
+        ..gec_opts()
+    });
+    e.inject_fault(1, 3);
+    assert_eq!(e.verdicts(&ns).unwrap(), vec![want[0], 2, want[2]]);
+    let r = e.report();
+    assert_eq!(r.gec_alarms, 1);
+    assert_eq!(r.prp_disagreements, 0);
+    assert_eq!(r.composite_disagreements, 0);
+    let rechecked = want.iter().enumerate().filter(|&(i, _)| i != 1).count();
+    assert_eq!(r.rechecks, rechecked as u64, "the alarm is not re-checked");
+}
