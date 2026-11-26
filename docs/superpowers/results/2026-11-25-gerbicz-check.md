@@ -84,7 +84,7 @@ implementation, so it is a comparison and not a match, and this repository's des
 
 A throwaway example (not committed) ran `Runner::fermat` and `Runner::fermat_checked` alternately on the same candidates in one
 process: same adapter and kernel configuration as above (13-bit, TPI 8, workgroup 128, 160 limbs after padding), capacity
-32,768 (the CLI's chunk size), three alternating rounds, without the engine's CPU re-checks. `RunStats::gpu_secs` is the wall
+32,768 (larger than the engine's default runner capacity of 16,384, so this profile is not the engine's exact configuration), three alternating rounds, without the engine's CPU re-checks. `RunStats::gpu_secs` is the wall
 time from submit to completion of the ladder dispatches; "other" is wall time minus `gpu_secs` minus `host_prep_secs`
 (uploads, readback, unpacking, verdict comparison, and for `--gec` the extra buffer writes and the final check readback).
 

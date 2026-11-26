@@ -107,11 +107,12 @@ the others unchanged. `BDRY` must be at most `(bits - 1) / 40`, the candidate's 
 (equal to that number targets the tail recomputation); a larger `BDRY` injects nothing, and neither does a candidate the
 CPU answers, so the drill needs the GPU backend (`--backend cpu` is refused). It also sets the GPU threshold to one
 candidate, so a three-candidate drill runs on the GPU. For example, `bigmont cand.bin verdict.bin --gec --inject 1 3`
-on three candidates of 2,029 bits (50 full blocks).
+on three candidates of 2,029 bits (50 full blocks). Beacon's `g2_harness.py` runs its drill as `DRIVER cand.bin out.bin --inject 1 3`, so
+with this driver `DRIVER` is `bigmont --gec` (the CUDA driver needs a `-DFERMAT_GEC=1` build for the same reason).
 
 Cost: on 2,029-bit candidates the check lowered throughput by about 16 % (mean of three plain and three `--gec` runs of
 100,003 candidates, 33,957 against 28,519 tests/s, each pair between 13 % and 18 %), measured on one AMD Radeon RX 6700 XT
-(AMD proprietary driver 26.10.1, Vulkan, 13-bit limbs). The CUDA driver reports about 11.5 % on an RTX 5090. Other GPUs
+(AMD proprietary driver 26.10.1, Vulkan, 13-bit limbs). The CUDA driver's kit notes report 514,850 to 581,795 tests/s with and without its check on an RTX 5090, about 11.5 %. Other GPUs
 and drivers were not measured; see [the results](docs/superpowers/results/2026-11-25-gerbicz-check.md).
 
 ## Measurements
