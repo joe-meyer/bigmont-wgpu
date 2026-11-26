@@ -170,6 +170,32 @@ fn checked_and_unchecked_runs_agree_and_chunking_keeps_the_order() {
     assert_eq!(checked, from_plain);
 }
 
+/// The runner keeps its host vectors between chunks and refills them: a big chunk followed by a
+/// smaller one, a different order and the plain path in between must not see stale entries.
+#[test]
+fn reused_host_buffers_never_leak_between_chunks() {
+    let Some(gpu) = open() else { return };
+    for scheme in LimbScheme::ALL.iter().copied() {
+        let Some(mut r) = runner(&gpu, scheme, 300, 16) else {
+            continue;
+        };
+        let big = mixed(300, 13, 3, 5);
+        let small = mixed(300, 2, 1, 6);
+        let mut backwards = big.clone();
+        backwards.reverse();
+        for (round, ns) in [&big, &small, &backwards, &small, &big]
+            .into_iter()
+            .enumerate()
+        {
+            let got = pollster::block_on(r.fermat_checked_async(&gpu, ns)).expect("checked");
+            assert_eq!(got, truth(ns), "{scheme:?} checked round {round}");
+            let plain = pollster::block_on(r.fermat_async(&gpu, ns)).expect("plain");
+            let want: Vec<bool> = truth(ns).iter().map(|&v| v == Verdict::Prp).collect();
+            assert_eq!(plain, want, "{scheme:?} plain round {round}");
+        }
+    }
+}
+
 #[test]
 fn a_register_fault_mid_block_alarms_only_its_candidate() {
     let Some(gpu) = open() else { return };

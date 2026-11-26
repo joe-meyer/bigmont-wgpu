@@ -137,6 +137,30 @@ pub struct Runner {
     gec: Option<Gec>,
     /// The checked path's adapted segment length, kept across blocks, passes and chunks.
     checked_segment: u32,
+    /// Host vectors that [`Runner::upload_chunk`] refills for every chunk.
+    upload_bufs: UploadBufs,
+    /// Host vectors that the checked path refills for every chunk.
+    check_bufs: CheckBufs,
+}
+
+/// The host-side arrays of one chunk's uploads, kept between chunks so that each chunk clears and
+/// refills them instead of allocating new ones (and so the vectors keep the capacity of the
+/// largest chunk seen, about the size of the device buffers they are copied into).
+#[derive(Default)]
+struct UploadBufs {
+    n: Vec<u32>,
+    x: Vec<u32>,
+    ninv: Vec<u32>,
+    e: Vec<u32>,
+}
+
+/// The checked path's per-chunk host arrays, kept between chunks like [`UploadBufs`]: `R mod n`
+/// (the start of `A` and `B`), the start values `2R mod n`, and the exponent sums as two words each.
+#[derive(Default)]
+struct CheckBufs {
+    one: Vec<u32>,
+    x0: Vec<u32>,
+    sum: Vec<u32>,
 }
 
 /// One ladder pass of a segmented submission: the bind group, the `fp` uniform it reads and that
@@ -368,6 +392,8 @@ impl Runner {
             stats: RunStats::default(),
             gec: None,
             checked_segment: 1,
+            upload_bufs: UploadBufs::default(),
+            check_bufs: CheckBufs::default(),
         })
     }
 
@@ -443,23 +469,24 @@ impl Runner {
         let words = self.words as usize;
         let t = Instant::now();
         let preps = prepare(ns, self.cfg.scheme, limbs, words);
-        let mut n_all = Vec::with_capacity(ns.len() * limbs);
-        let mut x_all = Vec::with_capacity(ns.len() * limbs);
-        let mut ninv_all = Vec::with_capacity(ns.len());
-        let mut e_all = Vec::with_capacity(ns.len() * words);
+        let bufs = &mut self.upload_bufs;
+        bufs.n.clear();
+        bufs.x.clear();
+        bufs.ninv.clear();
+        bufs.e.clear();
         for p in &preps {
-            n_all.extend_from_slice(&p.n);
-            x_all.extend_from_slice(&p.x0);
-            ninv_all.push(p.ninv);
-            e_all.extend_from_slice(&p.e);
+            bufs.n.extend_from_slice(&p.n);
+            bufs.x.extend_from_slice(&p.x0);
+            bufs.ninv.push(p.ninv);
+            bufs.e.extend_from_slice(&p.e);
         }
         self.stats.host_prep_secs += t.elapsed().as_secs_f64();
 
         let queue = &gpu.queue;
-        queue.write_buffer(&self.n_buf, 0, bytemuck::cast_slice(&n_all));
-        queue.write_buffer(&self.x_buf, 0, bytemuck::cast_slice(&x_all));
-        queue.write_buffer(&self.ninv_buf, 0, bytemuck::cast_slice(&ninv_all));
-        queue.write_buffer(&self.e_buf, 0, bytemuck::cast_slice(&e_all));
+        queue.write_buffer(&self.n_buf, 0, bytemuck::cast_slice(&bufs.n));
+        queue.write_buffer(&self.x_buf, 0, bytemuck::cast_slice(&bufs.x));
+        queue.write_buffer(&self.ninv_buf, 0, bytemuck::cast_slice(&bufs.ninv));
+        queue.write_buffer(&self.e_buf, 0, bytemuck::cast_slice(&bufs.e));
         preps
     }
 
@@ -786,23 +813,27 @@ impl Runner {
         // 1. Upload: the ladder inputs, A = B = 1~, y_prev = x0, and sum V.
         let preps = self.upload_chunk(gpu, ns);
         let t = Instant::now();
-        let mut one_all = Vec::with_capacity(ns.len() * limbs);
-        let mut x0_all = Vec::with_capacity(ns.len() * limbs);
-        let mut sum_all = Vec::with_capacity(ns.len() * 2);
+        // The vectors are taken out of `self` because the later steps borrow `self` mutably while
+        // `one` is still needed; they go back at the end. An `Err` return drops them (the runner
+        // should be dropped then, see `fermat_async`), and the next chunk allocates new ones.
+        let mut bufs = std::mem::take(&mut self.check_bufs);
+        bufs.one.clear();
+        bufs.x0.clear();
+        bufs.sum.clear();
         for p in &preps {
-            one_all.extend(scheme.pack(&p.r, limbs));
-            x0_all.extend_from_slice(&p.x0);
+            scheme.pack_into(&p.r, limbs, &mut bufs.one);
+            bufs.x0.extend_from_slice(&p.x0);
             let sum = gec_window_sum_words(&p.e, bits, GEC_BLOCK);
-            sum_all.extend([sum as u32, (sum >> 32) as u32]);
+            bufs.sum.extend([sum as u32, (sum >> 32) as u32]);
         }
         self.stats.host_prep_secs += t.elapsed().as_secs_f64();
         {
             let gec = self.gec.as_ref().ok_or(NO_GEC)?;
             let queue = &gpu.queue;
-            queue.write_buffer(&gec.a_buf, 0, bytemuck::cast_slice(&one_all));
-            queue.write_buffer(&gec.b_buf, 0, bytemuck::cast_slice(&one_all));
-            queue.write_buffer(&gec.y_buf, 0, bytemuck::cast_slice(&x0_all));
-            queue.write_buffer(&gec.sumv, 0, bytemuck::cast_slice(&sum_all));
+            queue.write_buffer(&gec.a_buf, 0, bytemuck::cast_slice(&bufs.one));
+            queue.write_buffer(&gec.b_buf, 0, bytemuck::cast_slice(&bufs.one));
+            queue.write_buffer(&gec.y_buf, 0, bytemuck::cast_slice(&bufs.x0));
+            queue.write_buffer(&gec.sumv, 0, bytemuck::cast_slice(&bufs.sum));
             queue.write_buffer(
                 &gec.mul_params,
                 0,
@@ -840,7 +871,7 @@ impl Runner {
             // L = 40 + bitlen(nb) bounds the bit length of sum V < nb * 2^40 (and is at most 64).
             let gec = self.gec.as_ref().ok_or(NO_GEC)?;
             gpu.queue
-                .write_buffer(&gec.y_buf, 0, bytemuck::cast_slice(&one_all));
+                .write_buffer(&gec.y_buf, 0, bytemuck::cast_slice(&bufs.one));
             let l = GEC_BLOCK + (32 - nb.leading_zeros());
             self.check_pass(gpu, count, |g| &g.bg_lad_y, l, l + 1)
                 .await?;
@@ -895,6 +926,7 @@ impl Runner {
             })
             .collect();
         self.stats.tests += u64::from(count);
+        self.check_bufs = bufs;
         Ok(verdicts)
     }
 

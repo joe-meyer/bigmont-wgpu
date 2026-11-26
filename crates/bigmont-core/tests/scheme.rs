@@ -1,6 +1,7 @@
 use bigmont_core::kernel::{KernelConfig, Target, Variant};
 use bigmont_core::scheme::{Caps, LimbScheme};
 use bigmont_oracle::*;
+use num_bigint::BigUint;
 
 #[test]
 fn limb13_matches_the_oracle_helpers() {
@@ -174,4 +175,40 @@ fn check_caps_names_every_missing_capability() {
             .unwrap_err()
             .contains("subgroups")
     );
+}
+
+#[test]
+fn pack_into_matches_pack_for_both_schemes() {
+    let mut rng = XorShift64::new(23);
+    for scheme in [LimbScheme::Limb13, LimbScheme::Limb32] {
+        let lb = scheme.limb_bits() as usize;
+        for bits in [2u32, 12, 13, 14, 31, 32, 33, 64, 127, 521, 1019, 2029] {
+            let limbs = scheme.limbs_for_bits(bits) as usize;
+            let mut xs = vec![
+                BigUint::from(0u32),
+                BigUint::from(1u32),
+                (BigUint::from(1u32) << bits) - 1u32,
+                random_odd_modulus(&mut rng, bits),
+            ];
+            // The largest value that fits in the limbs, and a few spare limbs.
+            xs.push((BigUint::from(1u32) << (lb * limbs)) - 1u32);
+            for x in xs {
+                for extra in [0usize, 3] {
+                    let limbs = limbs + extra;
+                    // Appends after what is already there, and `pack` is the reference.
+                    let mut out = vec![0xdead_beef, 7];
+                    scheme.pack_into(&x, limbs, &mut out);
+                    assert_eq!(&out[..2], &[0xdead_beef, 7]);
+                    assert_eq!(&out[2..], &scheme.pack(&x, limbs)[..], "{bits} bits");
+                    assert_eq!(out.len(), 2 + limbs);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "does not fit")]
+fn pack_into_rejects_values_that_do_not_fit() {
+    LimbScheme::Limb13.pack_into(&(BigUint::from(1u32) << 26u32), 2, &mut Vec::new());
 }

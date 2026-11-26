@@ -106,6 +106,38 @@ impl LimbScheme {
         }
     }
 
+    /// Appends the `limbs` limbs that [`LimbScheme::pack`] returns for `x` to `out`, without
+    /// allocating a vector for them (`pack` makes one, and an intermediate one for the digits, per
+    /// call). Panics if `x` does not fit in `limbs` limbs, like `pack`.
+    pub fn pack_into(self, x: &BigUint, limbs: usize, out: &mut Vec<u32>) {
+        assert!(
+            x.bits() <= u64::from(self.limb_bits()) * limbs as u64,
+            "value does not fit in {limbs} limbs"
+        );
+        match self {
+            LimbScheme::Limb13 => {
+                // `acc` holds the `have` low bits not yet emitted; its bits above `have` are zero,
+                // and `have + 32` stays below 64, so the shift below never loses bits.
+                let mut digits = x.iter_u32_digits();
+                let (mut acc, mut have) = (0u64, 0u32);
+                for _ in 0..limbs {
+                    if have < LIMB_BITS {
+                        acc |= u64::from(digits.next().unwrap_or(0)) << have;
+                        have += 32;
+                    }
+                    out.push(acc as u32 & LIMB_MASK);
+                    acc >>= LIMB_BITS;
+                    have -= LIMB_BITS;
+                }
+            }
+            LimbScheme::Limb32 => {
+                let start = out.len();
+                out.extend(x.iter_u32_digits());
+                out.resize(start + limbs, 0);
+            }
+        }
+    }
+
     pub fn unpack(self, limbs: &[u32]) -> BigUint {
         match self {
             LimbScheme::Limb13 => unpack_limbs(limbs),
