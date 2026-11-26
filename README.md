@@ -180,6 +180,11 @@ The first use is prime-gap searching. The cooperative kernel design is shaped af
 [CGBN](https://github.com/NVlabs/CGBN) library; this repository contains none of its source files. The kernels are
 generated WGSL; the tests compare them with independent big-integer references.
 
+The `bigmont` driver follows the contract of [Beacon](https://github.com/djuk8/beacon)'s `g1_fermat_v3` CUDA driver
+(the candidate and verdict file formats, the exit codes, the verdict byte for a Gerbicz alarm), and Beacon's
+implementation is the baseline we compare correctness and throughput against. Thanks to its author, djuk8, for
+publishing it.
+
 ## License
 
 [MIT](LICENSE).
