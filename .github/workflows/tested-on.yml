@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+      - name: Self-test the checker
+        run: python3 -m unittest discover -s .github/scripts
       - name: Check the Tested on section
         env:
           GH_TOKEN: ${{ github.token }}

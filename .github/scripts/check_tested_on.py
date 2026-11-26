@@ -25,6 +25,10 @@ REQUIRED_PATTERNS = [
 VENDORS = ["NVIDIA", "AMD", "Intel", "Apple", "Software", "Browser"]
 VALID_RESULTS = {"tested", "not tested", "untested", "n/a", "na"}
 
+# The Result cell can offer checkboxes, "[ ] tested  [ ] not tested  [ ] n/a": tick exactly one
+# with an x. A plain word ("tested", "not tested", "n/a") is still accepted.
+CHECKBOX = re.compile(r"\[([ xX]?)\]\s*([^\[\]]*)")
+
 # A reviewer-visible escape hatch for PRs touching the paths above that cannot
 # change behaviour (a pure refactor, a doc comment fix, ...).
 ESCAPE = re.compile(r"(?im)^\s*no hardware impact:\s*(\S.{9,})$")
@@ -67,6 +71,19 @@ def parse_rows(section: str):
     return rows
 
 
+def parse_result(cell: str):
+    """The (result, problem) of a Result cell: `result` is the ticked option (or the plain word),
+    `problem` says what is wrong when no single option is chosen."""
+    boxes = [(mark.strip().lower() == "x", label.strip()) for mark, label in CHECKBOX.findall(cell)]
+    if not boxes:
+        return cell.strip(), None
+    ticked = [label for on, label in boxes if on]
+    options = ", ".join(f'"{label}"' for _, label in boxes)
+    if len(ticked) != 1:
+        return "", f"tick exactly one of {options} (found {len(ticked)} ticked)"
+    return ticked[0], None
+
+
 def validate(body: str) -> list[str]:
     body = strip_comments(body)
     if ESCAPE.search(body):
@@ -83,9 +100,12 @@ def validate(body: str) -> list[str]:
         if row is None:
             errors.append(f"Missing the {vendor} row in the Tested on table.")
             continue
-        _, detail, result = row
+        _, detail, cell = row
+        result, problem = parse_result(cell)
         norm = result.lower()
-        if norm not in VALID_RESULTS:
+        if problem:
+            errors.append(f"{vendor}: {problem}.")
+        elif norm not in VALID_RESULTS:
             errors.append(
                 f'{vendor}: result must be one of "tested", "not tested" or "n/a", got "{result}".'
             )
