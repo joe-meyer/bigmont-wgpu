@@ -773,14 +773,18 @@ fn integrity_pass(
     verdicts
 }
 
+// The integration tests' skip helper, so a skip in the unit tests is recorded like theirs. Declared
+// here, not inside `mod tests`: a `#[path]` in an inline module resolves through a directory
+// (`src/engine/tests/`) that does not exist, which only Windows tolerates.
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod test_common;
+
 #[cfg(test)]
 mod tests {
+    use super::test_common as common;
     use super::*;
     use std::cell::RefCell;
-
-    // The integration tests' skip helper, so a skip here is recorded like theirs.
-    #[path = "../../../tests/common/mod.rs"]
-    mod common;
 
     /// Runs `integrity_pass` with a fake CPU that calls exactly the candidates in `primes` probable
     /// primes. Returns the verdicts, the report and the candidates the fake CPU was asked about.
