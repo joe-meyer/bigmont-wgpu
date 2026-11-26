@@ -128,7 +128,7 @@ them in `mpn_sbpi1_bdiv_r` (its Hensel-division remainder, the reduction; the Ze
 of it), 30% in `mpn_sqr_basecase`. It does not use `redc_1` here. This PR's earlier `perf` figure was 23.9M instructions per
 test. The remaining gap is again instruction count, about 25% fewer in GMP's kernels.
 
-No GMP code was read into or copied into this crate: GMP is LGPL/GPL and this crate is MIT. The kernel here is our own.
+No GMP code was copied into this crate (GMP is LGPL/GPL, this crate is MIT); only its build output was timed and profiled, and the kernel here is our own.
 Ideas that are plausible but untested: unrolling the row loop by 8 instead of 4 (less loop bookkeeping per limb), handling the
 one to three leftover limbs of the triangle rows without the scalar loop, and processing two multiplier limbs per pass.
 
