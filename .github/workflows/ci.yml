@@ -142,13 +142,8 @@ jobs:
             "https://github.com/pal1000/mesa-dist-win/releases/download/$MESA_VERSION/mesa3d-$MESA_VERSION-release-msvc.7z" \
             -o mesa.7z
           echo "$MESA_SHA256  mesa.7z" | sha256sum -c -
-          7z.exe l mesa.7z | grep -i -E "vulkan_lvp|lvp_icd|libgallium|libglapi|opengl32" || true
-          7z.exe e mesa.7z -omesa 'x64/vulkan_lvp.dll' 'x64/lvp_icd.x86_64.json' \
-            'x64/libgallium_wgl.dll' 'x64/libglapi.dll' 'x64/opengl32.dll'
+          7z.exe e mesa.7z -omesa 'x64/vulkan_lvp.dll'
           ls -l mesa
-          echo "--- shipped ICD manifest:"
-          cat mesa/lvp_icd.x86_64.json
-          echo
           # A manifest that names the DLL by absolute path, so the loader does not depend on the
           # DLL search order.
           lib=$(cygpath --windows "$PWD/mesa/vulkan_lvp.dll" | sed 's/\\/\\\\/g')
@@ -174,9 +169,6 @@ jobs:
       - run: cargo build --workspace --all-features --locked
       - name: Adapter report
         run: cargo run --locked -q -p bigmont-core --example adapter_report
-        env:
-          # Says why the Vulkan loader skips a driver (Windows only: the Linux leg works).
-          VK_LOADER_DEBUG: ${{ runner.os == 'Windows' && 'error,warn,driver' || '' }}
       - run: cargo nextest run --workspace --all-features --locked --no-fail-fast
       - run: cargo test --workspace --all-features --locked --doc
       - name: Summarise skipped tests
