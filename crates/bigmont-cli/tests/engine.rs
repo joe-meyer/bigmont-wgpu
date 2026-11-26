@@ -86,13 +86,20 @@ fn the_cpu_backend_with_gec_gives_the_plain_verdicts_and_no_alarms() {
     });
     assert_eq!(plain.verdicts(&ns).unwrap(), want);
     assert_eq!(checked.verdicts(&ns).unwrap(), want);
+    let backend = ns.iter().filter(|n| needs_backend(n)).count() as u64;
     let r = checked.report();
     assert_eq!(r.gec_alarms, 0);
+    assert_eq!(r.cpu_tests, backend);
     assert_eq!(
-        r.cpu_tests,
-        ns.iter().filter(|n| needs_backend(n)).count() as u64
+        r.cpu_checked, backend,
+        "every candidate that needs a backend ran the checked CPU test"
     );
     assert_eq!(r.gpu_tests, 0);
+    assert_eq!(
+        plain.report().cpu_checked,
+        0,
+        "without gec nothing is checked"
+    );
 }
 
 #[test]
@@ -630,10 +637,19 @@ fn gec_verdicts_equal_plain_verdicts_on_clean_input_and_never_alarm() {
     assert!(want.contains(&1), "the batch must contain a probable prime");
     let mut checked = Engine::open(gec_opts());
     assert_eq!(checked.verdicts(&ns).unwrap(), want);
-    assert_eq!(checked.report().gec_alarms, 0);
+    let r = checked.report();
+    assert_eq!(r.gec_alarms, 0);
+    assert!(r.rechecks >= 2, "every PRP is re-checked: {r:?}");
+    assert_eq!(
+        r.rechecks_checked, r.rechecks,
+        "with gec every re-check is the checked CPU run"
+    );
     let mut plain = Engine::open(Options {
         gec: false,
         ..gec_opts()
     });
     assert_eq!(plain.verdicts(&ns).unwrap(), want);
+    let r = plain.report();
+    assert!(r.rechecks >= 2);
+    assert_eq!(r.rechecks_checked, 0);
 }

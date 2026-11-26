@@ -140,6 +140,12 @@ pub struct EngineReport {
     /// Candidates given verdict 2 (a Gerbicz alarm) with `Options::gec`: by a checked GPU run, a
     /// checked CPU run, or a checked CPU re-check of a GPU verdict. Each candidate counts once.
     pub gec_alarms: u64,
+    /// Candidates tested on the CPU as the primary backend with the Gerbicz check (`Options::gec`);
+    /// at most `cpu_tests`.
+    pub cpu_checked: u64,
+    /// CPU re-checks of GPU verdicts that ran with the Gerbicz check (`Options::gec`); at most
+    /// `rechecks`.
+    pub rechecks_checked: u64,
 }
 
 fn to_verdict(prp: bool) -> Verdict {
@@ -162,30 +168,42 @@ fn from_checked(c: bigmont_cpu::Checked) -> Verdict {
     }
 }
 
-/// CPU verdicts for `nums`: with `gec` from the checked run `checked` (an alarm is
-/// `Verdict::Alarm`), otherwise from the plain run `plain`, which never alarms.
-fn cpu_verdicts_with(
-    gec: bool,
-    nums: &[BigUint],
-    plain: impl FnOnce(&[BigUint]) -> Vec<bool>,
-    checked: impl FnOnce(&[BigUint]) -> Vec<bigmont_cpu::Checked>,
-) -> Vec<Verdict> {
+/// CPU verdicts for `nums` on `threads` threads (0 = all cores): with `gec` from the checked batch
+/// `bigmont_cpu::fermat_batch_gec` (an alarm is `Verdict::Alarm`), adding the candidates it tested to
+/// `checked`; otherwise from the plain `bigmont_cpu::fermat_batch`, which never alarms.
+fn cpu_verdicts(gec: bool, threads: usize, nums: &[BigUint], checked: &mut u64) -> Vec<Verdict> {
     if gec {
-        checked(nums).into_iter().map(from_checked).collect()
+        *checked += nums.len() as u64;
+        bigmont_cpu::fermat_batch_gec(nums, threads)
+            .into_iter()
+            .map(from_checked)
+            .collect()
     } else {
-        to_verdicts(&plain(nums))
+        to_verdicts(&bigmont_cpu::fermat_batch(nums, threads))
     }
 }
 
-/// [`cpu_verdicts_with`] over the batch functions of `bigmont_cpu` on `threads` threads (0 = all
-/// cores).
-fn cpu_verdicts(gec: bool, threads: usize, nums: &[BigUint]) -> Vec<Verdict> {
-    cpu_verdicts_with(
-        gec,
-        nums,
-        |s| bigmont_cpu::fermat_batch(s, threads),
-        |s| bigmont_cpu::fermat_batch_gec(s, threads),
-    )
+/// Counts the alarms in `verdicts` (the `bits`-bit candidates of one bucket, or of its CPU
+/// re-checks) in `report.gec_alarms` and logs one line for them, `bigmont: N GEC alarms among M
+/// B-bit candidates` followed by `context`. Returns that line, or `None` (no count, no line) when
+/// there is no alarm.
+fn count_alarms(
+    report: &mut EngineReport,
+    bits: u32,
+    verdicts: &[Verdict],
+    context: &str,
+) -> Option<String> {
+    let alarms = verdicts.iter().filter(|&&v| v == Verdict::Alarm).count();
+    if alarms == 0 {
+        return None;
+    }
+    report.gec_alarms += alarms as u64;
+    let line = format!(
+        "bigmont: {alarms} GEC alarms among {} {bits}-bit candidates{context}",
+        verdicts.len()
+    );
+    eprintln!("{line}");
+    Some(line)
 }
 
 /// What one GPU attempt at a bucket gave.
@@ -406,15 +424,13 @@ impl Engine {
     /// counted in `gec_alarms`, with one log line per bucket).
     fn cpu(&mut self, bits: u32, nums: &[BigUint]) -> Vec<Verdict> {
         self.report.cpu_tests += nums.len() as u64;
-        let verdicts = cpu_verdicts(self.opts.gec, self.opts.threads, nums);
-        let alarms = verdicts.iter().filter(|&&v| v == Verdict::Alarm).count() as u64;
-        if alarms > 0 {
-            self.report.gec_alarms += alarms;
-            eprintln!(
-                "bigmont: {alarms} GEC alarms among {} {bits}-bit candidates tested on the CPU",
-                nums.len()
-            );
-        }
+        let verdicts = cpu_verdicts(
+            self.opts.gec,
+            self.opts.threads,
+            nums,
+            &mut self.report.cpu_checked,
+        );
+        count_alarms(&mut self.report, bits, &verdicts, " tested on the CPU");
         verdicts
     }
 
@@ -657,17 +673,39 @@ impl Engine {
         };
         self.report.gpu_tests += nums.len() as u64;
 
-        let (threads, gec) = (self.opts.threads, self.opts.gec);
-        GpuRun::Done(integrity_pass(
+        GpuRun::Done(cpu_integrity_pass(
             bits,
             nums,
             verdicts,
-            self.opts.verify_rate,
+            &self.opts,
             composites_seen,
             &mut self.report,
-            |subset| cpu_verdicts(gec, threads, subset),
         ))
     }
+}
+
+/// [`integrity_pass`] with the real CPU as the re-check: `bigmont_cpu`'s checked batch with
+/// `opts.gec` (counted in `report.rechecks_checked`), the plain one otherwise, on `opts.threads`.
+fn cpu_integrity_pass(
+    bits: u32,
+    nums: &[BigUint],
+    verdicts: Vec<Verdict>,
+    opts: &Options,
+    composites_seen: &mut u64,
+    report: &mut EngineReport,
+) -> Vec<Verdict> {
+    let mut checked = 0u64;
+    let out = integrity_pass(
+        bits,
+        nums,
+        verdicts,
+        opts.verify_rate,
+        composites_seen,
+        report,
+        |subset| cpu_verdicts(opts.gec, opts.threads, subset, &mut checked),
+    );
+    report.rechecks_checked += checked;
+    out
 }
 
 /// The integrity pass over one GPU bucket's verdicts: every `Verdict::Prp` and every `verify_rate`-th
@@ -688,7 +726,6 @@ fn integrity_pass(
     cpu_check: impl FnOnce(&[BigUint]) -> Vec<Verdict>,
 ) -> Vec<Verdict> {
     let mut recheck = Vec::new();
-    let mut alarms = 0u64;
     for (i, &v) in verdicts.iter().enumerate() {
         match v {
             Verdict::Prp => recheck.push(i),
@@ -698,23 +735,21 @@ fn integrity_pass(
                     recheck.push(i);
                 }
             }
-            Verdict::Alarm => alarms += 1,
+            Verdict::Alarm => {}
         }
     }
-    if alarms > 0 {
-        report.gec_alarms += alarms;
-        eprintln!(
-            "bigmont: {alarms} GEC alarms among {} {bits}-bit candidates",
-            verdicts.len()
-        );
-    }
+    count_alarms(report, bits, &verdicts, "");
     let subset: Vec<BigUint> = recheck.iter().map(|&i| nums[i].clone()).collect();
     let truth = cpu_check(&subset);
     report.rechecks += subset.len() as u64;
-    let mut recheck_alarms = 0u64;
+    count_alarms(
+        report,
+        bits,
+        &truth,
+        " re-checked on the CPU; they get verdict 2",
+    );
     for (&i, cpu) in recheck.iter().zip(truth) {
         if cpu == Verdict::Alarm {
-            recheck_alarms += 1;
             verdicts[i] = Verdict::Alarm;
             continue;
         }
@@ -732,13 +767,6 @@ fn integrity_pass(
             }
             verdicts[i] = cpu;
         }
-    }
-    if recheck_alarms > 0 {
-        report.gec_alarms += recheck_alarms;
-        eprintln!(
-            "bigmont: {recheck_alarms} GEC alarms in the CPU re-checks of {} {bits}-bit candidates; they get verdict 2",
-            recheck.len()
-        );
     }
     verdicts
 }
@@ -896,42 +924,90 @@ mod tests {
     }
 
     #[test]
-    fn without_gec_the_cpu_is_never_asked_for_a_checked_run() {
-        let plain = |s: &[BigUint]| s.iter().map(|n| n == &BigUint::from(7u32)).collect();
-        let checked = |_: &[BigUint]| -> Vec<bigmont_cpu::Checked> {
-            panic!("the checked CPU run was used with gec off")
+    fn the_cpu_runs_the_checked_batch_exactly_when_gec_is_on() {
+        // Primes, composites, base-2 pseudoprimes (341, 561) and a 127-bit Mersenne prime.
+        let mut nums: Vec<BigUint> = [5u32, 7, 9, 341, 561, 1105, 65_537]
+            .map(BigUint::from)
+            .to_vec();
+        nums.push((BigUint::from(1u32) << 127u32) - 1u32);
+        let want: Vec<Verdict> = nums
+            .iter()
+            .map(|n| to_verdict(bigmont_oracle::fermat_base2(n)))
+            .collect();
+        let mut checked = 0;
+        assert_eq!(cpu_verdicts(false, 2, &nums, &mut checked), want);
+        assert_eq!(checked, 0, "gec off: the checked batch never runs");
+        assert_eq!(cpu_verdicts(true, 2, &nums, &mut checked), want);
+        assert_eq!(
+            checked,
+            nums.len() as u64,
+            "gec on: every candidate is checked"
+        );
+        // A clean checked run never alarms, so the counter is what tells the two batches apart.
+    }
+
+    /// The candidates 7 (prime), 9, 11 (prime) and 15 with GPU verdicts Prp, Composite, Composite
+    /// (wrong) and Alarm, through the real CPU re-check with every composite sampled.
+    fn real_recheck(gec: bool) -> (Vec<Verdict>, EngineReport) {
+        let nums = [7u32, 9, 11, 15].map(BigUint::from);
+        let opts = Options {
+            gec,
+            verify_rate: 1,
+            threads: 2,
+            ..Options::default()
         };
-        let nums = [5u32, 7, 9].map(BigUint::from);
-        assert_eq!(
-            cpu_verdicts_with(false, &nums, plain, checked),
-            [Composite, Prp, Composite]
-        );
-        // With gec on it is the checked run that answers, alarms included.
-        let never =
-            |_: &[BigUint]| -> Vec<bool> { panic!("the plain CPU run was used with gec on") };
-        use bigmont_cpu::Checked;
-        let fake = |_: &[BigUint]| vec![Checked::Alarm, Checked::Prp, Checked::Composite];
-        assert_eq!(
-            cpu_verdicts_with(true, &nums, never, fake),
-            [Alarm, Prp, Composite]
-        );
-        // And through the integrity pass: the plain path is unchanged and never alarms.
-        let mut seen = 0;
         let mut report = EngineReport::default();
-        let out = integrity_pass(
-            3,
+        let mut seen = 0;
+        let out = cpu_integrity_pass(
+            4,
             &nums,
-            vec![Prp, Prp, Composite],
-            1,
+            vec![Prp, Composite, Composite, Alarm],
+            &opts,
             &mut seen,
             &mut report,
-            |s| cpu_verdicts_with(false, s, plain, checked),
         );
-        assert_eq!(out, [Composite, Prp, Composite]);
-        assert_eq!(report.gec_alarms, 0);
-        assert_eq!(report.prp_disagreements, 1);
-        // The real CPU functions agree on clean input.
-        assert_eq!(cpu_verdicts(true, 2, &nums), cpu_verdicts(false, 2, &nums));
+        (out, report)
+    }
+
+    #[test]
+    fn the_real_recheck_is_the_checked_one_exactly_when_gec_is_on() {
+        for gec in [false, true] {
+            let (out, report) = real_recheck(gec);
+            assert_eq!(out, [Prp, Composite, Prp, Alarm], "gec {gec}");
+            assert_eq!(report.rechecks, 3, "the alarm is not re-checked");
+            assert_eq!(report.composite_disagreements, 1);
+            assert_eq!(report.gec_alarms, 1, "only the GPU alarm");
+            assert_eq!(
+                report.rechecks_checked,
+                if gec { 3 } else { 0 },
+                "gec {gec}"
+            );
+            assert_eq!(report.cpu_checked, 0, "re-checks are not primary CPU tests");
+        }
+    }
+
+    #[test]
+    fn count_alarms_counts_each_alarm_once_and_logs_one_line() {
+        let mut report = EngineReport::default();
+        assert_eq!(
+            count_alarms(
+                &mut report,
+                12,
+                &[Prp, Alarm, Composite, Alarm],
+                " tested on the CPU"
+            )
+            .as_deref(),
+            Some("bigmont: 2 GEC alarms among 4 12-bit candidates tested on the CPU")
+        );
+        assert_eq!(report.gec_alarms, 2);
+        assert_eq!(
+            count_alarms(&mut report, 9, &[Alarm], "").as_deref(),
+            Some("bigmont: 1 GEC alarms among 1 9-bit candidates")
+        );
+        assert_eq!(report.gec_alarms, 3);
+        assert_eq!(count_alarms(&mut report, 12, &[Prp, Composite], "x"), None);
+        assert_eq!(count_alarms(&mut report, 12, &[], "x"), None);
+        assert_eq!(report.gec_alarms, 3, "no alarm, no count");
     }
 
     #[test]

@@ -101,9 +101,9 @@ to a run without `--gec`. Every probable prime is still re-checked on the CPU, a
 since the point of 2 is to leave the decision to the caller. The CPU runs the same check: buckets it answers
 (`--backend cpu`, fewer candidates than the GPU threshold, or after a GPU error) and its re-checks of GPU verdicts are
 checked too, so with `--gec` every verdict is either checked or 2. A re-check that alarms makes the candidate 2 as well,
-since neither computation can then be trusted. On the CPU the check costs about as much relative to the plain test as
-on the GPU (two multiplies per block of 40 iterations, about 40 squarings plus the `2^(sum V)` ladder per candidate, and
-the tail run twice); it was not measured separately.
+since neither computation can then be trusted. On the CPU the check adds two multiplies per block of 40 squarings, about
+40 squarings plus the `2^(sum V)` ladder per candidate, and runs the last `(bits - 1) % 40` iterations twice; its cost
+was not measured.
 
 How the detector is tested: the runner tests (`crates/bigmont-core/tests/gec.rs`) build the runner from mutated
 kernel sources that simulate a faulty device, and the real runner, kernels and host comparison run on top of them. The
