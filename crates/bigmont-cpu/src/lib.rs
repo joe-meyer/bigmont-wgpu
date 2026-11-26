@@ -202,47 +202,54 @@ impl Kernel {
 
 #[cfg(target_arch = "x86_64")]
 mod adx {
-    use super::mac;
     use std::arch::asm;
 
-    /// [`super::addmul_row_portable`] with the four-limb body in assembly: per limb one `mulx`
-    /// (no flags touched, any destination registers), `adcx` adding the previous limb's high word
-    /// (carry flag chain) and `adox` adding the accumulator word (overflow flag chain). Two
-    /// independent chains replace the single add/adc chain that limited the portable loop; on
-    /// Zen 3 and Zen 4 that is about 1.5x faster for the whole test.
+    /// [`super::addmul_row_portable`] in assembly: per limb one `mulx` (no flags touched, any
+    /// destination registers), `adcx` adding the previous limb's high word (carry flag chain) and
+    /// `adox` adding the accumulator word (overflow flag chain). Two independent chains replace the
+    /// single add/adc chain that limited the portable loop; on Zen 3 and Zen 4 that is about 1.6x
+    /// faster for the whole test.
     ///
-    /// The rows are 32 limbs long here, so a row is `len / 4` passes of the asm plus a scalar tail
-    /// of at most three limbs.
+    /// A row is `len / 8` passes of an eight-limb body plus a single-limb loop for the remaining
+    /// `len % 8`, both in the one asm block so that the carry flags run unbroken from the first
+    /// limb to the last (eight limbs per pass measured 2.5% faster than four, sixteen no better;
+    /// the in-asm tail instead of a scalar Rust one another 4%).
     ///
     /// # Safety
     /// The CPU must support BMI2 and ADX (`Kernel::Adx` is only built after both are detected).
     pub(super) unsafe fn addmul_row(t: &mut [u64], src: &[u64], m: u64) -> u64 {
-        // The asm below reads and writes `4 * quads` limbs through raw pointers, so the length
-        // match is a hard check, not a debug one.
+        // The asm below reads and writes `len` limbs through raw pointers, so the length match is
+        // a hard check, not a debug one.
         assert_eq!(t.len(), src.len());
-        let quads = t.len() / 4;
-        let mut c = 0u64;
-        if quads > 0 {
-            let (mut z, mut h1, mut l) = (0u64, 0u64, 0u64);
-            let mut hi = 0u64;
-            // SAFETY: `t` and `src` are distinct slices (one `&mut`, one `&`) of equal length, so
-            // the asm touches only limbs `0 .. 4 * quads` of each, all in bounds. It reads and
-            // writes nothing else, uses no stack, and `rdx` (the multiplier `mulx` needs) and
-            // `rcx` (the pass counter `jrcxz` tests) are declared as the registers they are.
-            // `lea` and `jrcxz` leave the flags alone, so CF and OF carry from one limb to the
-            // next, also across passes; `xor` clears both before the first limb and the two final
-            // adds fold the pending carries into `hi`, which cannot overflow because the whole
-            // row sum t + m * src is below 2^(64 * (len + 1)). The CPU requirement is this
-            // function's own safety contract.
-            unsafe {
-                asm!(
-                    // Load-bearing: clears CF and OF as well as `z`, which `adcx`/`adox` start from.
-                    "xor {z:e}, {z:e}",
-                    "2:",
-                    "mulx {h1}, {l}, qword ptr [{src}]",
+        let (passes, tail) = (t.len() / 8, t.len() % 8);
+        if t.is_empty() {
+            return 0;
+        }
+        let (mut z, mut h1, mut l) = (0u64, 0u64, 0u64);
+        let mut hi = 0u64;
+        // SAFETY: `t` and `src` are distinct slices (one `&mut`, one `&`) of equal length `len`, and
+        // the asm touches exactly limbs `0 .. len` of each (`passes` passes of eight, then `tail`
+        // single limbs, with `passes * 8 + tail == len`), all in bounds. It reads and writes nothing
+        // else and uses no stack; `rdx` (the multiplier `mulx` needs) and `rcx` (the pass and then
+        // tail counter that `jrcxz` tests) are declared as the registers they are. `lea`, `mov` and
+        // `jrcxz` leave the flags alone, so CF and OF carry from one limb to the next, across passes
+        // and into the tail; `xor` and then `test` clear both before the first limb, and the two
+        // final adds fold the pending carries into `hi`, which cannot overflow because the whole
+        // row sum t + m * src is below 2^(64 * (len + 1)). The CPU requirement is this function's
+        // own safety contract.
+        unsafe {
+            asm!(
+                // Load-bearing: `xor` zeroes `z`, which the last two adds use, and `test` leaves CF
+                // and OF clear whatever they were at entry (it is what skips the passes when there
+                // are none).
+                "xor {z:e}, {z:e}",
+                "test rcx, rcx",
+                "jz 4f",
+                "2:",
+                    "mulx {h1}, {l}, qword ptr [{src}+0]",
                     "adcx {l}, {hi}",
-                    "adox {l}, qword ptr [{t}]",
-                    "mov qword ptr [{t}], {l}",
+                    "adox {l}, qword ptr [{t}+0]",
+                    "mov qword ptr [{t}+0], {l}",
                     "mulx {hi}, {l}, qword ptr [{src}+8]",
                     "adcx {l}, {h1}",
                     "adox {l}, qword ptr [{t}+8]",
@@ -255,32 +262,58 @@ mod adx {
                     "adcx {l}, {h1}",
                     "adox {l}, qword ptr [{t}+24]",
                     "mov qword ptr [{t}+24], {l}",
-                    "lea {src}, [{src}+32]",
-                    "lea {t}, [{t}+32]",
-                    "lea rcx, [rcx-1]",
-                    "jrcxz 3f",
-                    "jmp 2b",
-                    "3:",
-                    "adcx {hi}, {z}",
-                    "adox {hi}, {z}",
-                    z = out(reg) z,
-                    h1 = out(reg) h1,
-                    l = out(reg) l,
-                    hi = inout(reg) hi,
-                    src = inout(reg) src.as_ptr() => _,
-                    t = inout(reg) t.as_mut_ptr() => _,
-                    inout("rcx") quads => _,
-                    in("rdx") m,
-                    options(nostack),
-                );
-            }
-            let _ = (z, h1, l);
-            c = hi;
+                    "mulx {h1}, {l}, qword ptr [{src}+32]",
+                    "adcx {l}, {hi}",
+                    "adox {l}, qword ptr [{t}+32]",
+                    "mov qword ptr [{t}+32], {l}",
+                    "mulx {hi}, {l}, qword ptr [{src}+40]",
+                    "adcx {l}, {h1}",
+                    "adox {l}, qword ptr [{t}+40]",
+                    "mov qword ptr [{t}+40], {l}",
+                    "mulx {h1}, {l}, qword ptr [{src}+48]",
+                    "adcx {l}, {hi}",
+                    "adox {l}, qword ptr [{t}+48]",
+                    "mov qword ptr [{t}+48], {l}",
+                    "mulx {hi}, {l}, qword ptr [{src}+56]",
+                    "adcx {l}, {h1}",
+                    "adox {l}, qword ptr [{t}+56]",
+                    "mov qword ptr [{t}+56], {l}",
+                "lea {src}, [{src}+64]",
+                "lea {t}, [{t}+64]",
+                "lea rcx, [rcx-1]",
+                "jrcxz 4f",
+                "jmp 2b",
+                "4:",
+                "mov rcx, {tail}",
+                "jrcxz 6f",
+                "5:",
+                "mulx {h1}, {l}, qword ptr [{src}]",
+                "adcx {l}, {hi}",
+                "adox {l}, qword ptr [{t}]",
+                "mov qword ptr [{t}], {l}",
+                "mov {hi}, {h1}",
+                "lea {src}, [{src}+8]",
+                "lea {t}, [{t}+8]",
+                "lea rcx, [rcx-1]",
+                "jrcxz 6f",
+                "jmp 5b",
+                "6:",
+                "adcx {hi}, {z}",
+                "adox {hi}, {z}",
+                z = out(reg) z,
+                h1 = out(reg) h1,
+                l = out(reg) l,
+                hi = inout(reg) hi,
+                src = inout(reg) src.as_ptr() => _,
+                t = inout(reg) t.as_mut_ptr() => _,
+                tail = in(reg) tail,
+                inout("rcx") passes => _,
+                in("rdx") m,
+                options(nostack),
+            );
         }
-        for (tj, &sj) in t[4 * quads..].iter_mut().zip(&src[4 * quads..]) {
-            (*tj, c) = mac(m, sj, *tj, c);
-        }
-        c
+        let _ = (z, h1, l);
+        hi
     }
 }
 

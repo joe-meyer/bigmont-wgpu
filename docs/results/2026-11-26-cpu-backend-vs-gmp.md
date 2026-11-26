@@ -101,9 +101,9 @@ ours, so what separates the two is kernel quality, not a missing algorithm. That
 
 | CPU | main | #46 (portable) | this PR | GMP |
 |---|---|---|---|---|
-| Ryzen 7 7840HS (Zen 4), Linux, 1 thread | 290 to 293 | 477 to 480 | 730 to 747 | 659 to 663 |
-| Ryzen 7 7840HS, 16 threads | 2,107 to 2,139 | 3,298 to 3,519 | 5,266 to 5,698 | 5,301 to 5,325 (16 processes) |
-| Ryzen 7 5800X (Zen 3), Windows, 1 thread | 274 to 279 | 446 to 457 | 737 to 744 (three runs of eleven were disturbed by background load: 599 to 729) | not measured |
+| Ryzen 7 7840HS (Zen 4), Linux, 1 thread | 290 to 293 | 477 to 480 | 795 to 803 | 659 to 663 |
+| Ryzen 7 7840HS, 16 threads | 2,107 to 2,139 | 3,298 to 3,519 | 5,361 to 5,992 | 5,301 to 5,325 (16 processes) |
+| Ryzen 7 5800X (Zen 3), Windows, 1 thread | 274 to 279 | 446 to 457 | 755 to 774 (six pinned runs) | not measured |
 | Xeon E5-2690 v2 (Ivy Bridge, no BMI2 or ADX), Linux container on a shared host (load about 3.7 on 4 vCPU), 1 thread | 57 to 137 (very noisy) | not run (this CPU runs the same portable code) | 194 to 203 | not re-run |
 
 On the Xeon the hardware kernel is not used (the CPU has no BMI2 or ADX); the run shows that the fallback is selected, passes
@@ -119,18 +119,39 @@ instructions; Ubuntu's has none. Same program (`tools/cpu-baseline/gmp_modexp.c`
 
 | Zen 4, 2,029 bits | Ubuntu GMP (generic) | GMP built for the CPU | this PR |
 |---|---|---|---|
-| 1 thread, tests/s | 654 to 659 | 905 to 907 | 729 to 739 |
-| 16 threads, tests/s (GMP as 16 processes) | 5,301 to 5,325 | 6,816 to 6,825 (first run, 5,279, was a cold start) | 5,575 to 5,709 |
+| 1 thread, tests/s | 654 to 659 | 905 to 907 | 795 to 803 |
+| 16 threads, tests/s (GMP as 16 processes) | 5,301 to 5,325 | 6,816 to 6,825 (first run, 5,279, was a cold start) | 5,361 to 5,992 |
 
-So against a tuned GMP this PR is at about 0.81x on one thread and 0.82x on 16, not ahead of it. Valgrind (instruction counts,
+So against a tuned GMP this PR is at about 0.88x on one thread and about 0.87x on 16 (the first, four-limb version of the kernel was at 0.81x and 0.82x), not ahead of it. Valgrind (instruction counts,
 whole run): the tuned build executes about 17.6M instructions per test against 22.6M for the generic build, and spends 60% of
 them in `mpn_sbpi1_bdiv_r` (its Hensel-division remainder, the reduction; the Zen directories have a dedicated assembly version
-of it), 30% in `mpn_sqr_basecase`. It does not use `redc_1` here. This PR's earlier `perf` figure was 23.9M instructions per
+of it), 30% in `mpn_sqr_basecase`. It does not use `redc_1` here. This PR's first kernel was 23.6M by the same method and the one below 22.5M, and the earlier `perf` figure was 23.9M per
 test. The remaining gap is again instruction count, about 25% fewer in GMP's kernels.
 
 No GMP code was copied into this crate (GMP is LGPL/GPL, this crate is MIT); only its build output was timed and profiled, and the kernel here is our own.
-Ideas that are plausible but untested: unrolling the row loop by 8 instead of 4 (less loop bookkeeping per limb), handling the
+The ideas listed here first (unrolling by 8, the leftover limbs, two multiplier limbs) are followed up in the next subsection. Originally: unrolling the row loop by 8 instead of 4 (less loop bookkeeping per limb), handling the
 one to three leftover limbs of the triangle rows without the scalar loop, and processing two multiplier limbs per pass.
+
+### Follow-up experiments on the kernel (laptop Zen 4, one pinned core; all checked against the reference ladder)
+
+The three ideas left over after the GMP comparison, tried in a scratch copy (tests/s; baseline is the first, four-limb kernel at 742 to 749):
+
+| Variant | tests/s | change |
+|---|---|---|
+| 8 limbs per pass, scalar tail | 760 to 765 | +2.5% |
+| 4 limbs per pass, single-limb tail inside the asm | 754 to 757 | +1.2% |
+| **8 limbs per pass, single-limb tail inside the asm** (adopted) | **791 to 802** | **+7%** |
+| 16 limbs per pass, tail inside the asm | 798 to 801 | no better than 8 |
+
+Valgrind instruction counts per test: 23.6M (four limbs, scalar tail) against 22.5M (eight, asm tail), against 17.6M for the
+tuned GMP. On the Ryzen 7 5800X (Zen 3) the same change is worth only about 2 to 3% (741 to 758 against 755 to 774), so the
+gain depends on the CPU.
+
+Not tried: processing two multiplier limbs per pass. With only two flag chains (`adcx`, `adox`) a two-multiplier pass needs
+three addends per limb, so it would need extra adds or a different carry scheme, and it is the largest of the three changes.
+The remaining difference to the tuned GMP (about 22.5M against 17.6M instructions) is probably the per-row set-up in Rust and
+the scalar doubling, diagonal and final-add passes; closing it would mean moving more of the squaring into assembly, which
+grows the `unsafe` surface, so it was left.
 
 ## 5. Not covered
 
