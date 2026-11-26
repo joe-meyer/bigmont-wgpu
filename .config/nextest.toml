@@ -1,0 +1,22 @@
+# Settings for `cargo nextest run`, which CI uses for the workspace tests (doctests still go
+# through `cargo test --doc`). nextest runs every test in its own process, which suits the
+# device-loss tests: they destroy devices, poison waits and leak devices on purpose.
+
+[profile.default]
+# The GPU tests share one adapter and several of them drive it into failure, so they stay
+# serial, as `cargo test -- --test-threads=1` ran them. Raise this only after checking the
+# suite on real hardware.
+test-threads = 1
+fail-fast = false
+retries = 0
+# A hung GPU call (a lost device, a wait that never returns) must fail the test rather than
+# stall the job until its time limit. The slowest tests take well under a minute on a software
+# rasteriser; this terminates one after five minutes.
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+# Per-test start times and durations, kept as a CI artifact so that slow or intermittent tests
+# can be analysed after the run logs expire.
+[profile.default.junit]
+path = "junit.xml"
+store-success-output = false
+store-failure-output = false
