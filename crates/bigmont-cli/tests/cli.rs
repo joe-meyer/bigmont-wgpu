@@ -1117,3 +1117,31 @@ fn a_gec_run_writes_the_same_verdicts_as_a_plain_run() {
     assert_eq!(files[0], files[1]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_cpu_gec_run_writes_the_same_verdicts_as_a_plain_run_and_reports_no_alarms() {
+    // No GPU needed: `--backend cpu` checks every candidate on the CPU.
+    let dir = tmp_dir("gec-cpu");
+    let cand = candidates(&dir);
+    let mut files = Vec::new();
+    for (name, extra) in [("plain.bin", None), ("gec.bin", Some("--gec"))] {
+        let verdict = dir.join(name);
+        let mut args = vec![
+            cand.to_str().unwrap(),
+            verdict.to_str().unwrap(),
+            "--backend",
+            "cpu",
+            "--no-cache",
+        ];
+        args.extend(extra);
+        let out = run(bigmont(&args));
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(code(&out), Some(0), "{err}");
+        assert!(err.contains("GEC alarms 0"), "{err}");
+        assert!(err.contains("(gpu 0, cpu 80)"), "{err}");
+        files.push(formats::read_verdicts(&verdict).unwrap().1);
+    }
+    assert_eq!(files[0], files[1]);
+    assert_eq!(files[0].len(), 80);
+    let _ = std::fs::remove_dir_all(dir);
+}

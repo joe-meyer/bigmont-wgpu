@@ -77,6 +77,25 @@ fn cpu_backend_matches_the_oracle_including_degenerate_inputs() {
 }
 
 #[test]
+fn the_cpu_backend_with_gec_gives_the_plain_verdicts_and_no_alarms() {
+    let (ns, want) = batch();
+    let mut plain = Engine::open(opts(Backend::Cpu));
+    let mut checked = Engine::open(Options {
+        gec: true,
+        ..opts(Backend::Cpu)
+    });
+    assert_eq!(plain.verdicts(&ns).unwrap(), want);
+    assert_eq!(checked.verdicts(&ns).unwrap(), want);
+    let r = checked.report();
+    assert_eq!(r.gec_alarms, 0);
+    assert_eq!(
+        r.cpu_tests,
+        ns.iter().filter(|n| needs_backend(n)).count() as u64
+    );
+    assert_eq!(r.gpu_tests, 0);
+}
+
+#[test]
 fn gpu_backend_matches_the_oracle_and_buckets_by_bit_length() {
     if !common::usable_gpu() {
         return;

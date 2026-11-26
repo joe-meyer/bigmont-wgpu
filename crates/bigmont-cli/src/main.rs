@@ -12,8 +12,8 @@
 //! between processes (an exclusive lock taken after the inputs are read, released before the output is
 //! written; in plain mode it surrounds the engine run).
 //!
-//! Error check: `--gec` runs the GPU buckets with the Gerbicz check; a candidate that fails it gets verdict
-//! byte 2 instead of 0 or 1.
+//! Error check: `--gec` runs every Fermat test (GPU and CPU buckets, and the CPU re-checks) with the Gerbicz
+//! check; a candidate that fails it gets verdict byte 2 instead of 0 or 1.
 //!
 //! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
 //! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
@@ -44,10 +44,10 @@ const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--ada
                     [--ee SIZES [--bins] [--chunk N] [--growth F] [--marker N]]
        bigmont canary CAND EXPECTED [same engine flags]
        bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
-error check: --gec runs the GPU buckets with the Gerbicz error check (off by default): a candidate whose computation
-              fails the check gets verdict byte 2 (neither composite nor probable prime; retest it) and is counted
-              as a GEC alarm in the summary. Buckets answered by the CPU (fewer candidates than the GPU threshold,
-              or after a GPU error) are not checked.
+error check: --gec runs every Fermat test with the Gerbicz error check (off by default), on the GPU and on the CPU
+              (--backend cpu, buckets below the GPU threshold, after a GPU error, and the CPU re-checks): a candidate
+              whose computation fails the check gets verdict byte 2 (neither composite nor probable prime; retest
+              it) and is counted as a GEC alarm in the summary.
 early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
               prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
               candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
