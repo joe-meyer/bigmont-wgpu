@@ -15,7 +15,7 @@
 use crate::tune;
 use bigmont_core::gpu::{AdapterSelector, Gpu, is_device_error};
 use bigmont_core::kernel::KernelConfig;
-use bigmont_core::runner::{Fault, Runner, Verdict};
+use bigmont_core::runner::{Runner, Verdict};
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -259,8 +259,6 @@ pub struct Engine {
     reopens_done: u32,
     /// Test hook: the next recovery treats the re-opened device as a different adapter.
     inject_adapter_change: bool,
-    /// Test hook: `(index into the next call's ns, block)`, see `Engine::inject_fault`.
-    fault: Option<(usize, u32)>,
 }
 
 impl Engine {
@@ -270,7 +268,6 @@ impl Engine {
             reopens_left: opts.device_retries,
             reopens_done: 0,
             inject_adapter_change: false,
-            fault: None,
             opts,
             gpu: None,
             gpu_err: None,
@@ -364,19 +361,6 @@ impl Engine {
         self.inject_adapter_change = true;
     }
 
-    /// Test and drill hook: flips a bit in the GPU computation of candidate `index` of the next
-    /// `verdicts` call's `ns`, in Gerbicz block `block` (see `bigmont_core::runner::Fault`), so a
-    /// checked run (`Options::gec`) must answer 2 for it. It is cleared at the end of that call.
-    /// `block` is at most `(bits - 1) / 40`, the candidate's number of full 40-iteration blocks
-    /// (equal to it targets the tail recomputation); a larger `block` injects nothing. It also does
-    /// nothing where the candidate is not run on the GPU (a bucket answered by the CPU, a
-    /// degenerate input, `Options::gec` off) or `index` is out of range, so the drill needs the GPU
-    /// backend and, usually, `min_gpu_batch: 1`.
-    #[doc(hidden)]
-    pub fn inject_fault(&mut self, index: usize, block: u32) {
-        self.fault = Some((index, block));
-    }
-
     pub fn report(&self) -> EngineReport {
         self.report.clone()
     }
@@ -400,8 +384,6 @@ impl Engine {
     /// Verdicts (0 composite, 1 probable prime, and with `Options::gec` 2 for a Gerbicz alarm) for
     /// `ns`, in input order.
     pub fn verdicts(&mut self, ns: &[BigUint]) -> Result<Vec<u8>, String> {
-        // One-shot, whatever way the call ends.
-        let fault = self.fault.take();
         self.require_backend()?;
         self.reopens_left = self.opts.device_retries;
         let two = BigUint::from(2u32);
@@ -420,14 +402,8 @@ impl Engine {
         let mut composites_seen = 0u64;
         for (bits, idx) in buckets {
             let nums: Vec<BigUint> = idx.iter().map(|&i| ns[i].clone()).collect();
-            // The hook's input index, as a position in this bucket (if the candidate is in it).
-            let bucket_fault = fault.and_then(|(at, block)| {
-                idx.iter()
-                    .position(|&i| i == at)
-                    .map(|index| Fault { index, block })
-            });
             let verdicts = loop {
-                match self.try_gpu(bits, &nums, &mut composites_seen, bucket_fault) {
+                match self.try_gpu(bits, &nums, &mut composites_seen) {
                     GpuRun::Done(v) => break v,
                     GpuRun::Cpu => break to_verdicts(&self.cpu(&nums)),
                     // Re-run the whole bucket on the re-opened device, or answer it on the CPU.
@@ -544,13 +520,7 @@ impl Engine {
     /// `DeviceFailure` means the device itself failed (lost, a timed-out wait, an uncaptured wgpu
     /// error): nothing of the attempt is kept, a failed tuning is not cached, and the caller
     /// re-opens the device and calls again.
-    fn try_gpu(
-        &mut self,
-        bits: u32,
-        nums: &[BigUint],
-        composites_seen: &mut u64,
-        fault: Option<Fault>,
-    ) -> GpuRun {
+    fn try_gpu(&mut self, bits: u32, nums: &[BigUint], composites_seen: &mut u64) -> GpuRun {
         let Some(gpu) = self.gpu.as_ref() else {
             return GpuRun::Cpu;
         };
@@ -619,12 +589,11 @@ impl Engine {
             return GpuRun::Cpu;
         };
         let run = if self.opts.gec {
-            runner.fault = fault;
             runner.fermat_checked(gpu, nums)
         } else {
             runner.fermat(gpu, nums).map(|v| to_verdicts(&v))
         };
-        let mut verdicts = match run {
+        let verdicts = match run {
             Ok(v) => v,
             Err(e) if device_failure(gpu, &e) => return GpuRun::DeviceFailure(e),
             Err(e) => {
@@ -640,53 +609,193 @@ impl Engine {
         };
         self.report.gpu_tests += nums.len() as u64;
 
-        // Integrity: every PRP, and every verify_rate-th composite (counted across the call). An
-        // alarm is counted and logged, not re-checked: the caller retests it.
-        let mut recheck = Vec::new();
-        for (i, &v) in verdicts.iter().enumerate() {
-            match v {
-                Verdict::Prp => recheck.push(i),
-                Verdict::Composite => {
-                    *composites_seen += 1;
-                    if self.opts.verify_rate > 0
-                        && (*composites_seen).is_multiple_of(u64::from(self.opts.verify_rate))
-                    {
-                        recheck.push(i);
-                    }
-                }
-                Verdict::Alarm => {
-                    self.report.gec_alarms += 1;
-                    eprintln!("bigmont: GEC alarm on a {bits}-bit candidate");
-                }
-            }
-        }
-        let subset: Vec<BigUint> = recheck.iter().map(|&i| nums[i].clone()).collect();
-        let truth = bigmont_cpu::fermat_batch(&subset, self.opts.threads);
-        self.report.rechecks += subset.len() as u64;
-        for (&i, cpu) in recheck.iter().zip(truth) {
-            let cpu = to_verdict(cpu);
-            if verdicts[i] != cpu {
-                if verdicts[i] == Verdict::Prp {
-                    self.report.prp_disagreements += 1;
-                    eprintln!(
-                        "bigmont: GPU/CPU disagreement: GPU said PRP, CPU says composite ({bits}-bit candidate); using the CPU verdict"
-                    );
-                } else {
-                    self.report.composite_disagreements += 1;
-                    eprintln!(
-                        "bigmont: GPU/CPU disagreement: GPU said composite, CPU says PRP ({bits}-bit candidate); using the CPU verdict"
-                    );
-                }
-                verdicts[i] = cpu;
-            }
-        }
-        GpuRun::Done(verdicts)
+        let threads = self.opts.threads;
+        GpuRun::Done(integrity_pass(
+            bits,
+            nums,
+            verdicts,
+            self.opts.verify_rate,
+            composites_seen,
+            &mut self.report,
+            |subset| bigmont_cpu::fermat_batch(subset, threads),
+        ))
     }
+}
+
+/// The integrity pass over one GPU bucket's verdicts: every `Verdict::Prp` and every `verify_rate`-th
+/// composite (counted across the whole `verdicts` call by `composites_seen`; 0 = never) is re-run
+/// through `cpu_check`, and a disagreement is counted and replaced by the CPU verdict. A
+/// `Verdict::Alarm` is counted in `report.gec_alarms` (one log line per bucket), is never passed to
+/// `cpu_check` and stays an alarm: the caller retests or arbitrates it. `cpu_check` answers
+/// `true` for a probable prime, one entry per candidate of the slice it gets.
+fn integrity_pass(
+    bits: u32,
+    nums: &[BigUint],
+    mut verdicts: Vec<Verdict>,
+    verify_rate: u32,
+    composites_seen: &mut u64,
+    report: &mut EngineReport,
+    cpu_check: impl Fn(&[BigUint]) -> Vec<bool>,
+) -> Vec<Verdict> {
+    let mut recheck = Vec::new();
+    let mut alarms = 0u64;
+    for (i, &v) in verdicts.iter().enumerate() {
+        match v {
+            Verdict::Prp => recheck.push(i),
+            Verdict::Composite => {
+                *composites_seen += 1;
+                if verify_rate > 0 && (*composites_seen).is_multiple_of(u64::from(verify_rate)) {
+                    recheck.push(i);
+                }
+            }
+            Verdict::Alarm => alarms += 1,
+        }
+    }
+    if alarms > 0 {
+        report.gec_alarms += alarms;
+        eprintln!(
+            "bigmont: {alarms} GEC alarms among {} {bits}-bit candidates",
+            verdicts.len()
+        );
+    }
+    let subset: Vec<BigUint> = recheck.iter().map(|&i| nums[i].clone()).collect();
+    let truth = cpu_check(&subset);
+    report.rechecks += subset.len() as u64;
+    for (&i, cpu) in recheck.iter().zip(truth) {
+        let cpu = to_verdict(cpu);
+        if verdicts[i] != cpu {
+            if verdicts[i] == Verdict::Prp {
+                report.prp_disagreements += 1;
+                eprintln!(
+                    "bigmont: GPU/CPU disagreement: GPU said PRP, CPU says composite ({bits}-bit candidate); using the CPU verdict"
+                );
+            } else {
+                report.composite_disagreements += 1;
+                eprintln!(
+                    "bigmont: GPU/CPU disagreement: GPU said composite, CPU says PRP ({bits}-bit candidate); using the CPU verdict"
+                );
+            }
+            verdicts[i] = cpu;
+        }
+    }
+    verdicts
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    /// Runs `integrity_pass` with a fake CPU that calls exactly the candidates in `primes` probable
+    /// primes. Returns the verdicts, the report and the candidates the fake CPU was asked about.
+    fn pass(
+        verdicts: &[Verdict],
+        primes: &[u32],
+        verify_rate: u32,
+        seen_before: u64,
+    ) -> (Vec<Verdict>, EngineReport, Vec<u32>, u64) {
+        // Candidate i is the number 1000 + i, so a recheck names its position.
+        let nums: Vec<BigUint> = (0..verdicts.len() as u32)
+            .map(|i| BigUint::from(1000 + i))
+            .collect();
+        let asked = RefCell::new(Vec::new());
+        let mut report = EngineReport::default();
+        let mut seen = seen_before;
+        let out = integrity_pass(
+            12,
+            &nums,
+            verdicts.to_vec(),
+            verify_rate,
+            &mut seen,
+            &mut report,
+            |subset| {
+                subset
+                    .iter()
+                    .map(|n| {
+                        let id = u32::try_from(n).unwrap() - 1000;
+                        asked.borrow_mut().push(id);
+                        primes.contains(&id)
+                    })
+                    .collect()
+            },
+        );
+        (out, report, asked.into_inner(), seen)
+    }
+
+    use Verdict::{Alarm, Composite, Prp};
+
+    #[test]
+    fn an_alarm_stays_an_alarm_is_counted_once_and_is_never_rechecked() {
+        // The fake CPU calls everything prime: an alarm that were re-checked would be overruled.
+        let (out, report, asked, seen) = pass(&[Composite, Alarm, Prp, Alarm], &[0, 1, 2, 3], 1, 0);
+        assert_eq!(out, [Prp, Alarm, Prp, Alarm]);
+        assert_eq!(report.gec_alarms, 2, "counted once each");
+        assert_eq!(asked, [0, 2], "an alarm is never passed to the CPU");
+        assert_eq!(
+            seen, 1,
+            "an alarm is not a composite for the sampling counter"
+        );
+        assert_eq!(
+            report.composite_disagreements, 1,
+            "the composite at 0 was wrong"
+        );
+        assert_eq!(report.prp_disagreements, 0);
+        // Alarms only, with every composite sampled: nothing reaches the CPU at all.
+        let (out, report, asked, _) = pass(&[Alarm, Alarm], &[], 1, 0);
+        assert_eq!(out, [Alarm, Alarm]);
+        assert_eq!((report.gec_alarms, report.rechecks), (2, 0));
+        assert!(asked.is_empty());
+    }
+
+    #[test]
+    fn a_prp_the_cpu_calls_composite_becomes_composite() {
+        let (out, report, asked, _) = pass(&[Prp, Prp], &[1], 0, 0);
+        assert_eq!(out, [Composite, Prp]);
+        assert_eq!(report.prp_disagreements, 1);
+        assert_eq!(report.composite_disagreements, 0);
+        assert_eq!(asked, [0, 1]);
+    }
+
+    #[test]
+    fn a_sampled_composite_the_cpu_calls_prime_becomes_prp_and_the_sampling_spans_calls() {
+        // Every 3rd composite of the whole call is sampled; two were already seen, so the first
+        // composite of this bucket (index 0) is the 3rd and the last one (index 4) is the 6th.
+        let verdicts = [Composite, Composite, Alarm, Composite, Composite];
+        let (out, report, asked, seen) = pass(&verdicts, &[0, 4], 3, 2);
+        assert_eq!(seen, 6);
+        assert_eq!(asked, [0, 4], "the 3rd and 6th composites of the call");
+        assert_eq!(out, [Prp, Composite, Alarm, Composite, Prp]);
+        assert_eq!(report.composite_disagreements, 2);
+        assert_eq!(report.prp_disagreements, 0);
+        // The same bucket with a fresh counter samples the 3rd composite only (index 3).
+        let (_, _, asked, seen) = pass(&verdicts, &[], 3, 0);
+        assert_eq!((asked, seen), (vec![3], 4));
+    }
+
+    #[test]
+    fn rechecks_counts_exactly_the_checked_candidates() {
+        // PRPs at 0 and 4, composites at 1, 2, 3, 5 (sampled: every 2nd, so 2 and 5), an alarm at 6.
+        let verdicts = [Prp, Composite, Composite, Composite, Prp, Composite, Alarm];
+        let (out, report, asked, _) = pass(&verdicts, &[0, 4], 2, 0);
+        assert_eq!(asked, [0, 2, 4, 5]);
+        assert_eq!(report.rechecks, 4);
+        assert_eq!(
+            (report.prp_disagreements, report.composite_disagreements),
+            (0, 0)
+        );
+        assert_eq!(out, verdicts);
+        assert_eq!(report.gec_alarms, 1);
+    }
+
+    #[test]
+    fn verify_rate_0_rechecks_only_the_prps() {
+        let verdicts = [Composite, Prp, Composite, Alarm, Prp];
+        let (out, report, asked, seen) = pass(&verdicts, &[1, 4, 0], 0, 0);
+        assert_eq!(asked, [1, 4]);
+        assert_eq!(report.rechecks, 2);
+        assert_eq!(out, verdicts, "an unchecked composite is left alone");
+        assert_eq!(seen, 2, "composites are still counted");
+    }
 
     #[test]
     fn the_same_adapter_keeps_its_tuning_and_a_different_one_is_retuned() {

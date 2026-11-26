@@ -1,6 +1,6 @@
 //! `bigmont`: tests candidate files and writes verdict files, a drop-in for an existing CUDA-based Fermat driver.
 //!
-//!   bigmont CAND VERDICT [engine flags] [--gec [--inject IDX BDRY]]
+//!   bigmont CAND VERDICT [engine flags] [--gec]
 //!   bigmont CAND|LIST VERDICT --ee SIZES [--bins] [--chunk N] [--growth F] [--marker N] [engine flags]
 //!   bigmont canary CAND EXPECTED [engine flags]
 //!   bigmont tune [--bits N] [--limbs auto|13|32] [--adapter S] [--vk-backend S] [--device N] [--cache PATH | --no-cache]
@@ -13,10 +13,7 @@
 //! written; in plain mode it surrounds the engine run).
 //!
 //! Error check: `--gec` runs the GPU buckets with the Gerbicz check; a candidate that fails it gets verdict
-//! byte 2 instead of 0 or 1. `--inject IDX BDRY` (needs `--gec`, plain runs on the GPU only) flips a bit in
-//! candidate IDX (0-based, in the candidate file) during Gerbicz block BDRY, to drill the alarm path. BDRY
-//! must be at most (bits - 1) / 40, the candidate's number of full 40-iteration blocks (equal to it targets
-//! the tail recomputation); a larger BDRY, or a candidate the CPU answers, injects nothing.
+//! byte 2 instead of 0 or 1.
 //!
 //! Limb scheme: `--limbs auto` (the default) measures every scheme the adapter can run and uses the
 //! fastest; `--limbs 13` or `--limbs 32` forces one (32 needs 64-bit integers in shaders). A forced
@@ -43,17 +40,14 @@ const CHUNK: usize = 1 << 15;
 
 const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N]
                     [--limbs auto|13|32] [--retune] [--cache PATH | --no-cache] [--verify-rate N] [--repeat N] [--lock FILE]
-                    [--gec [--inject IDX BDRY]]
+                    [--gec]
                     [--ee SIZES [--bins] [--chunk N] [--growth F] [--marker N]]
        bigmont canary CAND EXPECTED [same engine flags]
        bigmont tune [--bits N] [--limbs auto|13|32] [--adapter SUBSTR] [--vk-backend SUBSTR] [--device N] [--cache PATH | --no-cache]
 error check: --gec runs the GPU buckets with the Gerbicz error check (off by default): a candidate whose computation
               fails the check gets verdict byte 2 (neither composite nor probable prime; retest it) and is counted
               as a GEC alarm in the summary. Buckets answered by the CPU (fewer candidates than the GPU threshold,
-              or after a GPU error) are not checked. --inject IDX BDRY (with --gec, plain GPU runs only) flips a
-              bit in candidate IDX (0-based) during Gerbicz block BDRY, so that candidate must come out as 2.
-              BDRY is at most (bits-1)/40, the number of full 40-iteration blocks (equal to it targets the tail
-              recomputation); a larger BDRY injects nothing, nor does a candidate the CPU answers.
+              or after a GPU error) are not checked.
 early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
               prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
               candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
@@ -67,6 +61,9 @@ limb scheme: --limbs auto (default) measures every scheme the adapter can run an
               (tuning caches from before the limb schemes are re-measured once)
 tuning cache: --cache PATH, else $BIGMONT_CACHE, else a per-user file (%LOCALAPPDATA%\\bigmont\\tune.cache on Windows,
               $XDG_CACHE_HOME/bigmont/tune.cache or ~/.cache/bigmont/tune.cache elsewhere); --no-cache disables it";
+
+/// Beacon flags this driver does not implement yet.
+const UNSUPPORTED: [&str; 1] = ["--inject"];
 
 /// A schedule with more boundaries than this is refused before it is built (`--chunk 1 --growth 1.0`
 /// on a k of billions of candidates would otherwise allocate gigabytes).
@@ -88,8 +85,6 @@ struct Args {
     marker: u8,
     /// `--lock FILE`.
     lock: Option<PathBuf>,
-    /// `--inject IDX BDRY`: the fault drill (candidate index in the file, Gerbicz block).
-    inject: Option<(usize, u32)>,
 }
 
 fn usage_err(msg: impl std::fmt::Display) -> String {
@@ -117,7 +112,6 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
         growth: 1.15,
         marker: 3,
         lock: None,
-        inject: None,
     };
     let mut it = raw.iter();
     while let Some(arg) = it.next() {
@@ -129,21 +123,14 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
             a.positional.push(arg.clone());
             continue;
         }
+        if UNSUPPORTED.contains(&flag) {
+            return Err(format!("bigmont: {flag} is not supported yet"));
+        }
         if flag == "--gec" {
             if inline.is_some() {
                 return Err(usage_err("--gec takes no value"));
             }
             a.opts.gec = true;
-            continue;
-        }
-        if flag == "--inject" {
-            if inline.is_some() {
-                return Err(usage_err("--inject needs two values: --inject IDX BDRY"));
-            }
-            let (Some(idx), Some(block)) = (it.next(), it.next()) else {
-                return Err(usage_err("--inject needs two values: --inject IDX BDRY"));
-            };
-            a.inject = Some((parse(flag, idx)?, parse(flag, block)?));
             continue;
         }
         if flag == "--retune" {
@@ -241,22 +228,6 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
     if a.no_cache && a.cache_flag.is_some() {
         return Err(usage_err("--cache and --no-cache are mutually exclusive"));
     }
-    if a.inject.is_some() {
-        if !a.opts.gec {
-            return Err(usage_err("--inject needs --gec"));
-        }
-        if a.ee.is_some() || a.bins {
-            return Err(usage_err("--inject applies to plain runs only (not --ee)"));
-        }
-        if a.opts.backend == Backend::Cpu {
-            return Err(usage_err(
-                "--inject needs the GPU backend (not --backend cpu)",
-            ));
-        }
-        // The drill runs a handful of candidates: below the default GPU threshold they would be
-        // answered by the CPU, which is not checked and injects nothing.
-        a.opts.min_gpu_batch = 1;
-    }
     a.opts.cache = tune::resolve_cache(
         a.cache_flag.take(),
         a.no_cache,
@@ -308,27 +279,14 @@ impl RunError {
 }
 
 /// Runs the engine over `numbers` in chunks and prints the summary.
-///
-/// `inject` is the `--inject IDX BDRY` drill: the engine is told to fault candidate `IDX` (an index
-/// into `numbers`) in the chunk that holds it.
-fn run_engine(
-    opts: Options,
-    numbers: &[num_bigint::BigUint],
-    inject: Option<(usize, u32)>,
-) -> Result<RunOutput, RunError> {
+fn run_engine(opts: Options, numbers: &[num_bigint::BigUint]) -> Result<RunOutput, RunError> {
     let mut engine = Engine::open(opts);
     eprintln!("bigmont: {}", engine.describe());
     // An empty input never reaches `verdicts`, so a demanded-but-missing GPU is reported here.
     engine.require_backend().map_err(RunError::Config)?;
     let t = Instant::now();
     let mut verdicts = Vec::with_capacity(numbers.len());
-    for (k, chunk) in numbers.chunks(CHUNK).enumerate() {
-        let start = k * CHUNK;
-        if let Some((idx, block)) = inject
-            && (start..start + chunk.len()).contains(&idx)
-        {
-            engine.inject_fault(idx - start, block);
-        }
+    for chunk in numbers.chunks(CHUNK) {
         verdicts.extend(engine.verdicts(chunk).map_err(RunError::Failed)?);
         if numbers.len() > CHUNK {
             eprintln!("bigmont: {}/{} candidates", verdicts.len(), numbers.len());
@@ -432,16 +390,8 @@ fn cmd_verdicts(a: Args) -> Result<ExitCode, String> {
         return Err(usage_err("expected CAND and VERDICT"));
     };
     let file = formats::read_candidates(cand.as_ref())?;
-    if let Some((idx, _)) = a.inject
-        && idx >= file.numbers.len()
-    {
-        return Err(usage_err(format!(
-            "--inject index {idx} is out of range: {cand} has {} candidates",
-            file.numbers.len()
-        )));
-    }
     let (lock, _) = take_lock(a.lock.as_deref())?;
-    let run = match run_engine(a.opts, &file.numbers, a.inject) {
+    let run = match run_engine(a.opts, &file.numbers) {
         Ok(run) => run,
         Err(e) => return Ok(e.report()),
     };
@@ -518,16 +468,11 @@ fn cmd_early_exit(a: Args, sizes_path: &Path) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// The early-exit flags and the fault drill only mean something to the verdict command.
+/// The early-exit flags only mean something to the verdict command.
 fn reject_ee_flags(a: &Args, sub: &str) -> Result<(), String> {
     if a.ee.is_some() || a.bins {
         return Err(usage_err(format!(
             "--ee and --bins are not valid for `bigmont {sub}`"
-        )));
-    }
-    if a.inject.is_some() {
-        return Err(usage_err(format!(
-            "--inject is not valid for `bigmont {sub}`"
         )));
     }
     Ok(())
@@ -545,7 +490,7 @@ fn cmd_canary(a: Args) -> Result<ExitCode, String> {
         return Ok(ExitCode::from(1));
     }
     let (lock, _) = take_lock(a.lock.as_deref())?;
-    let run = match run_engine(a.opts, &file.numbers, None) {
+    let run = match run_engine(a.opts, &file.numbers) {
         Ok(run) => run,
         Err(e) => return Ok(e.report()),
     };
@@ -694,50 +639,15 @@ mod tests {
     }
 
     #[test]
-    fn gec_and_inject_parse_and_inject_takes_exactly_two_values() {
-        let a = args(&["c", "v", "--gec", "--inject", "1", "3", "--no-cache"]).unwrap();
-        assert!(a.opts.gec);
-        assert_eq!(a.inject, Some((1, 3)));
-        assert_eq!(
-            a.positional,
-            ["c", "v"],
-            "the two values are not positionals"
+    fn gec_is_a_flag_without_a_value_and_inject_is_still_unsupported() {
+        assert!(args(&["c", "v", "--gec", "--no-cache"]).unwrap().opts.gec);
+        assert!(!args(&["c", "v", "--no-cache"]).unwrap().opts.gec);
+        assert!(args(&["c", "v", "--gec=1"]).is_err());
+        let err = args(&["c", "v", "--inject", "1", "3"]).err().unwrap();
+        assert!(
+            err.contains("--inject") && err.contains("not supported"),
+            "{err}"
         );
-        assert_eq!(
-            a.opts.min_gpu_batch, 1,
-            "the drill must not be answered by the CPU"
-        );
-        let plain = args(&["c", "v", "--no-cache"]).unwrap();
-        assert!(!plain.opts.gec && plain.inject.is_none());
-        assert_eq!(plain.opts.min_gpu_batch, Options::default().min_gpu_batch);
-        // `--gec` alone does not touch the batch threshold.
-        let g = args(&["c", "v", "--gec", "--no-cache"]).unwrap();
-        assert!(g.opts.gec);
-        assert_eq!(g.opts.min_gpu_batch, Options::default().min_gpu_batch);
-        for bad in [
-            &["--gec", "--inject=1"][..],
-            &["--gec", "--inject", "1"],
-            &["--gec", "--inject"],
-            &["--gec", "--inject", "x", "3"],
-            &["--gec", "--inject", "1", "-3"],
-            &["--gec=1"],
-        ] {
-            assert!(args(bad).is_err(), "{bad:?}");
-        }
-    }
-
-    #[test]
-    fn inject_needs_gec_a_plain_run_and_the_gpu() {
-        let err = |extra: &[&str]| {
-            let mut v = vec!["c", "v", "--inject", "0", "0"];
-            v.extend(extra);
-            args(&v).err().unwrap_or_default()
-        };
-        assert!(err(&[]).contains("--inject needs --gec"));
-        assert!(err(&["--gec", "--ee", "s"]).contains("plain runs only"));
-        assert!(err(&["--gec", "--bins"]).contains("plain runs only"));
-        assert!(err(&["--gec", "--backend", "cpu"]).contains("GPU"));
-        assert!(args(&["c", "v", "--inject", "0", "0", "--gec", "--backend", "gpu"]).is_ok());
     }
 
     /// Input and configuration problems exit 2, a failure while testing exits 3, so a caller can tell a

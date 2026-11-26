@@ -88,7 +88,7 @@ Phase 1 delivered: reusable Fermat `Runner`, size classes, `Target::Browser` sou
 ### Open: new work
 - **Gerbicz-Li error check** (Beacon's `FERMAT_GEC`): done as the opt-in `--gec` (verdict 2 on a failed check; measured cost about 16 % at 2,029 bits on one AMD GPU, see `results/2026-11-25-gerbicz-check.md`). Open: lower the cost (one submission per 40-iteration block today), and test it on NVIDIA, Intel, Apple, software rasterisers and in a browser.
 - **Sieve** in front of the Fermat test (small-prime sieve on the CPU or GPU; today every odd candidate is Fermat-tested).
-- ~~**Beacon `--ee` mode** and flags~~ Done: `--ee`, `--bins`, `--chunk`, `--growth`, `--marker`, `--lock` and the `--inject` fault drill are implemented; only `--repeat` is accepted and ignored.
+- ~~**Beacon `--ee` mode** and flags~~ Done: `--ee`, `--bins`, `--chunk`, `--growth`, `--marker` and `--lock` are implemented; `--inject` stays unsupported (the Gerbicz detection path is tested in the runner tests instead) and `--repeat` is accepted and ignored.
 - **Orchestration scripts**: multi-GPU, hourly canary, restart, as in Beacon's kit (`canary.sh`, `raid_loop_v2.sh`).
 - **Host-side preparation on the GPU** (`R mod n`, `2R mod n`, packing): small today (0.3% to 6.2% of runner wall, 6.2% at capacity 131,072 on the 4070) but it grows with capacity.
 - **GPU timestamp queries** instead of wall-clock around submit plus poll; repeat runs for variance.

@@ -101,14 +101,9 @@ to a run without `--gec`. Every probable prime is still re-checked on the CPU, a
 since the point of 2 is to leave the decision to the caller. Buckets the CPU answers (fewer candidates than the GPU
 threshold, or after a GPU error) are not checked and cannot alarm, because the CPU path has no GPU fault to catch.
 
-`--inject IDX BDRY` is the fault drill (it needs `--gec` and a plain GPU run): it flips one bit in the computation of
-candidate `IDX` (0-based, in the candidate file) during Gerbicz block `BDRY`, so that candidate must come out as 2 and
-the others unchanged. `BDRY` must be at most `(bits - 1) / 40`, the candidate's number of full 40-iteration blocks
-(equal to that number targets the tail recomputation); a larger `BDRY` injects nothing, and neither does a candidate the
-CPU answers, so the drill needs the GPU backend (`--backend cpu` is refused). It also sets the GPU threshold to one
-candidate, so a three-candidate drill runs on the GPU. For example, `bigmont cand.bin verdict.bin --gec --inject 1 3`
-on three candidates of 2,029 bits (50 full blocks). Beacon's `g2_harness.py` runs its drill as `DRIVER cand.bin out.bin --inject 1 3`, so
-with this driver `DRIVER` is `bigmont --gec` (the CUDA driver needs a `-DFERMAT_GEC=1` build for the same reason).
+The detection path is tested by corrupting real kernel state in the runner tests (`crates/bigmont-core/tests/gec.rs`,
+which flip a bit mid-ladder in a block and in the tail) and against a CPU model of the algorithm in `bigmont-oracle`;
+the engine's handling of an alarm (counted, never re-checked, never overruled) is unit-tested without a GPU.
 
 Cost: on 2,029-bit candidates the check lowered throughput by about 16 % (mean of three plain and three `--gec` runs of
 100,003 candidates, 33,957 against 28,519 tests/s, each pair between 13 % and 18 %), measured on one AMD Radeon RX 6700 XT
