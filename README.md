@@ -127,8 +127,9 @@ What the check does not cover:
   catches errors outside the check: the CPU re-check of probable primes, `--verify-rate` samples, and Beacon's canary
   and notary.
 - The final read of the result when no tail recomputation runs (a candidate whose `bits - 1` is a multiple of 40, for
-  example 41 or 2,001 bits): the last block is covered by the identity, but the copy of the final value back to the host
-  is not compared with anything.
+  example 41 or 2,001 bits): the last block is covered by the identity, so a fault in the ladder itself still alarms,
+  but the copy of the final value back to the host is not compared with anything. The window is narrow (corruption
+  of the result after the last block, in device memory or on the read-back); the `--gec` help text says so too.
 
 Cost: on 2,029-bit candidates the check lowered throughput by about 15 % (mean of three plain and three `--gec` runs of
 100,003 candidates, 34,112 against 28,927 tests/s, each pair between 14.9 % and 15.4 %), measured on one AMD Radeon RX 6700 XT

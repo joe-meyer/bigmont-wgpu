@@ -47,7 +47,8 @@ const USAGE: &str = "usage: bigmont CAND VERDICT [--backend auto|gpu|cpu] [--ada
 error check: --gec runs every Fermat test with the Gerbicz error check (off by default), on the GPU and on the CPU
               (--backend cpu, buckets below the GPU threshold, after a GPU error, and the CPU re-checks): a candidate
               whose computation fails the check gets verdict byte 2 (neither composite nor probable prime; retest
-              it) and is counted as a GEC alarm in the summary.
+              it) and is counted as a GEC alarm in the summary. Not covered: the final copy of the result back to
+              the host when (bits - 1) is a multiple of 40 (no tail recomputation runs for that length).
 early exit:  --ee SIZES (a G2S1 file) tests the candidates in waves and skips the rest of a k once one candidate is a probable
               prime; skipped verdict bytes are --marker (3-255, default 3). --bins reads CAND as a text file listing
               candidate files (one per line), tested as one concatenated array; it needs --ee. The first wave covers
