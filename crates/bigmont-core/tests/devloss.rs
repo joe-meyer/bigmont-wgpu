@@ -3,7 +3,7 @@
 //!
 //! `device.destroy()` makes wgpu report the device lost (reason `Destroyed`) deterministically,
 //! which stands in for the rare NVIDIA Xid 32 losses (see
-//! docs/superpowers/results/2026-11-24-device-loss-investigation.md).
+//! docs/results/2026-11-24-device-loss-investigation.md).
 
 #![allow(clippy::err_expect)] // Run and Runner are not Debug
 

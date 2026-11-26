@@ -1,6 +1,6 @@
 # Browser test page
 
-`index.html` compiles a generated WGSL kernel (from `kernels/`) in the browser's own WebGPU implementation, checks it against a BigInt oracle and times it. The page prepends `enable subgroups;` and `diagnostic(off, subgroup_uniformity);` (see `docs/superpowers/results/2026-11-24-browser-test.md` for why).
+`index.html` compiles a generated WGSL kernel (from `kernels/`) in the browser's own WebGPU implementation, checks it against a BigInt oracle and times it. The page prepends `enable subgroups;` and `diagnostic(off, subgroup_uniformity);` (see `docs/results/2026-11-24-browser-test.md` for why).
 
 Serve the folder and open it in a WebGPU browser with subgroups support (tested on Chrome 156):
 
@@ -10,7 +10,7 @@ Serve the folder and open it in a WebGPU browser with subgroups support (tested 
 
 Regenerate a kernel file with `cargo run --release -p bigmont-core --example dump_wgsl -- TPI WG rolled|unrolled > web/kernels/NAME.wgsl`. Results are shown in the page and kept in `window.__runs`.
 
-The Fermat-ladder kernel (`Runner`'s shader) can be emitted in browser form too: `cargo run --release -p bigmont-core --example dump_wgsl -- 8 64 unrolled fermat-browser > web/kernels/fermat_tpi8_wg64.wgsl` (2,029-bit size class; the file already starts with `enable subgroups;` and `diagnostic(off, subgroup_uniformity);`). `index.html` does not load it (it drives the squaring-mode kernels and prepends the same two lines itself). In phase 1 this file was only compile-checked in Chrome 156 (`createShaderModule` plus `getCompilationInfo()` reported no messages, `createComputePipelineAsync` succeeded; `docs/superpowers/results/phase1/browser-fermat-compile-check.txt`); it was not dispatched or checked against an oracle in the browser.
+The Fermat-ladder kernel (`Runner`'s shader) can be emitted in browser form too: `cargo run --release -p bigmont-core --example dump_wgsl -- 8 64 unrolled fermat-browser > web/kernels/fermat_tpi8_wg64.wgsl` (2,029-bit size class; the file already starts with `enable subgroups;` and `diagnostic(off, subgroup_uniformity);`). `index.html` does not load it (it drives the squaring-mode kernels and prepends the same two lines itself). In phase 1 this file was only compile-checked in Chrome 156 (`createShaderModule` plus `getCompilationInfo()` reported no messages, `createComputePipelineAsync` succeeded; `docs/results/phase1/browser-fermat-compile-check.txt`); it was not dispatched or checked against an oracle in the browser.
 
 ## Fermat-ladder page (`fermat.html`)
 
@@ -27,7 +27,7 @@ Names are `fermat_b<bits>_tpi<T>_wg<W>`. Names starting `limb32_` are the native
       cargo run --release -p bigmont-core --example dump_wgsl -- $tpi 64 unrolled fermat-browser --bits $bits > web/kernels/matrix/fermat_b${bits}_tpi${tpi}_wg64.wgsl; done; done
     cargo run --release -p bigmont-core --example dump_wgsl -- 8 64 unrolled fermat-native --bits 2029 --scheme 32 > web/kernels/matrix/limb32_native_fermat_b2029_tpi8_wg64.wgsl
 
-`dump_wgsl ... --scheme 32` with a `-browser` form exits 1 with the refusal (the 32-bit scheme is native-only). Results: `docs/superpowers/results/2026-11-25-browser-fermat-validation.md`.
+`dump_wgsl ... --scheme 32` with a `-browser` form exits 1 with the refusal (the 32-bit scheme is native-only). Results: `docs/results/2026-11-25-browser-fermat-validation.md`.
 
 ## The Rust engine in the browser (`rust.html`)
 

@@ -1,7 +1,7 @@
 # Limb-scheme factory: validation (2026-11-25)
 
 Branch `limb-factory` (cut from `phase1` at d7aeb10), head `bc10df3`, not pushed. Plan:
-`docs/superpowers/plans/2026-11-25-limb-scheme-factory.md`. Raw logs: `results/phase1/factory/` and, for the
+`docs/superpowers/plans/2026-11-25-limb-scheme-factory.md` at commit 9d35813 (since removed from the tree; see git history). Raw logs: `results/phase1/factory/` and, for the
 experiments that led here, `results/phase1/schemes/` and `results/2026-11-24-limb-scheme-experiment.md`.
 
 ## 1. What changed

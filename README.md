@@ -39,7 +39,7 @@ Raw speed matters, but it comes second: where portability and speed conflict, po
 - The driver also implements the in-driver early-exit interface (`--bins`, `--ee SIZES`, `--chunk`, `--growth`, `--marker`,
   `--lock`) used by the existing CUDA pipeline's feeders: candidates are grouped into ks, tested in waves, and a k stops at its
   first probable prime. Its output is byte-identical to the CUDA driver's on that pipeline's own fixtures (see
-  [`docs/superpowers/results/2026-11-25-early-exit-validation.md`](docs/superpowers/results/2026-11-25-early-exit-validation.md));
+  [`docs/results/2026-11-25-early-exit-validation.md`](docs/results/2026-11-25-early-exit-validation.md));
   it is much slower at start-up for now (issue #21).
 - Runs the base-2 Fermat test with cooperative Montgomery arithmetic: several GPU lanes share one number, using
   subgroup shuffles for the cross-lane work, written in WGSL.
@@ -134,12 +134,12 @@ What the check does not cover:
 Cost: on 2,029-bit candidates the check lowered throughput by about 15 % (mean of three plain and three `--gec` runs of
 100,003 candidates, 34,112 against 28,927 tests/s, each pair between 14.9 % and 15.4 %), measured on one AMD Radeon RX 6700 XT
 (AMD proprietary driver 26.10.1, Vulkan, 13-bit limbs, TPI 8). The CUDA driver's kit notes report 514,850 to 581,795 tests/s with and without its check on an RTX 5090, about 11.5 %. Other GPUs
-and drivers were not measured; see [the results](docs/superpowers/results/2026-11-25-gerbicz-check.md).
+and drivers were not measured; see [the results](docs/results/2026-11-25-gerbicz-check.md).
 
 ## Measurements
 
 Measurements, their methods and their limits are in
-[`docs/superpowers/results/`](docs/superpowers/results/). They come from a handful of machines with one to three runs
+[`docs/results/`](docs/results/). They come from a handful of machines with one to three runs
 per figure, so this README does not quote them.
 
 ## In a browser
@@ -158,7 +158,7 @@ browser's `subgroups` feature is only exposed by wgpu's WebGPU backend since gfx
 | `crates/bigmont-cpu` | pure-Rust 64-bit-limb Montgomery Fermat test (the CPU backend) |
 | `crates/bigmont-cli` | the `bigmont` driver: file formats, autotuner and cache, the engine that buckets and cross-checks |
 | `web/` | browser test pages and generated kernels |
-| `docs/superpowers/` | design, plans, measurements and notes |
+| `docs/` | design document and measurements (`docs/results/`) |
 
 ## Testing
 
