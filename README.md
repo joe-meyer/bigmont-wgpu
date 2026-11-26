@@ -86,8 +86,8 @@ arguments for the full usage. The tuning cache lives at `$BIGMONT_CACHE`, else `
 
 ## Error checking (Gerbicz)
 
-`--gec` runs the GPU buckets with the Gerbicz-Li error check. It is off by default, as it is in the CUDA driver this one
-replaces, and with it off nothing changes. The ladder is split into blocks of 40 squarings; at each block boundary the
+`--gec` runs every Fermat test with the Gerbicz-Li error check, on the GPU and on the CPU. It is off by default, as
+it is in the CUDA driver this one replaces, and with it off nothing changes. The ladder is split into blocks of 40 squarings; at each block boundary the
 state is folded into two running products, and at the end one extra exponentiation checks that they agree mod n, so a
 bit flipped anywhere in a block's computation is caught with overwhelming probability. The last `(bits - 1) % 40` iterations belong to no block, so
 they are covered by recomputation instead: they are run twice, once on the ladder state and once on a copy taken at the
@@ -98,8 +98,12 @@ prime, a request to test it again (the same contract the CUDA driver has). It is
 alarms`) and, with `--ee`, in the `gec_alarm=` field of the `g1_fermat[EE]` line, and a k with a verdict 2 is retired
 like one with a probable prime, as the CUDA driver does. Clean runs never alarm, and their verdicts are byte-identical
 to a run without `--gec`. Every probable prime is still re-checked on the CPU, as before; an alarm is not re-checked,
-since the point of 2 is to leave the decision to the caller. Buckets the CPU answers (fewer candidates than the GPU
-threshold, or after a GPU error) are not checked and cannot alarm, because the CPU path has no GPU fault to catch.
+since the point of 2 is to leave the decision to the caller. The CPU runs the same check: buckets it answers
+(`--backend cpu`, fewer candidates than the GPU threshold, or after a GPU error) and its re-checks of GPU verdicts are
+checked too, so with `--gec` every verdict is either checked or 2. A re-check that alarms makes the candidate 2 as well,
+since neither computation can then be trusted. On the CPU the check costs about as much relative to the plain test as
+on the GPU (two multiplies per block of 40 iterations, about 40 squarings plus the `2^(sum V)` ladder per candidate, and
+the tail run twice); it was not measured separately.
 
 How the detector is tested: the runner tests (`crates/bigmont-core/tests/gec.rs`) build the runner from mutated
 kernel sources that simulate a faulty device, and the real runner, kernels and host comparison run on top of them. The
@@ -108,7 +112,10 @@ start, a faulty multiply unit, corrupted memory cells (the modulus, `-n^-1` and 
 wrong on every load while the buffer is intact. Each must alarm exactly the hit candidates, a hit probable prime
 included, and a fault condition that never fires must leave the run clean. The algorithm is also checked against a CPU
 model in `bigmont-oracle`, and the engine's handling of an alarm (counted, never re-checked, never overruled) is
-unit-tested without a GPU.
+unit-tested without a GPU. The CPU check (`bigmont_cpu::fermat_base2_gec`) is written over a small arithmetic trait, and
+its tests (`crates/bigmont-cpu/tests/cpu.rs`) run it on a wrapper of the real arithmetic that corrupts the output of one
+chosen operation: in a block, at a block boundary, in either tail computation and in the final check. Every such fault
+must alarm, a hit probable prime included, and a fault position past the end must leave the run clean.
 
 What the check does not cover:
 
@@ -122,7 +129,6 @@ What the check does not cover:
 - The final read of the result when no tail recomputation runs (a candidate whose `bits - 1` is a multiple of 40, for
   example 41 or 2,001 bits): the last block is covered by the identity, but the copy of the final value back to the host
   is not compared with anything.
-- Buckets the CPU answers (see above). They are not checked.
 
 Cost: on 2,029-bit candidates the check lowered throughput by about 16 % (mean of three plain and three `--gec` runs of
 100,003 candidates, 33,957 against 28,519 tests/s, each pair between 13 % and 18 %), measured on one AMD Radeon RX 6700 XT

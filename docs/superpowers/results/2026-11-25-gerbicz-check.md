@@ -50,8 +50,9 @@ handling remains in the runner. The engine's alarm handling is covered by unit t
 The numbers are kept as measured.
 
 Three candidates of 2,029 bits taken from `gec_20k`: two random composites and one probable prime (truth: 0, 0, 1).
-`--gec` alone sends three candidates to the CPU (below the GPU threshold of 64), where nothing can alarm; `--inject` sets
-the threshold to one candidate, so the GPU runs.
+`--gec` alone sends three candidates to the CPU (below the GPU threshold of 64), which was unchecked when this drill
+was run (the CPU path got the same check later, see the note at the end of this section); `--inject` sets the threshold
+to one candidate, so the GPU runs.
 
 | Command (after `bigmont drill3.bin v.bin --gec ...`, Vulkan, 13-bit limbs) | Verdict bytes | `GEC alarms` |
 |---|---|---|
@@ -66,6 +67,10 @@ the threshold to one candidate, so the GPU runs.
 Only the injected candidate changes, and a tail injection is caught as well as a block injection. A probable prime that is
 hit (`--inject 2 50`) comes out as 2 and is not re-checked on the CPU (rechecks 0, PRP 0), which is the contract.
 With `--limbs 32`, `--inject 1 3` and `--inject 1 50` both gave 0, 2, 1 with one alarm.
+
+Later change: the CPU path (`--backend cpu`, small buckets, buckets after a GPU error, and the CPU re-checks of GPU
+verdicts) now runs the same check under `--gec` (`bigmont_cpu::fermat_base2_gec`). Its fault tests run without a GPU in
+`crates/bigmont-cpu/tests/cpu.rs`. No drill or throughput figure in this file was re-measured for it.
 
 ## 3. Throughput
 
