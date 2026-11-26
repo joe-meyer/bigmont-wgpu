@@ -276,6 +276,29 @@ impl Runner {
         ns: &[BigUint],
         base: usize,
     ) -> Result<Vec<bool>, String> {
+        self.validate_chunk(ns, base)?;
+        let count = ns.len() as u32;
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        let preps = self.upload_chunk(gpu, ns);
+        self.ladder_range(gpu, count, 0, self.bits - 1).await?;
+        let x = self.read_x(gpu, count).await?;
+        let limbs = self.cfg.limbs as usize;
+        let scheme = self.cfg.scheme;
+        let verdicts = ns
+            .iter()
+            .zip(&preps)
+            .enumerate()
+            .map(|(i, (n, p))| scheme.unpack(&x[i * limbs..(i + 1) * limbs]) % n == p.r)
+            .collect();
+        self.stats.tests += u64::from(count);
+        Ok(verdicts)
+    }
+
+    /// Every candidate must be odd with exactly `bits` bits; `base` is the index of `ns[0]` in the
+    /// caller's slice (for errors).
+    fn validate_chunk(&self, ns: &[BigUint], base: usize) -> Result<(), String> {
         let bits = self.bits;
         for (i, n) in ns.iter().enumerate() {
             if !n.bit(0) || n.bits() != u64::from(bits) {
@@ -287,13 +310,13 @@ impl Runner {
                 ));
             }
         }
-        let count = ns.len() as u32;
-        if count == 0 {
-            return Ok(Vec::new());
-        }
+        Ok(())
+    }
+
+    /// Host preparation for `ns` and the uploads of `n`, the start values, `ninv` and the exponents.
+    fn upload_chunk(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Vec<Prep> {
         let limbs = self.cfg.limbs as usize;
         let words = self.words as usize;
-
         let t = Instant::now();
         let preps = prepare(ns, self.cfg.scheme, limbs, words);
         let mut n_all = Vec::with_capacity(ns.len() * limbs);
@@ -308,19 +331,31 @@ impl Runner {
         }
         self.stats.host_prep_secs += t.elapsed().as_secs_f64();
 
-        let (device, queue) = (&gpu.device, &gpu.queue);
+        let queue = &gpu.queue;
         queue.write_buffer(&self.n_buf, 0, bytemuck::cast_slice(&n_all));
         queue.write_buffer(&self.x_buf, 0, bytemuck::cast_slice(&x_all));
         queue.write_buffer(&self.ninv_buf, 0, bytemuck::cast_slice(&ninv_all));
         queue.write_buffer(&self.e_buf, 0, bytemuck::cast_slice(&e_all));
+        preps
+    }
 
+    /// Ladder iterations `from..to` on the first `count` candidates of `x_buf`, as a sequence of
+    /// short dispatches whose length adapts so each takes about `target_secs`.
+    async fn ladder_range(
+        &mut self,
+        gpu: &Gpu,
+        count: u32,
+        from: u32,
+        to: u32,
+    ) -> Result<(), String> {
+        let (device, queue) = (&gpu.device, &gpu.queue);
+        let bits = self.bits;
         let groups = count.div_ceil(self.cfg.instances_per_workgroup());
-        let total = bits - 1;
-        let mut done = 0u32;
+        let mut done = from;
         // Start with one iteration per dispatch: the first timing is cheap even on a CPU adapter.
         let mut seg = self.segment_override.unwrap_or(1).max(1);
-        while done < total {
-            let this = seg.min(total - done);
+        while done < to {
+            let this = seg.min(to - done);
             queue.write_buffer(
                 &self.params,
                 0,
@@ -350,25 +385,22 @@ impl Runner {
                 seg = ((self.target_secs / per_iter) as u32).clamp(1, seg.saturating_mul(2).max(2));
             }
         }
+        Ok(())
+    }
 
-        let bytes = u64::from(count) * limbs as u64 * 4;
+    /// Reads back the ladder state of the first `count` candidates (`count * limbs` words) and
+    /// checks that every limb is normalised.
+    async fn read_x(&self, gpu: &Gpu, count: u32) -> Result<Vec<u32>, String> {
+        let (device, queue) = (&gpu.device, &gpu.queue);
+        let bytes = u64::from(count) * u64::from(self.cfg.limbs) * 4;
         let mut enc = device.create_command_encoder(&Default::default());
         enc.copy_buffer_to_buffer(&self.x_buf, 0, &self.staging, 0, bytes);
         queue.submit([enc.finish()]);
         let x = gpu.read_back_async(&self.staging, bytes).await?;
-
-        let scheme = self.cfg.scheme;
-        if !scheme.normalised(&x) {
+        if !self.cfg.scheme.normalised(&x) {
             return Err("kernel returned an unnormalised limb".into());
         }
-        let verdicts = ns
-            .iter()
-            .zip(&preps)
-            .enumerate()
-            .map(|(i, (n, p))| scheme.unpack(&x[i * limbs..(i + 1) * limbs]) % n == p.r)
-            .collect();
-        self.stats.tests += u64::from(count);
-        Ok(verdicts)
+        Ok(x)
     }
 }
 
