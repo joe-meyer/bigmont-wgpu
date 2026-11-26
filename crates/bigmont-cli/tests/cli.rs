@@ -870,14 +870,7 @@ fn an_absurd_schedule_is_refused_before_anything_is_allocated() {
 }
 
 #[test]
-fn inject_is_still_refused_and_the_ee_flags_are_rejected_by_other_subcommands() {
-    let out = run(bigmont(&["a", "b", "--inject", "1", "2"]));
-    assert_eq!(code(&out), Some(2));
-    let err = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        err.contains("--inject") && err.contains("not supported"),
-        "{err}"
-    );
+fn the_ee_flags_are_rejected_by_other_subcommands() {
     for sub in ["canary", "tune"] {
         let out = run(bigmont(&[sub, "a", "b", "--ee", "sizes.bin"]));
         assert_eq!(code(&out), Some(2), "{sub}");
@@ -1075,5 +1068,124 @@ fn ee_runs_end_to_end_on_the_gpu() {
         err.contains("GPU:") && !err.contains("(gpu 0,"),
         "the waves ran on the GPU: {err}"
     );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Three random 2029-bit candidates (the Beacon harness drill input) in a 2048-bit file.
+fn drill_candidates(dir: &Path) -> (PathBuf, Vec<BigUint>) {
+    let mut rng = XorShift64::new(31);
+    let ns: Vec<BigUint> = (0..3).map(|_| random_odd_modulus(&mut rng, 2029)).collect();
+    let p = dir.join("drill.bin");
+    formats::write_candidates(&p, 2048, &ns).unwrap();
+    (p, ns)
+}
+
+#[test]
+fn a_gec_run_writes_the_same_verdicts_as_a_plain_run() {
+    if !gpu_available() {
+        return;
+    }
+    let dir = tmp_dir("gec-clean");
+    let cand = candidates(&dir);
+    let cache = dir.join("tune.cache");
+    let mut files = Vec::new();
+    for (name, extra) in [("plain.bin", None), ("gec.bin", Some("--gec"))] {
+        let verdict = dir.join(name);
+        let mut args = vec![
+            cand.to_str().unwrap(),
+            verdict.to_str().unwrap(),
+            "--backend",
+            "gpu",
+            "--cache",
+            cache.to_str().unwrap(),
+        ];
+        args.extend(extra);
+        let out = run(bigmont(&args));
+        assert_eq!(
+            code(&out),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        if extra.is_some() {
+            assert!(
+                String::from_utf8_lossy(&out.stderr).contains("GEC alarms 0"),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        files.push(formats::read_verdicts(&verdict).unwrap().1);
+    }
+    assert_eq!(files[0], files[1]);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_inject_drill_gives_verdict_2_for_the_injected_candidate() {
+    if !gpu_available() {
+        return;
+    }
+    let dir = tmp_dir("gec-drill");
+    let (cand, ns) = drill_candidates(&dir);
+    let verdict = dir.join("v.bin");
+    let cache = dir.join("tune.cache");
+    let out = run(bigmont(&[
+        cand.to_str().unwrap(),
+        verdict.to_str().unwrap(),
+        "--backend",
+        "gpu",
+        "--cache",
+        cache.to_str().unwrap(),
+        "--gec",
+        "--inject",
+        "1",
+        "3",
+    ]));
+    assert_eq!(
+        code(&out),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let want: Vec<u8> = ns
+        .iter()
+        .map(|n| u8::from(bigmont_cpu::fermat_base2(n)))
+        .collect();
+    assert_eq!(
+        formats::read_verdicts(&verdict).unwrap().1,
+        vec![want[0], 2, want[2]]
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn inject_usage_errors_exit_2_before_any_work() {
+    let dir = tmp_dir("gec-usage");
+    let (cand, _) = drill_candidates(&dir);
+    let (c, v) = (cand.to_str().unwrap(), dir.join("v.bin"));
+    let v = v.to_str().unwrap();
+    let cases: [(&[&str], &str); 5] = [
+        (&[c, v, "--inject", "1", "3"], "--inject needs --gec"),
+        (&[c, v, "--gec", "--inject", "5", "3"], "5"),
+        (
+            &[c, v, "--gec", "--inject", "0", "0", "--ee", "s.bin"],
+            "plain runs only",
+        ),
+        (
+            &[c, v, "--gec", "--inject", "0", "0", "--backend", "cpu"],
+            "GPU",
+        ),
+        (&[c, v, "--gec", "--inject=1"], "--inject"),
+    ];
+    for (args, needle) in cases {
+        let out = run(bigmont(args));
+        assert_eq!(code(&out), Some(2), "{args:?}");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(err.contains(needle), "{args:?}: {err}");
+        assert!(
+            !Path::new(v).exists(),
+            "{args:?} must not write a verdict file"
+        );
+    }
     let _ = std::fs::remove_dir_all(dir);
 }

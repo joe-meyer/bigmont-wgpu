@@ -2,7 +2,8 @@
 //! GPU against the CPU reference.
 //!
 //! Verdicts: `n < 2` or even `n != 2` is 0 (composite), `n == 2` is 1, everything else comes from
-//! a backend. The engine never returns 2.
+//! a backend. The engine returns 2 (a Gerbicz alarm) only with `Options::gec`, and only for a
+//! candidate a GPU run could not vouch for.
 //!
 //! Device-level GPU failures (a lost device, a GPU wait longer than the poll timeout, an
 //! uncaptured wgpu error; see `bigmont_core::gpu::Gpu::check_health`) are recovered: the device
@@ -14,7 +15,7 @@
 use crate::tune;
 use bigmont_core::gpu::{AdapterSelector, Gpu, is_device_error};
 use bigmont_core::kernel::KernelConfig;
-use bigmont_core::runner::Runner;
+use bigmont_core::runner::{Fault, Runner, Verdict};
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -66,6 +67,13 @@ pub struct Options {
     /// The longest one GPU wait may take (`Gpu::poll_timeout`); `None` keeps the `Gpu` default
     /// (`BIGMONT_POLL_TIMEOUT_MS`, else 30 s). A longer wait counts as a device-level failure.
     pub poll_timeout: Option<Duration>,
+    /// Runs GPU buckets with the Gerbicz error check (`Runner::fermat_checked`): a candidate whose
+    /// computation fails the check gets verdict 2 instead of a verdict, is counted in
+    /// `EngineReport::gec_alarms`, is not re-checked on the CPU and stays 2 (the caller retests or
+    /// arbitrates it). Off by default; with it off nothing changes. Only GPU runs are checked:
+    /// buckets answered by the CPU (smaller than `min_gpu_batch`, or after a GPU error or a device
+    /// that could not be recovered) are unchecked and never alarm.
+    pub gec: bool,
     /// Test only: destroy the next N freshly opened devices (the first one and re-opened ones)
     /// right after opening, which makes wgpu report them lost.
     #[doc(hidden)]
@@ -87,6 +95,7 @@ impl Default for Options {
             device_retries: 2,
             device_retries_total: 8,
             poll_timeout: None,
+            gec: false,
             inject_loss_on_open: 0,
         }
     }
@@ -126,11 +135,25 @@ pub struct EngineReport {
     pub device_recoveries: u64,
     /// Device-level failures that were a GPU wait longer than the poll timeout.
     pub poll_timeouts: u64,
+    /// Candidates a checked GPU run (`Options::gec`) gave verdict 2 (a Gerbicz alarm).
+    pub gec_alarms: u64,
+}
+
+fn to_verdict(prp: bool) -> Verdict {
+    if prp {
+        Verdict::Prp
+    } else {
+        Verdict::Composite
+    }
+}
+
+fn to_verdicts(v: &[bool]) -> Vec<Verdict> {
+    v.iter().map(|&b| to_verdict(b)).collect()
 }
 
 /// What one GPU attempt at a bucket gave.
 enum GpuRun {
-    Done(Vec<bool>),
+    Done(Vec<Verdict>),
     /// Use the CPU: no GPU, a small bucket, or an ordinary error (already counted).
     Cpu,
     /// The device failed; re-open it and re-run the bucket.
@@ -236,6 +259,8 @@ pub struct Engine {
     reopens_done: u32,
     /// Test hook: the next recovery treats the re-opened device as a different adapter.
     inject_adapter_change: bool,
+    /// Test hook: `(index into the next call's ns, block)`, see `Engine::inject_fault`.
+    fault: Option<(usize, u32)>,
 }
 
 impl Engine {
@@ -245,6 +270,7 @@ impl Engine {
             reopens_left: opts.device_retries,
             reopens_done: 0,
             inject_adapter_change: false,
+            fault: None,
             opts,
             gpu: None,
             gpu_err: None,
@@ -338,6 +364,16 @@ impl Engine {
         self.inject_adapter_change = true;
     }
 
+    /// Test and drill hook: flips a bit in the GPU computation of candidate `index` of the next
+    /// `verdicts` call's `ns`, in Gerbicz block `block` (see `bigmont_core::runner::Fault`), so a
+    /// checked run (`Options::gec`) must answer 2 for it. It is cleared at the end of that call. It
+    /// does nothing where the candidate is not run on the GPU (a bucket answered by the CPU, a
+    /// degenerate input, `Options::gec` off) or `index` is out of range.
+    #[doc(hidden)]
+    pub fn inject_fault(&mut self, index: usize, block: u32) {
+        self.fault = Some((index, block));
+    }
+
     pub fn report(&self) -> EngineReport {
         self.report.clone()
     }
@@ -358,8 +394,11 @@ impl Engine {
         Ok(())
     }
 
-    /// Verdicts (0 composite, 1 probable prime) for `ns`, in input order.
+    /// Verdicts (0 composite, 1 probable prime, and with `Options::gec` 2 for a Gerbicz alarm) for
+    /// `ns`, in input order.
     pub fn verdicts(&mut self, ns: &[BigUint]) -> Result<Vec<u8>, String> {
+        // One-shot, whatever way the call ends.
+        let fault = self.fault.take();
         self.require_backend()?;
         self.reopens_left = self.opts.device_retries;
         let two = BigUint::from(2u32);
@@ -378,23 +417,29 @@ impl Engine {
         let mut composites_seen = 0u64;
         for (bits, idx) in buckets {
             let nums: Vec<BigUint> = idx.iter().map(|&i| ns[i].clone()).collect();
+            // The hook's input index, as a position in this bucket (if the candidate is in it).
+            let bucket_fault = fault.and_then(|(at, block)| {
+                idx.iter()
+                    .position(|&i| i == at)
+                    .map(|index| Fault { index, block })
+            });
             let verdicts = loop {
-                match self.try_gpu(bits, &nums, &mut composites_seen) {
+                match self.try_gpu(bits, &nums, &mut composites_seen, bucket_fault) {
                     GpuRun::Done(v) => break v,
-                    GpuRun::Cpu => break self.cpu(&nums),
+                    GpuRun::Cpu => break to_verdicts(&self.cpu(&nums)),
                     // Re-run the whole bucket on the re-opened device, or answer it on the CPU.
                     GpuRun::DeviceFailure(why) => match self.recover(bits, &why) {
                         Recovery::Recovered => {}
                         Recovery::CpuOnly => {
                             self.report.gpu_errors += 1;
-                            break self.cpu(&nums);
+                            break to_verdicts(&self.cpu(&nums));
                         }
                         Recovery::Fatal(e) => return Err(e),
                     },
                 }
             };
             for (&i, v) in idx.iter().zip(verdicts) {
-                out[i] = u8::from(v);
+                out[i] = v.byte();
             }
         }
         Ok(out)
@@ -496,7 +541,13 @@ impl Engine {
     /// `DeviceFailure` means the device itself failed (lost, a timed-out wait, an uncaptured wgpu
     /// error): nothing of the attempt is kept, a failed tuning is not cached, and the caller
     /// re-opens the device and calls again.
-    fn try_gpu(&mut self, bits: u32, nums: &[BigUint], composites_seen: &mut u64) -> GpuRun {
+    fn try_gpu(
+        &mut self,
+        bits: u32,
+        nums: &[BigUint],
+        composites_seen: &mut u64,
+        fault: Option<Fault>,
+    ) -> GpuRun {
         let Some(gpu) = self.gpu.as_ref() else {
             return GpuRun::Cpu;
         };
@@ -542,6 +593,12 @@ impl Engine {
                         &cfg,
                     )
                     .and_then(|()| Runner::new(gpu, cfg, bits, self.opts.capacity))
+                    .and_then(|mut runner| {
+                        if self.opts.gec {
+                            runner.enable_gec(gpu)?;
+                        }
+                        Ok(runner)
+                    })
                 }
                 Err(e) => Err(e),
             };
@@ -558,7 +615,13 @@ impl Engine {
             self.report.gpu_errors += 1;
             return GpuRun::Cpu;
         };
-        let mut verdicts = match runner.fermat(gpu, nums) {
+        let run = if self.opts.gec {
+            runner.fault = fault;
+            runner.fermat_checked(gpu, nums)
+        } else {
+            runner.fermat(gpu, nums).map(|v| to_verdicts(&v))
+        };
+        let mut verdicts = match run {
             Ok(v) => v,
             Err(e) if device_failure(gpu, &e) => return GpuRun::DeviceFailure(e),
             Err(e) => {
@@ -574,17 +637,23 @@ impl Engine {
         };
         self.report.gpu_tests += nums.len() as u64;
 
-        // Integrity: every PRP, and every verify_rate-th composite (counted across the call).
+        // Integrity: every PRP, and every verify_rate-th composite (counted across the call). An
+        // alarm is counted and logged, not re-checked: the caller retests it.
         let mut recheck = Vec::new();
         for (i, &v) in verdicts.iter().enumerate() {
-            if v {
-                recheck.push(i);
-            } else {
-                *composites_seen += 1;
-                if self.opts.verify_rate > 0
-                    && (*composites_seen).is_multiple_of(u64::from(self.opts.verify_rate))
-                {
-                    recheck.push(i);
+            match v {
+                Verdict::Prp => recheck.push(i),
+                Verdict::Composite => {
+                    *composites_seen += 1;
+                    if self.opts.verify_rate > 0
+                        && (*composites_seen).is_multiple_of(u64::from(self.opts.verify_rate))
+                    {
+                        recheck.push(i);
+                    }
+                }
+                Verdict::Alarm => {
+                    self.report.gec_alarms += 1;
+                    eprintln!("bigmont: GEC alarm on a {bits}-bit candidate");
                 }
             }
         }
@@ -592,8 +661,9 @@ impl Engine {
         let truth = bigmont_cpu::fermat_batch(&subset, self.opts.threads);
         self.report.rechecks += subset.len() as u64;
         for (&i, cpu) in recheck.iter().zip(truth) {
+            let cpu = to_verdict(cpu);
             if verdicts[i] != cpu {
-                if verdicts[i] {
+                if verdicts[i] == Verdict::Prp {
                     self.report.prp_disagreements += 1;
                     eprintln!(
                         "bigmont: GPU/CPU disagreement: GPU said PRP, CPU says composite ({bits}-bit candidate); using the CPU verdict"

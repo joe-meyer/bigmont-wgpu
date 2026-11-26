@@ -80,9 +80,31 @@ cargo run --release -p bigmont-cli --example make_candidates -- --bits 2029 1310
 ```
 
 Useful flags: `--backend auto|gpu|cpu`, `--adapter SUBSTR` and `--vk-backend SUBSTR` to pick a device, `--limbs
-auto|13|32`, `--retune`, `--cache PATH | --no-cache`, `--verify-rate N`, `--repeat N`. Run `bigmont` with no
+auto|13|32`, `--retune`, `--cache PATH | --no-cache`, `--verify-rate N`, `--gec`, `--repeat N`. Run `bigmont` with no
 arguments for the full usage. The tuning cache lives at `$BIGMONT_CACHE`, else `%LOCALAPPDATA%\bigmont\tune.cache`
 (Windows) or `$XDG_CACHE_HOME/bigmont/tune.cache` / `~/.cache/bigmont/tune.cache`.
+
+## Error checking (Gerbicz)
+
+`--gec` runs the GPU buckets with the Gerbicz-Li error check. It is off by default, as it is in the CUDA driver this one
+replaces, and with it off nothing changes. The ladder is split into blocks of 40 squarings; at each block boundary the
+state is folded into two running products, and at the end one extra exponentiation checks that they agree mod n, so a
+bit flipped anywhere in a block's computation is caught. The last `(bits - 1) % 40` iterations belong to no block, so
+they are covered by recomputation instead: they are run twice, once on the ladder state and once on a copy taken at the
+last block boundary, and the two results must agree. A candidate shorter than one block is covered entirely this way.
+
+A candidate that fails either check gets **verdict byte 2** in the verdict file: neither composite nor probable
+prime, a request to test it again (the same contract the CUDA driver has). It is counted in the summary line (`GEC
+alarms`) and, with `--ee`, in the `gec_alarm=` field of the `g1_fermat[EE]` line, and a k with a verdict 2 is retired
+like one with a probable prime, as the CUDA driver does. Clean runs never alarm, and their verdicts are byte-identical
+to a run without `--gec`. Every probable prime is still re-checked on the CPU, as before; an alarm is not re-checked,
+since the point of 2 is to leave the decision to the caller. Buckets the CPU answers (fewer candidates than the GPU
+threshold, or after a GPU error) are not checked and cannot alarm, because the CPU path has no GPU fault to catch.
+
+`--inject IDX BDRY` is the fault drill (it needs `--gec` and a plain GPU run): it flips one bit in the computation of
+candidate `IDX` (0-based, in the candidate file) during Gerbicz block `BDRY`, so that candidate must come out as 2 and
+the others unchanged. It also sets the GPU threshold to one candidate, so a three-candidate drill runs on the GPU. For
+example, `bigmont cand.bin verdict.bin --gec --inject 1 3` on three candidates of 2,029 bits.
 
 ## Measurements
 

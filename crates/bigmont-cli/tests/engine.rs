@@ -585,3 +585,54 @@ fn a_retargeted_32_bit_kernel_that_is_smaller_than_the_self_tested_one_gives_ora
         );
     }
 }
+
+fn gec_opts() -> Options {
+    Options {
+        backend: Backend::Gpu,
+        gec: true,
+        min_gpu_batch: 1,
+        capacity: 32,
+        verify_rate: 0,
+        ..Options::default()
+    }
+}
+
+#[test]
+fn gec_verdicts_equal_plain_verdicts_on_clean_input_and_never_alarm() {
+    if !common::usable_gpu() {
+        return;
+    }
+    let mut rng = XorShift64::new(21);
+    let mut ns: Vec<BigUint> = (0..40)
+        .map(|_| random_odd_modulus(&mut rng, 1019))
+        .collect();
+    ns.extend((0..2).map(|_| random_prp(&mut rng, 1019)));
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    assert!(want.contains(&1), "the batch must contain a probable prime");
+    let mut checked = Engine::open(gec_opts());
+    assert_eq!(checked.verdicts(&ns).unwrap(), want);
+    assert_eq!(checked.report().gec_alarms, 0);
+    let mut plain = Engine::open(Options {
+        gec: false,
+        ..gec_opts()
+    });
+    assert_eq!(plain.verdicts(&ns).unwrap(), want);
+}
+
+#[test]
+fn an_injected_fault_gives_verdict_2_for_that_candidate_only() {
+    if !common::usable_gpu() {
+        return;
+    }
+    // The Beacon harness drill: 3 candidates of 2029 bits, fault in candidate 1 at block 3.
+    let mut rng = XorShift64::new(22);
+    let ns: Vec<BigUint> = (0..3).map(|_| random_odd_modulus(&mut rng, 2029)).collect();
+    let want: Vec<u8> = ns.iter().map(|n| u8::from(fermat_base2(n))).collect();
+    let mut e = Engine::open(gec_opts());
+    e.inject_fault(1, 3);
+    assert_eq!(e.verdicts(&ns).unwrap(), vec![want[0], 2, want[2]]);
+    assert_eq!(e.report().gec_alarms, 1);
+    // The hook is one-shot: the next call is clean.
+    assert_eq!(e.verdicts(&ns).unwrap(), want);
+    assert_eq!(e.report().gec_alarms, 1);
+}
