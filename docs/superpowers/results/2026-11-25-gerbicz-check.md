@@ -43,9 +43,11 @@ cmp v_plain.bin v_gec.bin
 
 These runs used a build with a `--inject IDX BDRY` command-line flag (a test hook on the engine) that was removed from the
 branch afterwards, so the table below cannot be reproduced with the final code. The same detection (a bit flipped in a
-block or in the tail recomputation, with both limb schemes, and a hit probable prime) is now covered by the runner tests in
-`crates/bigmont-core/tests/gec.rs`, which corrupt real kernel state, and the engine's alarm handling by unit tests in
-`crates/bigmont-cli/src/engine.rs`. The numbers are kept as measured.
+block or in the tail recomputation, with both limb schemes, and a hit probable prime) is now exercised by the runner tests in
+`crates/bigmont-core/tests/gec.rs`. They build the runner from mutated kernel sources that simulate a faulty device
+(register, memory-read, multiply-unit and memory-cell faults, plus a modulus read wrong on every load), so no fault
+handling remains in the runner. The engine's alarm handling is covered by unit tests in `crates/bigmont-cli/src/engine.rs`.
+The numbers are kept as measured.
 
 Three candidates of 2,029 bits taken from `gec_20k`: two random composites and one probable prime (truth: 0, 0, 1).
 `--gec` alone sends three candidates to the CPU (below the GPU threshold of 64), where nothing can alarm; `--inject` sets
@@ -127,6 +129,6 @@ Follow-up options (not implemented here):
 - Other AMD GPUs, other driver versions, other candidate sizes: the throughput cost was measured only at 2,029 bits on one
   adapter, with three runs per mode.
 - The 32-bit scheme was run for identity and the drill (see above), not for the throughput cost.
-- Real hardware faults: the drill injected a deterministic bit flip through a test hook (since removed from the CLI; the runner tests keep it), which exercises the detection logic
+- Real hardware faults: the drill injected a deterministic bit flip through a test hook (since removed; the runner tests now simulate faults with mutated kernels), which exercises the detection logic
   but is not evidence about how often a real GPU would err.
 - Beacon's own canary files (not available here).

@@ -101,9 +101,25 @@ to a run without `--gec`. Every probable prime is still re-checked on the CPU, a
 since the point of 2 is to leave the decision to the caller. Buckets the CPU answers (fewer candidates than the GPU
 threshold, or after a GPU error) are not checked and cannot alarm, because the CPU path has no GPU fault to catch.
 
-The detection path is tested by corrupting real kernel state in the runner tests (`crates/bigmont-core/tests/gec.rs`,
-which flip a bit mid-ladder in a block and in the tail) and against a CPU model of the algorithm in `bigmont-oracle`;
-the engine's handling of an alarm (counted, never re-checked, never overruled) is unit-tested without a GPU.
+How the detector is tested: the runner tests (`crates/bigmont-core/tests/gec.rs`) build the runner from mutated
+kernel sources that simulate a faulty device, and the real runner, kernels and host comparison run on top of them. The
+simulated faults are a flipped register mid-block and in the tail, a flipped bit arriving from a load at a dispatch
+start, a faulty multiply unit, corrupted memory cells (the modulus, `-n^-1` and the exponent), and a modulus that is
+wrong on every load while the buffer is intact. Each must alarm exactly the hit candidates, a hit probable prime
+included, and a fault condition that never fires must leave the run clean. The algorithm is also checked against a CPU
+model in `bigmont-oracle`, and the engine's handling of an alarm (counted, never re-checked, never overruled) is
+unit-tested without a GPU.
+
+What the check does not cover:
+
+- Work done on the host. The Montgomery inputs (`R mod n`, `2R mod n`, `-n^-1`), the exponent sums and the final
+  comparisons are computed on the CPU and are not checked. A fault on the device that keeps the identity intact is
+  possible only with negligible probability. That includes a modulus that every kernel reads wrong: the check's products
+  start from `R mod n`, computed on the host from the true `n`, so the identity fails for the wrong modulus (the tests
+  confirm this). An unchecked run in the same situation gives a silent false composite. Only an independent computation
+  catches errors outside the check: the CPU re-check of probable primes, `--verify-rate` samples, and Beacon's canary
+  and notary.
+- Buckets the CPU answers (see above). They are not checked.
 
 Cost: on 2,029-bit candidates the check lowered throughput by about 16 % (mean of three plain and three `--gec` runs of
 100,003 candidates, 33,957 against 28,519 tests/s, each pair between 13 % and 18 %), measured on one AMD Radeon RX 6700 XT
