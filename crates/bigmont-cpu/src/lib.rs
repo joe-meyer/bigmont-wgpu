@@ -15,6 +15,7 @@ pub struct Mont {
     n: Vec<u64>,
     ninv: u64, // -n^-1 mod 2^64
     w: usize,
+    kernel: Kernel,
 }
 
 impl Mont {
@@ -30,6 +31,7 @@ impl Mont {
             n: n.to_vec(),
             ninv: inv.wrapping_neg(),
             w: n.len(),
+            kernel: Kernel::detect(),
         }
     }
 
@@ -38,6 +40,19 @@ impl Mont {
     /// slice is fine; only the first `scratch_len()` limbs are used.
     pub fn scratch_len(&self) -> usize {
         (2 * self.w).max(self.w + 2)
+    }
+
+    /// This context forced onto the portable safe-Rust kernel even where the hardware one is
+    /// available. The results are identical; this is for tests and for benchmarking the two.
+    pub fn portable(mut self) -> Mont {
+        self.kernel = Kernel::Portable;
+        self
+    }
+
+    /// Whether the squaring uses the BMI2 + ADX (`mulx`, `adcx`, `adox`) kernel: only on x86-64
+    /// CPUs that report both features, and not after [`Mont::portable`].
+    pub fn uses_adx(&self) -> bool {
+        self.kernel != Kernel::Portable
     }
 
     /// out = a * b * R^-1 mod n for a, b < n. `t` is scratch of at least `w + 2` limbs.
@@ -93,11 +108,7 @@ impl Mont {
         // Cross terms: row i adds a_i * a_j for j > i at limb i + j, and its carry lands at limb
         // i + w, which no earlier row has touched. The sum is below B^(2w) / 2.
         for (i, &ai) in a.iter().enumerate() {
-            let mut c = 0u64;
-            for (tj, &aj) in t[2 * i + 1..i + w].iter_mut().zip(&a[i + 1..]) {
-                (*tj, c) = mac(ai, aj, *tj, c);
-            }
-            t[i + w] = c;
+            t[i + w] = addmul_row(self.kernel, &mut t[2 * i + 1..i + w], &a[i + 1..], ai);
         }
         // Double them; no bit leaves the top limb because the sum is below B^(2w) / 2.
         let mut sh = 0u64;
@@ -122,11 +133,7 @@ impl Mont {
         // half once at the end, which avoids propagating it through the rows.
         for i in 0..w {
             let m = t[i].wrapping_mul(self.ninv);
-            let mut c = 0u64;
-            for (tj, &nj) in t[i..i + w].iter_mut().zip(n) {
-                (*tj, c) = mac(m, nj, *tj, c);
-            }
-            t[i] = c;
+            t[i] = addmul_row(self.kernel, &mut t[i..i + w], n, m);
         }
         // (a^2 + M n) / B^w < 2 n: the high half plus the parked carries, with at most one carry
         // out, then at most one subtraction of n.
@@ -170,6 +177,35 @@ fn mac(a: u64, b: u64, t: u64, c: u64) -> (u64, u64) {
     let (s, c1) = (p as u64).overflowing_add(c);
     let (s, c2) = s.overflowing_add(t);
     (s, ((p >> 64) as u64) + u64::from(c1) + u64::from(c2))
+}
+
+/// Which row routine a [`Mont`] uses. Chosen once, when the context is built.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kernel {
+    /// Safe Rust everywhere.
+    Portable,
+}
+
+impl Kernel {
+    fn detect() -> Kernel {
+        Kernel::Portable
+    }
+}
+
+/// t += m * src as one multi-limb number (`t` and `src` have the same length); returns the carry
+/// limb out of the top. This is the inner loop of the squaring and of the reduction.
+fn addmul_row(kernel: Kernel, t: &mut [u64], src: &[u64], m: u64) -> u64 {
+    match kernel {
+        Kernel::Portable => addmul_row_portable(t, src, m),
+    }
+}
+
+fn addmul_row_portable(t: &mut [u64], src: &[u64], m: u64) -> u64 {
+    let mut c = 0u64;
+    for (tj, &sj) in t.iter_mut().zip(src) {
+        (*tj, c) = mac(m, sj, *tj, c);
+    }
+    c
 }
 
 fn ge(a: &[u64], b: &[u64]) -> bool {

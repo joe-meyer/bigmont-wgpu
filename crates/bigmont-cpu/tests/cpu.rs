@@ -492,3 +492,62 @@ fn mul_works_with_the_minimal_scratch_of_w_plus_2() {
         check_product(&n, w, &a, &b, &out, "mul with w + 2 scratch");
     }
 }
+
+// ---- the portable and the hardware (mulx + adcx/adox) kernels ------------------------------
+
+/// Squarings of every operand under both kernels give the same limbs, which also equal the
+/// definition. On a CPU without BMI2 and ADX both contexts run the portable kernel, so the test
+/// only covers that one (it says so rather than claiming otherwise).
+#[test]
+fn the_portable_and_the_hardware_kernel_agree() {
+    let mut rng = XorShift64::new(5150);
+    let mut hardware_seen = false;
+    // Every width from 1 to 12 covers all remainders of the 4-limb unrolled loop and rows shorter
+    // than one iteration; 31 to 33 are the sizes the Fermat test actually uses.
+    for w in (1usize..=12).chain([31, 32, 33]) {
+        for n in moduli(w, &mut rng) {
+            let limbs = to_limbs(&n, w);
+            let auto = Mont::new(&limbs);
+            let portable = Mont::new(&limbs).portable();
+            assert!(!portable.uses_adx());
+            hardware_seen |= auto.uses_adx();
+            let mut t = vec![0u64; auto.scratch_len()];
+            for a in operands(&n, &mut rng) {
+                let al = to_limbs(&a, w);
+                let (mut x, mut y) = (vec![0u64; w], vec![0u64; w]);
+                auto.sqr(&al, &mut x, &mut t);
+                portable.sqr(&al, &mut y, &mut t);
+                assert_eq!(x, y, "kernels disagree (w={w}, n={n:x}, a={a:x})");
+                check_product(&n, w, &a, &a, &x, "sqr");
+            }
+        }
+    }
+    eprintln!(
+        "hardware kernel exercised: {hardware_seen} (false means this CPU has no BMI2 + ADX)"
+    );
+}
+
+/// The whole Fermat ladder gives the same verdicts and the same Gerbicz verdicts under both
+/// kernels (`fermat_base2` and the checked run use the auto-selected kernel; here they are compared
+/// with the oracle, which never uses either).
+#[test]
+fn verdicts_match_the_oracle_at_the_sizes_the_kernel_unrolls_over() {
+    let mut rng = XorShift64::new(5151);
+    for bits in [60u32, 64, 65, 128, 200, 255, 256, 257, 511, 513, 1019, 2029] {
+        for _ in 0..5 {
+            let n = random_odd_modulus(&mut rng, bits);
+            assert_eq!(
+                bigmont_cpu::fermat_base2(&n),
+                bigmont_oracle::fermat_base2(&n),
+                "{bits} bits"
+            );
+        }
+        let p = random_prp(&mut rng, bits.max(40));
+        assert!(bigmont_cpu::fermat_base2(&p), "random PRP at {bits} bits");
+        assert_eq!(
+            fermat_base2_gec(&p),
+            Checked::Prp,
+            "checked PRP at {bits} bits"
+        );
+    }
+}
