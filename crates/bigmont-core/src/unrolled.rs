@@ -6,7 +6,7 @@
 //! the accumulate, so there are no limb arrays and no loops over limbs. Only the loop over the owning
 //! lane (`owner`), the squaring loop and the normalisation rounds stay as (uniform) loops.
 //!
-//! Two modes share the generator ([`Mode`]):
+//! Three modes share the generator ([`Mode`]):
 //! - Squarings: same bindings, entry point and arithmetic contract as the rolled kernel: per
 //!   instance `x <- x^2 * R^-1 mod n` (R = 2^(13 * limbs), result in [0, 2n), limbs fully
 //!   normalised), `params.y` times.
@@ -22,6 +22,10 @@
 //!   doubling x < 4n, and a Montgomery squaring of x < 4n gives `(x^2 + m n) / R < 16n^2 / R + n`,
 //!   which is below 2n exactly when R > 16n; so x stays below 2n after every squaring and below 4n
 //!   (far below R) after every doubling, and no carry ever leaves the top limb.
+//! - Mul: per instance `x <- x * b * R^-1 mod n`, `params.y` times, with the right operand `b`
+//!   (fully normalised limbs, read-only binding 4) as the multiplier in place of `x`. Montgomery
+//!   multiplication is symmetric, so only the source of the multiplier limbs changes. For
+//!   `x, b < 4n` the result `(x b + m n) / R < 16n^2 / R + n` is below 2n (R > 16n, as for Fermat).
 
 use crate::kernel::{KernelConfig, SUBGROUP_HELPERS, Target};
 
@@ -39,6 +43,9 @@ pub(crate) enum Mode {
     Squarings,
     /// `params.y` base-2 Fermat ladder steps per dispatch (squaring, then conditional doubling).
     Fermat,
+    /// `params.y` Montgomery multiplications `x <- x * b * R^-1` per dispatch (`b` is binding 4,
+    /// read-only).
+    Mul,
 }
 
 /// Emits the complete unrolled WGSL source for `cfg` (`cfg.tpi` must be 4, 8, 16 or 32).
@@ -62,6 +69,11 @@ pub(crate) enum Mode {
 /// 3.23e9, still below 2^32). `p` and `p + N0 * m` are limb-0 values after one and two products and
 /// obey the same bound. The value stays below 2n because R > 4n (as in the rolled kernel), so the
 /// discarded carry out of the top lane's top limb is zero.
+///
+/// In multiply mode the multiplier limbs `b` are normalised (below 2^13) like `x`, so every
+/// accumulator bound above holds unchanged (the host packs `b` with `LimbScheme::pack`, which gives
+/// 13-bit limbs, and the kernel never changes `b`). The value bound uses R > 16n instead: for
+/// `x, b < 4n` the result is below `16n^2 / R + n < 2n`, so nothing leaves the top limb.
 ///
 /// The Montgomery factor is `m = ((p & MASK) * ninv) & MASK`: only the low 13 bits of `p * ninv`
 /// matter, and `(p & MASK) * ninv` is below 2^26 (both factors below 2^13), so it is exact and can
@@ -89,15 +101,17 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target, mode: Mode) -> String {
     g.line("fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) li: u32, @builtin(subgroup_invocation_id) sg_in: u32) {");
     g.depth += 1;
     prologue(&mut g);
-    load(&mut g, lpl);
+    load(&mut g, lpl, mode);
     hoists(&mut g);
+    // The multiplier limbs: `x` itself when squaring, the read-only `b` when multiplying.
+    let mult = if mode == Mode::Mul { "b" } else { "x" };
     g.line("for (var s = 0u; s < params.y; s++) {");
     g.depth += 1;
     squaring_start(&mut g, lpl);
     g.line("for (var owner = 0u; owner < TPI; owner++) {");
     g.depth += 1;
     for w in 0..lpl {
-        iteration(&mut g, lpl, w);
+        iteration(&mut g, lpl, w, mult);
         // LPL > PERIOD: a pass every PERIOD steps inside the body, plus an extra end-of-owner pass
         // after the last step when LPL % PERIOD != 0 (otherwise the first rule already covers it).
         if in_body && ((w + 1) % PERIOD == 0 || (w + 1 == lpl && !lpl.is_multiple_of(PERIOD))) {
@@ -186,12 +200,17 @@ fn header(
     g.line("");
     if mode == Mode::Fermat {
         g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch");
+    } else if mode == Mode::Mul {
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = multiplications");
     } else {
         g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
     }
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");
     g.line("@group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;");
     g.line("@group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;");
+    if mode == Mode::Mul {
+        g.line("@group(0) @binding(4) var<storage, read> b_limbs: array<u32>;   // right operand");
+    }
     if mode == Mode::Fermat {
         g.line("@group(0) @binding(4) var<storage, read> e_words: array<u32>;   // n - 1, words per instance = fp.z");
         g.line("@group(0) @binding(5) var<uniform> fp: vec4<u32>;               // x = first iteration, y = nbits, z = words per instance");
@@ -208,12 +227,17 @@ fn prologue(g: &mut Gen) {
     g.line("let off = ic * L + lane * LPL;");
 }
 
-fn load(g: &mut Gen, lpl: u32) {
+fn load(g: &mut Gen, lpl: u32, mode: Mode) {
     for c in 0..lpl {
         g.line(format!("var x{c} = x_limbs[off + {c}u];"));
     }
     for c in 0..lpl {
         g.line(format!("let n{c} = n_limbs[off + {c}u];"));
+    }
+    if mode == Mode::Mul {
+        for c in 0..lpl {
+            g.line(format!("let b{c} = b_limbs[off + {c}u];"));
+        }
     }
     for c in 0..lpl {
         g.line(format!("var t{c} = 0u;"));
@@ -236,12 +260,13 @@ fn squaring_start(g: &mut Gen, lpl: u32) {
     }
 }
 
-/// One multiply-accumulate step: the multiplier limb is `x{w}` of lane `owner`.
-fn iteration(g: &mut Gen, lpl: u32, w: u32) {
+/// One multiply-accumulate step: the multiplier limb is `{mult}{w}` of lane `owner` (`mult` is
+/// `x` when squaring, `b` when multiplying); the multiplicand is always `x`.
+fn iteration(g: &mut Gen, lpl: u32, w: u32, mult: &str) {
     g.line("{");
     g.depth += 1;
     g.line(format!(
-        "let bl = bcast(x{w}, owner, base) & {M24};    // next limb of the multiplier"
+        "let bl = bcast({mult}{w}, owner, base) & {M24};    // next limb of the multiplier"
     ));
     g.line("let T0 = bcast(t0, 0u, base);               // accumulator limb 0 of lane 0");
     g.line("let TN = down1(t0, lane);                   // next lane's accumulator limb 0 (0 for the last lane)");
