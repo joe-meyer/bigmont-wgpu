@@ -41,10 +41,13 @@ behaviour, fill in the "Tested on" section: which GPUs, drivers and backends you
 ran on, and which vendors you did not test. Say so if you can't cover one; other
 contributors can then pick it up. Please don't claim coverage you didn't run.
 
-CI enforces this for PRs that touch `crates/*/src`, Cargo manifests, or
-non-markdown files under `web/`. Docs-only and CI-only PRs don't need it. If a PR
-touches those paths but cannot change behaviour (a refactor, a doc comment),
-add the line `No hardware impact: <reason>` to the description instead.
+Keep every section of the PR template; CI checks that they are all there. In
+"Tested on", tick one box per vendor: "tested" (with the GPU model, driver and
+OS/backend), "not tested" or "n/a". CI requires at least one vendor "tested" for
+PRs that touch `crates/*/src`, Cargo manifests, or non-markdown files under
+`web/`. If testing truly cannot matter for such a PR (a refactor, a doc comment),
+tick "n/a" for every vendor instead: that passes, but CI flags it so a maintainer
+looks closer. Docs-only and CI-only PRs just tick "n/a".
 
 ## AI-assisted contributions
 

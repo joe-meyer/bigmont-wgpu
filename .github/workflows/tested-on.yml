@@ -1,13 +1,14 @@
 name: Tested-on check
 
-# Results vary by GPU vendor, so PRs that can change behaviour must say which
-# vendors they were (and were not) tested on. This only requires the "Tested on"
-# section when behaviour-affecting files change (engine/kernel/autotune source,
-# Cargo manifests, browser kernels); docs-only and CI-only PRs pass without it.
-# The rules live in .github/scripts/check_tested_on.py.
+# Every PR keeps the sections of the PR template, and says which vendors it was
+# (and was not) tested on. Results vary by GPU vendor, so a PR that touches
+# behaviour-affecting files (engine/kernel/autotune source, Cargo manifests,
+# browser kernels) needs at least one vendor "tested"; marking every vendor
+# "n/a" instead passes with a warning that asks a maintainer to look closer.
+# Docs-only and CI-only PRs just tick "n/a". The rules live in
+# .github/scripts/check_tested_on.py.
 #
-# The job always runs (and passes quickly when nothing is required), so it can
-# be made a required status check without blocking docs-only PRs.
+# The job always runs, so it can be made a required status check.
 
 on:
   pull_request:
