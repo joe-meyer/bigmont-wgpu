@@ -137,8 +137,7 @@ recorded next time.
 
 ## 5. What was not tested
 
-- NVIDIA, Intel and Apple GPUs; software rasterisers (llvmpipe and similar); browsers (WebGPU). The 13-bit multiply
-  kernel compiles for wasm32 but was not run in a browser here.
+- NVIDIA, Intel and Apple GPUs; software rasterisers (llvmpipe and similar); browsers other than the one in section 6.
 - The DX12 backend (no subgroups on this adapter).
 - Other AMD GPUs, other driver versions, other candidate sizes: the throughput cost was measured only at 2,029 bits on one
   adapter, with three runs per mode.
@@ -146,3 +145,27 @@ recorded next time.
 - Real hardware faults: the drill injected a deterministic bit flip through a test hook (since removed; the runner tests now simulate faults with mutated kernels), which exercises the detection logic
   but is not evidence about how often a real GPU would err.
 - Beacon's own canary files (not available here).
+
+## 6. Browser run (WebGPU)
+
+The checked runner (`Runner::enable_gec`, `Runner::fermat_checked`, built to wasm32 through `bigmont-wasm`'s new
+`fermat_checked_hex`) was run on `web/rust.html?gec=1` in the Claude desktop app's built-in browser (Chrome 156.0.8078.100,
+Windows 11, WebGPU backend "BrowserWebGpu" on the same Radeon RX 6700 XT, subgroup size 32..64, no 64-bit integers),
+13-bit limbs, TPI 8, workgroup 64, 24 candidates per size (random odd numbers, probable primes and the all-ones number),
+every verdict compared with a BigInt `2^(n-1) mod n == 1` oracle:
+
+| Bits | Mismatches | Alarms | Note |
+|---|---|---|---|
+| 20 | 0 | 0 | no full block: the whole run is the recomputed tail |
+| 41 | 0 | 0 | one block, no tail |
+| 42 | 0 | 0 | one block, one tail iteration |
+| 81 | 0 | 0 | two blocks, one tail iteration |
+| 255 | 0 | 0 | |
+| 1019 | 0 | 0 | |
+| 2029 | 0 | 0 | production size |
+
+The same page without `gec=1` also had no mismatches at 255, 1019 and 2029 bits. This shows the checked path (new multiply
+kernel, buffers and bind groups, adaptive submissions, async readbacks) works on a browser's WebGPU and never alarms on
+clean input. It does not show fault detection in a browser: the fault tests are native only (they build mutated kernel
+source), and no other browser, OS or GPU was run. `fermat.html` was not run: the generated kernels are unchanged by this
+branch (the squaring and Fermat sources are byte-identical to before).
