@@ -1,0 +1,8 @@
+# Allowed approvers for pull requests into main.
+#
+# Branch protection on main requires an approving review from a code owner
+# (require_code_owner_reviews). Only the users/teams listed here can satisfy
+# that requirement. To add or remove an approver, edit this file in a PR.
+#
+# Pattern    Owners
+*            @joe-meyer
