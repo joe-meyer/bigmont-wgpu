@@ -553,7 +553,10 @@ fn faults_still_alarm_with_split_blocks() {
 #[test]
 fn checking_needs_enable_gec() {
     let Some(gpu) = open() else { return };
-    let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb13, 300, 8, 64, Variant::Unrolled);
+    // Through `config`, so an adapter that cannot run the kernel skips rather than panics.
+    let Some(cfg) = config(&gpu, LimbScheme::Limb13, 300) else {
+        return;
+    };
     let mut r = Runner::new(&gpu, cfg, 300, 8).expect("runner");
     let err = r.fermat_checked(&gpu, &mixed(300, 2, 0, 1)).unwrap_err();
     assert!(err.contains("enable_gec"), "{err}");
