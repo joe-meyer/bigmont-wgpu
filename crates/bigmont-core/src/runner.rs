@@ -11,6 +11,12 @@
 //! the last full block (the tail) are run twice, on `x` and on the copy in `y_prev`, and the two
 //! results must agree mod n. A candidate failing either check gets [`Verdict::Alarm`].
 //!
+//! Every ladder-kernel submission of either path runs at most one segment, so the checked path
+//! splits its blocks, its tail and its check passes the same way (a block's boundary multiplies go
+//! into the submission of its last segment). The checked path keeps its adapted segment length
+//! across blocks, passes and chunks, so a device fast enough for a whole block per submission makes
+//! one submission per block.
+//!
 //! Every ladder dispatch gets `fp = [first iteration, bits, words, role]`. The generated kernels
 //! ignore the role (`fp.w`): 0 for the primary computation on `x`, 1 for the tail recomputation's
 //! copy, 2 for the check's own passes (`A^(2^GEC_BLOCK)` and `2^(sum V)`). It lets a test that
@@ -33,6 +39,8 @@ pub struct RunStats {
     pub host_prep_secs: f64,
     /// Candidates tested.
     pub tests: u64,
+    /// Submissions containing the ladder kernel (plain and checked runs).
+    pub dispatches: u64,
 }
 
 /// The smallest bit length a [`Runner`] accepts: 2, the length of n = 3, the smallest odd number
@@ -118,7 +126,8 @@ pub struct Runner {
     x_buf: wgpu::Buffer,
     e_buf: wgpu::Buffer,
     staging: wgpu::Buffer,
-    /// Iterations per dispatch; `None` adapts so one dispatch takes about `target_secs`.
+    /// Iterations per ladder submission; `None` adapts so one submission takes about
+    /// `target_secs`. Applies to plain and checked runs.
     pub segment_override: Option<u32>,
     /// Seconds one ladder dispatch should take when `segment_override` is `None`.
     pub target_secs: f64,
@@ -126,6 +135,26 @@ pub struct Runner {
     pub stats: RunStats,
     /// Device state for checked runs; `None` until [`Runner::enable_gec`].
     gec: Option<Gec>,
+    /// The checked path's adapted segment length, kept across blocks, passes and chunks.
+    checked_segment: u32,
+}
+
+/// One ladder pass of a segmented submission: the bind group, the `fp` uniform it reads and that
+/// uniform's `[bits, words, role]` (its `fp.x` is each segment's first iteration).
+struct LadderPass<'a> {
+    bg: &'a wgpu::BindGroup,
+    fp: &'a wgpu::Buffer,
+    fp_yzw: [u32; 3],
+}
+
+/// What [`Runner::ladder_segments`] did.
+struct Segmented {
+    /// Submit-to-completion wall time of its submissions.
+    secs: f64,
+    /// Its submissions.
+    dispatches: u64,
+    /// The adapted segment length to start the next range with.
+    seg: u32,
 }
 
 /// Host-side inputs for one candidate.
@@ -362,6 +391,7 @@ impl Runner {
             target_secs: 0.1,
             stats: RunStats::default(),
             gec: None,
+            checked_segment: 1,
         })
     }
 
@@ -464,7 +494,8 @@ impl Runner {
     }
 
     /// Ladder iterations `from..to` on the first `count` candidates of `x_buf`, as a sequence of
-    /// short dispatches whose length adapts so each takes about `target_secs`.
+    /// short dispatches whose length adapts so each takes about `target_secs`. Every call starts
+    /// with one iteration per dispatch: the first timing is cheap even on a CPU adapter.
     async fn ladder_range(
         &mut self,
         gpu: &Gpu,
@@ -472,44 +503,106 @@ impl Runner {
         from: u32,
         to: u32,
     ) -> Result<(), String> {
+        let pass = self.primary_pass();
+        let done = self
+            .ladder_segments(gpu, count, (from, to), &[pass], false, 1)
+            .await?;
+        self.record(&done);
+        Ok(())
+    }
+
+    /// The ladder pass over `x` with the real exponent (role [`ROLE_PRIMARY`]).
+    fn primary_pass(&self) -> LadderPass<'_> {
+        LadderPass {
+            bg: &self.bind_group,
+            fp: &self.fp,
+            fp_yzw: [self.bits, self.words, ROLE_PRIMARY],
+        }
+    }
+
+    /// Ladder iterations `from..to` of every pass in `passes` on the first `count` candidates, as a
+    /// sequence of submissions of at most one segment each; every submission runs all the passes on
+    /// the same segment with the same `params`. With `boundary`, the submission of the last segment
+    /// ends with `A <- A * y_prev`, `B <- B * x` and `y_prev <- x` (in that order: the multiplies use
+    /// the old `y_prev`, the copy comes last).
+    ///
+    /// The segment length is `segment_override` if set; otherwise it starts at `seg` and after each
+    /// submission moves toward `target_secs` from the measured time per iteration, at most doubling.
+    async fn ladder_segments(
+        &self,
+        gpu: &Gpu,
+        count: u32,
+        (from, to): (u32, u32),
+        passes: &[LadderPass<'_>],
+        boundary: bool,
+        seg: u32,
+    ) -> Result<Segmented, String> {
         let (device, queue) = (&gpu.device, &gpu.queue);
-        let bits = self.bits;
         let groups = count.div_ceil(self.cfg.instances_per_workgroup());
+        let gec = match boundary {
+            true => Some(self.gec.as_ref().ok_or(NO_GEC)?),
+            false => None,
+        };
+        let mut out = Segmented {
+            secs: 0.0,
+            dispatches: 0,
+            seg: seg.max(1),
+        };
+        let mut len = self.segment_override.unwrap_or(out.seg).max(1);
         let mut done = from;
-        // Start with one iteration per dispatch: the first timing is cheap even on a CPU adapter.
-        let mut seg = self.segment_override.unwrap_or(1).max(1);
         while done < to {
-            let this = seg.min(to - done);
+            let this = len.min(to - done);
             queue.write_buffer(
                 &self.params,
                 0,
                 bytemuck::cast_slice(&[count, this, 0u32, 0u32]),
             );
-            queue.write_buffer(
-                &self.fp,
-                0,
-                bytemuck::cast_slice(&[done, bits, self.words, ROLE_PRIMARY]),
-            );
             let mut enc = device.create_command_encoder(&Default::default());
-            {
+            for p in passes {
+                let [y, z, w] = p.fp_yzw;
+                queue.write_buffer(p.fp, 0, bytemuck::cast_slice(&[done, y, z, w]));
                 let mut pass = enc.begin_compute_pass(&Default::default());
                 pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.bind_group, &[]);
+                pass.set_bind_group(0, p.bg, &[]);
                 pass.dispatch_workgroups(groups, 1, 1);
+            }
+            if let Some(gec) = gec.filter(|_| done + this == to) {
+                for bg in [&gec.bg_mul_a, &gec.bg_mul_b] {
+                    let mut pass = enc.begin_compute_pass(&Default::default());
+                    pass.set_pipeline(&gec.mul_pipeline);
+                    pass.set_bind_group(0, bg, &[]);
+                    pass.dispatch_workgroups(groups, 1, 1);
+                }
+                let bytes = u64::from(count) * u64::from(self.cfg.limbs) * 4;
+                enc.copy_buffer_to_buffer(&self.x_buf, 0, &gec.y_buf, 0, bytes);
             }
             let t = Instant::now();
             queue.submit([enc.finish()]);
             gpu.wait_async().await?;
             let dt = t.elapsed().as_secs_f64();
-            self.stats.gpu_secs += dt;
+            out.secs += dt;
+            out.dispatches += 1;
             done += this;
             if self.segment_override.is_none() {
                 let per_iter = dt / f64::from(this);
                 // Grow by at most 2x per dispatch so one slow measurement cannot overshoot far.
-                seg = ((self.target_secs / per_iter) as u32).clamp(1, seg.saturating_mul(2).max(2));
+                len = ((self.target_secs / per_iter) as u32).clamp(1, len.saturating_mul(2).max(2));
+                out.seg = len;
             }
         }
-        Ok(())
+        Ok(out)
+    }
+
+    /// Adds a [`Runner::ladder_segments`] result to the stats.
+    fn record(&mut self, done: &Segmented) {
+        self.stats.gpu_secs += done.secs;
+        self.stats.dispatches += done.dispatches;
+    }
+
+    /// [`Runner::record`] for the checked path, which also keeps the adapted segment length.
+    fn record_checked(&mut self, done: &Segmented) {
+        self.record(done);
+        self.checked_segment = done.seg;
     }
 
     /// Reads back the ladder state of the first `count` candidates (`count * limbs` words) and
@@ -788,29 +881,18 @@ impl Runner {
         // 4. The span check: A^(2^GEC_BLOCK) * 2^(sum V) == B (mod n).
         let mut alarm = vec![false; ns.len()];
         if nb > 0 {
-            let gec = self.gec.as_ref().ok_or(NO_GEC)?;
             // a. A <- A^(2^GEC_BLOCK): exponent bits 40..1 of the all-zero `zero_e`, so no doubling.
-            let mut dt = self
-                .ladder_pass(
-                    gpu,
-                    &gec.bg_lad_a,
-                    [count, GEC_BLOCK, 0, 0],
-                    [0, GEC_BLOCK + 2, 2, ROLE_CHECK],
-                )
+            self.check_pass(gpu, count, |g| &g.bg_lad_a, GEC_BLOCK, GEC_BLOCK + 2)
                 .await?;
             // b. y_prev <- (2^(sum V))~: from 1~, read the bits L-1..0 of `sumv`, where
             // L = 40 + bitlen(nb) bounds the bit length of sum V < nb * 2^40 (and is at most 64).
+            let gec = self.gec.as_ref().ok_or(NO_GEC)?;
             gpu.queue
                 .write_buffer(&gec.y_buf, 0, bytemuck::cast_slice(&one_all));
             let l = GEC_BLOCK + (32 - nb.leading_zeros());
-            dt += self
-                .ladder_pass(
-                    gpu,
-                    &gec.bg_lad_y,
-                    [count, l, 0, 0],
-                    [0, l + 1, 2, ROLE_CHECK],
-                )
+            self.check_pass(gpu, count, |g| &g.bg_lad_y, l, l + 1)
                 .await?;
+            let gec = self.gec.as_ref().ok_or(NO_GEC)?;
             // c. A <- A * 2^(sum V).
             let groups = count.div_ceil(self.cfg.instances_per_workgroup());
             let mut enc = gpu.device.create_command_encoder(&Default::default());
@@ -823,7 +905,7 @@ impl Runner {
             let t = Instant::now();
             gpu.queue.submit([enc.finish()]);
             gpu.wait_async().await?;
-            dt += t.elapsed().as_secs_f64();
+            let dt = t.elapsed().as_secs_f64();
             // d. Read A and B back and compare them (both are in [0, 2n)).
             let mut enc = gpu.device.create_command_encoder(&Default::default());
             enc.copy_buffer_to_buffer(&gec.a_buf, 0, &gec.staging2, 0, bytes);
@@ -865,42 +947,20 @@ impl Runner {
     }
 
     /// The [`GEC_BLOCK`] ladder iterations of the block starting at iteration `first` on `x`, then
-    /// in the same submission `A <- A * y_prev`, `B <- B * x` and `y_prev <- x` (in that order: the
-    /// multiplies use the old `y_prev`, the copy comes last).
+    /// (in the submission of the block's last segment) `A <- A * y_prev`, `B <- B * x` and
+    /// `y_prev <- x`.
     async fn block_step(&mut self, gpu: &Gpu, count: u32, first: u32) -> Result<(), String> {
-        let gec = self.gec.as_ref().ok_or(NO_GEC)?;
-        let (device, queue) = (&gpu.device, &gpu.queue);
-        let groups = count.div_ceil(self.cfg.instances_per_workgroup());
-        self.write_ladder_params(
-            gpu,
-            [count, GEC_BLOCK, 0, 0],
-            [first, self.bits, self.words, ROLE_PRIMARY],
-        );
-        let mut enc = device.create_command_encoder(&Default::default());
-        {
-            let mut pass = enc.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.bind_group, &[]);
-            pass.dispatch_workgroups(groups, 1, 1);
-        }
-        for bg in [&gec.bg_mul_a, &gec.bg_mul_b] {
-            let mut pass = enc.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&gec.mul_pipeline);
-            pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(groups, 1, 1);
-        }
-        let bytes = u64::from(count) * u64::from(self.cfg.limbs) * 4;
-        enc.copy_buffer_to_buffer(&self.x_buf, 0, &gec.y_buf, 0, bytes);
-        let t = Instant::now();
-        queue.submit([enc.finish()]);
-        gpu.wait_async().await?;
-        self.stats.gpu_secs += t.elapsed().as_secs_f64();
+        let pass = self.primary_pass();
+        let range = (first, first + GEC_BLOCK);
+        let done = self
+            .ladder_segments(gpu, count, range, &[pass], true, self.checked_segment)
+            .await?;
+        self.record_checked(&done);
         Ok(())
     }
 
     /// `iters` tail iterations from iteration `first` on both `x` (role [`ROLE_PRIMARY`]) and its
-    /// copy in `y_prev` (role [`ROLE_TAIL_COPY`]), in one submission (at most `GEC_BLOCK - 1`
-    /// iterations, short enough to need no segmenting).
+    /// copy in `y_prev` (role [`ROLE_TAIL_COPY`]); each segment's submission runs both.
     async fn tail_step(
         &mut self,
         gpu: &Gpu,
@@ -909,62 +969,42 @@ impl Runner {
         iters: u32,
     ) -> Result<(), String> {
         let gec = self.gec.as_ref().ok_or(NO_GEC)?;
-        let (device, queue) = (&gpu.device, &gpu.queue);
-        let groups = count.div_ceil(self.cfg.instances_per_workgroup());
-        self.write_ladder_params(
-            gpu,
-            [count, iters, 0, 0],
-            [first, self.bits, self.words, ROLE_PRIMARY],
-        );
-        queue.write_buffer(
-            &gec.fp_tail,
-            0,
-            bytemuck::cast_slice(&[first, self.bits, self.words, ROLE_TAIL_COPY]),
-        );
-        let mut enc = device.create_command_encoder(&Default::default());
-        for bg in [&self.bind_group, &gec.bg_lad_tail] {
-            let mut pass = enc.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(groups, 1, 1);
-        }
-        let t = Instant::now();
-        queue.submit([enc.finish()]);
-        gpu.wait_async().await?;
-        self.stats.gpu_secs += t.elapsed().as_secs_f64();
+        let copy = LadderPass {
+            bg: &gec.bg_lad_tail,
+            fp: &gec.fp_tail,
+            fp_yzw: [self.bits, self.words, ROLE_TAIL_COPY],
+        };
+        let passes = [self.primary_pass(), copy];
+        let range = (first, first + iters);
+        let done = self
+            .ladder_segments(gpu, count, range, &passes, false, self.checked_segment)
+            .await?;
+        self.record_checked(&done);
         Ok(())
     }
 
-    /// Writes the ladder kernel's `params` and `fp` uniforms.
-    fn write_ladder_params(&self, gpu: &Gpu, params: [u32; 4], fp: [u32; 4]) {
-        gpu.queue
-            .write_buffer(&self.params, 0, bytemuck::cast_slice(&params));
-        gpu.queue
-            .write_buffer(&self.fp, 0, bytemuck::cast_slice(&fp));
-    }
-
-    /// One ladder dispatch with explicit `params`/`fp` over the bind group `bg`, submitted and
-    /// waited for; returns its wall time in seconds.
-    async fn ladder_pass(
-        &self,
+    /// `iters` iterations from 0 of one of the span check's passes over `bg` (role
+    /// [`ROLE_CHECK`]), as if on a `bits`-bit exponent of two words: it reads exponent bits
+    /// `bits - 2` down to `bits - 1 - iters`.
+    async fn check_pass(
+        &mut self,
         gpu: &Gpu,
-        bg: &wgpu::BindGroup,
-        params: [u32; 4],
-        fp: [u32; 4],
-    ) -> Result<f64, String> {
-        let groups = params[0].div_ceil(self.cfg.instances_per_workgroup());
-        self.write_ladder_params(gpu, params, fp);
-        let mut enc = gpu.device.create_command_encoder(&Default::default());
-        {
-            let mut pass = enc.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups(groups, 1, 1);
-        }
-        let t = Instant::now();
-        gpu.queue.submit([enc.finish()]);
-        gpu.wait_async().await?;
-        Ok(t.elapsed().as_secs_f64())
+        count: u32,
+        bg: fn(&Gec) -> &wgpu::BindGroup,
+        iters: u32,
+        bits: u32,
+    ) -> Result<(), String> {
+        let gec = self.gec.as_ref().ok_or(NO_GEC)?;
+        let pass = LadderPass {
+            bg: bg(gec),
+            fp: &self.fp,
+            fp_yzw: [bits, 2, ROLE_CHECK],
+        };
+        let done = self
+            .ladder_segments(gpu, count, (0, iters), &[pass], false, self.checked_segment)
+            .await?;
+        self.record_checked(&done);
+        Ok(())
     }
 }
 

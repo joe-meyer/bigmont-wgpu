@@ -121,6 +121,15 @@ Follow-up options (not implemented here):
    preparation so that it is not done twice, and fold the final check's readback into the verdict readback.
 4. Measure where "other" goes (timestamp queries or per-step host timers) before choosing between 1 to 3.
 
+Change after these measurements (not re-measured): the checked path used to submit each 40-iteration block, the tail and
+each check pass whole, whatever the device speed. Its submissions are now bounded by the same adaptive segment length as
+the plain path (`Runner::segment_override`, else grown toward `target_secs`, at most doubling per submission), kept across
+blocks, passes and chunks; a block's boundary multiplies go into the submission of its last segment. On a device that
+runs a block inside the target (the adapter above, at the default 0.1 s) every block after the first few iterations of
+the first chunk is still one submission, so the numbers above should hold, but they were not re-run.
+`RunStats::dispatches` now counts ladder-kernel submissions, so the submission count asked for in option 4 can be
+recorded next time.
+
 ## 5. What was not tested
 
 - NVIDIA, Intel and Apple GPUs; software rasterisers (llvmpipe and similar); browsers (WebGPU). The 13-bit multiply

@@ -447,6 +447,109 @@ fn a_fault_that_never_fires_leaves_the_run_clean() {
     }
 }
 
+/// Ladder submissions of one checked 300-bit chunk when every submission runs at most `seg`
+/// iterations: each block, the tail (both passes in each submission), the `A^(2^40)` pass and the
+/// `2^(sum V)` pass over `40 + bitlen(NB)` bits, each split into `ceil(len / seg)` submissions.
+fn checked_dispatches(seg: u32) -> u64 {
+    let tail = BITS - 1 - TAIL_START;
+    let l = GEC_BLOCK + (32 - NB.leading_zeros());
+    u64::from(
+        NB * GEC_BLOCK.div_ceil(seg)
+            + tail.div_ceil(seg)
+            + GEC_BLOCK.div_ceil(seg)
+            + l.div_ceil(seg),
+    )
+}
+
+#[test]
+fn checked_submissions_are_split_like_the_plain_path() {
+    let Some(gpu) = open() else { return };
+    let ns = twelve();
+    for scheme in LimbScheme::ALL.iter().copied() {
+        let mut counts = Vec::new();
+        for seg in [3u32, 1000] {
+            let Some(mut r) = runner(&gpu, scheme, BITS, 16) else {
+                return;
+            };
+            r.segment_override = Some(seg);
+            let got = r.fermat_checked(&gpu, &ns).expect("fermat_checked");
+            assert_eq!(got, truth(&ns), "{scheme:?}, segments of {seg}");
+            assert_eq!(
+                r.stats.dispatches,
+                checked_dispatches(seg),
+                "{scheme:?}, segments of {seg}"
+            );
+            counts.push(r.stats.dispatches);
+        }
+        assert!(counts[0] >= u64::from(NB * 14), "{scheme:?}: {counts:?}");
+        assert!(counts[0] > counts[1], "{scheme:?}: {counts:?}");
+        // A whole block in one submission is one submission per block, the tail and each check pass.
+        assert_eq!(counts[1], u64::from(NB + 3), "{scheme:?}");
+    }
+}
+
+/// Without an override the segment length adapts and is kept across blocks, passes and chunks: with
+/// a target no submission reaches, it doubles from 1 (31 iterations in five submissions, then the
+/// rest of block 0) and a later chunk runs every block, the tail and each check pass in one.
+#[test]
+fn the_adaptive_segment_length_carries_across_blocks_and_chunks() {
+    let Some(gpu) = open() else { return };
+    let ns = twelve();
+    for scheme in LimbScheme::ALL.iter().copied() {
+        let Some(mut r) = runner(&gpu, scheme, BITS, 6) else {
+            return;
+        };
+        r.target_secs = 1e9;
+        let got = r.fermat_checked(&gpu, &ns[..6]).expect("first chunk");
+        assert_eq!(got, truth(&ns[..6]), "{scheme:?}");
+        // Block 0: 1 + 2 + 4 + 8 + 16, then the remaining 9; block 1 onwards: one each.
+        assert_eq!(r.stats.dispatches, u64::from(6 + NB - 1 + 3), "{scheme:?}");
+        let before = r.stats.dispatches;
+        let got = r.fermat_checked(&gpu, &ns[6..]).expect("second chunk");
+        assert_eq!(got, truth(&ns[6..]), "{scheme:?}");
+        assert_eq!(r.stats.dispatches - before, u64::from(NB + 3), "{scheme:?}");
+    }
+}
+
+/// Faults keyed to a block start, mid-block and to the tail still alarm only their candidate when
+/// every block is split into segments of 7.
+#[test]
+fn faults_still_alarm_with_split_blocks() {
+    let Some(gpu) = open() else { return };
+    let ns = twelve();
+    for scheme in LimbScheme::ALL.iter().copied() {
+        // (slot, iteration, a read flip at a dispatch start rather than a register flip, what)
+        let cases = [
+            (3u32, 3 * GEC_BLOCK + 19, false, "register flip mid-block"),
+            (5, 3 * GEC_BLOCK, true, "read flip at a block start"),
+            (6, TAIL_START + 9, false, "register flip in the tail"),
+        ];
+        for (inst, iteration, read, what) in cases {
+            let fermat = |s: &str| match read {
+                true => read_flip(s, scheme, inst, iteration),
+                false => register_flip(s, scheme, inst, iteration),
+            };
+            let Some(mut r) = faulty(&gpu, scheme, BITS, 16, fermat, same) else {
+                return;
+            };
+            r.segment_override = Some(7);
+            let got = r.fermat_checked(&gpu, &ns).expect("fermat_checked");
+            let want: Vec<Verdict> = truth(&ns)
+                .into_iter()
+                .enumerate()
+                .map(|(i, v)| {
+                    if i == inst as usize {
+                        Verdict::Alarm
+                    } else {
+                        v
+                    }
+                })
+                .collect();
+            assert_eq!(got, want, "{scheme:?}, segments of 7: {what}");
+        }
+    }
+}
+
 #[test]
 fn checking_needs_enable_gec() {
     let Some(gpu) = open() else { return };
