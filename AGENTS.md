@@ -59,10 +59,12 @@ device. Always run the suite with `--test-threads=1`.
   right on one device may be wrong or slower on another. Don't assume your
   hardware is representative.
 - **PRs that can change behaviour state what they were tested on and what they
-  were not.** CI (`tested-on.yml`) requires this when a PR touches
-  `crates/*/src`, Cargo manifests or non-markdown files in `web/`; docs-only and
-  CI-only PRs are exempt, and a PR in those paths that cannot change behaviour
-  can say `No hardware impact: <reason>` instead. List the
+  were not.** Every PR keeps all sections of the PR template (CI checks that they
+  are there) and ticks one box per vendor in "Tested on". CI (`tested-on.yml`)
+  requires at least one vendor "tested" when a PR touches `crates/*/src`, Cargo
+  manifests or non-markdown files in `web/`. If testing truly cannot matter for
+  such a PR, tick "n/a" for every vendor: it passes, but CI flags it for
+  maintainers to scrutinize. Docs-only and CI-only PRs just tick "n/a". List the
   GPUs/vendors, drivers and OS/backends you ran the tests (and benchmarks, if
   any) on, and say plainly which vendors (NVIDIA, AMD, Intel, Apple, software
   rasterisers, browsers) were *not* tested. This lets other contributors pick up
