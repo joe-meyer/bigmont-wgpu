@@ -419,7 +419,12 @@ fn moduli(w: usize, rng: &mut XorShift64) -> Vec<BigUint> {
 /// Operands below `n` that sit on limb boundaries or are all ones, plus random ones.
 fn operands(n: &BigUint, rng: &mut XorShift64) -> Vec<BigUint> {
     let w = n.to_u64_digits().len();
-    let mut v = vec![BigUint::ZERO, BigUint::one(), n - 1u32, n - 2u32 + (n & BigUint::one())];
+    let mut v = vec![
+        BigUint::ZERO,
+        BigUint::one(),
+        n - 1u32,
+        n - 2u32 + (n & BigUint::one()),
+    ];
     for k in [1usize, 63, 64, 65, 64 * w - 1, 64 * w] {
         let x = (BigUint::one() << k) - 1u32;
         v.push(x % n);
@@ -434,7 +439,10 @@ fn operands(n: &BigUint, rng: &mut XorShift64) -> Vec<BigUint> {
 /// `out` is the Montgomery product of `a` and `b`: below n and out * R = a * b (mod n).
 fn check_product(n: &BigUint, w: usize, a: &BigUint, b: &BigUint, out: &[u64], what: &str) {
     let o = to_big(out);
-    assert!(&o < n, "{what}: result not reduced (w={w}, n={n:x}, a={a:x}, b={b:x})");
+    assert!(
+        &o < n,
+        "{what}: result not reduced (w={w}, n={n:x}, a={a:x}, b={b:x})"
+    );
     assert_eq!(
         (&o << (64 * w)) % n,
         (a * b) % n,

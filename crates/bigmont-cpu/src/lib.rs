@@ -33,46 +33,114 @@ impl Mont {
         }
     }
 
-    /// Length of the scratch slice `t` that [`Mont::mul`] and [`Mont::sqr`] need (callers may pass a longer one).
+    /// Length of the scratch slice `t` that [`Mont::mul`] and [`Mont::sqr`] both accept: `w + 2`
+    /// limbs are enough for `mul`, `2 w` for `sqr`, so this is the larger of the two. A longer
+    /// slice is fine; only the first `scratch_len()` limbs are used.
     pub fn scratch_len(&self) -> usize {
-        self.w + 2
+        (2 * self.w).max(self.w + 2)
     }
 
-    /// out = a * b * R^-1 mod n for a, b < n. `t` is scratch of length w + 2.
+    /// out = a * b * R^-1 mod n for a, b < n. `t` is scratch of at least `w + 2` limbs.
+    ///
+    /// Operand scanning (CIOS). Every loop runs over sub-slices of one known length, so the
+    /// compiler can drop the per-limb bounds checks without any `unsafe`.
     pub fn mul(&self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]) {
         let w = self.w;
-        t.iter_mut().for_each(|v| *v = 0);
-        for &bi in &b[..w] {
-            let mut c: u128 = 0;
-            for j in 0..w {
-                let s = u128::from(t[j]) + u128::from(a[j]) * u128::from(bi) + c;
-                t[j] = s as u64;
-                c = s >> 64;
+        let (a, b, n, out) = (&a[..w], &b[..w], &self.n[..w], &mut out[..w]);
+        let t = &mut t[..w + 2];
+        t.fill(0);
+        for &bi in b {
+            let mut c = 0u64;
+            for (tj, &aj) in t[..w].iter_mut().zip(a) {
+                (*tj, c) = mac(aj, bi, *tj, c);
             }
-            let s = u128::from(t[w]) + c;
+            let s = u128::from(t[w]) + u128::from(c);
             t[w] = s as u64;
             t[w + 1] = (s >> 64) as u64;
             let m = t[0].wrapping_mul(self.ninv);
-            let s = u128::from(t[0]) + u128::from(m) * u128::from(self.n[0]);
-            let mut c = s >> 64;
+            let (_, mut c) = mac(m, n[0], t[0], 0);
             for j in 1..w {
-                let s = u128::from(t[j]) + u128::from(m) * u128::from(self.n[j]) + c;
-                t[j - 1] = s as u64;
-                c = s >> 64;
+                (t[j - 1], c) = mac(m, n[j], t[j], c);
             }
-            let s = u128::from(t[w]) + c;
+            let s = u128::from(t[w]) + u128::from(c);
             t[w - 1] = s as u64;
             t[w] = t[w + 1] + (s >> 64) as u64;
         }
         out.copy_from_slice(&t[..w]);
-        if t[w] != 0 || ge(out, &self.n) {
-            sub_in_place(out, &self.n);
+        if t[w] != 0 || ge(out, n) {
+            sub_in_place(out, n);
         }
     }
 
-    /// out = a * a * R^-1 mod n for a < n (see [`Mont::mul`]).
+    /// out = a * a * R^-1 mod n for a < n. `t` is scratch of at least `2 w` limbs (see
+    /// [`Mont::scratch_len`]); this is the operation the Fermat ladder spends nearly all its time in.
+    ///
+    /// A dedicated squaring followed by a word-by-word Montgomery reduction (SOS): the cross terms
+    /// a_i a_j (i < j) are computed once and doubled, then the diagonal a_i^2 is added, which is
+    /// about w^2 / 2 limb products against w^2 for `mul(a, a)`, and the reduction adds m_i n for
+    /// each low limb. Like [`Mont::mul`] it is safe code written so the bounds checks disappear.
     pub fn sqr(&self, a: &[u64], out: &mut [u64], t: &mut [u64]) {
-        self.mul(a, a, out, t)
+        let w = self.w;
+        assert!(
+            t.len() >= 2 * w,
+            "Mont::sqr needs {} limbs of scratch, got {}",
+            2 * w,
+            t.len()
+        );
+        let (a, n, out) = (&a[..w], &self.n[..w], &mut out[..w]);
+        let t = &mut t[..2 * w];
+        t.fill(0);
+        // Cross terms: row i adds a_i * a_j for j > i at limb i + j, and its carry lands at limb
+        // i + w, which no earlier row has touched. The sum is below B^(2w) / 2.
+        for (i, &ai) in a.iter().enumerate() {
+            let mut c = 0u64;
+            for (tj, &aj) in t[2 * i + 1..i + w].iter_mut().zip(&a[i + 1..]) {
+                (*tj, c) = mac(ai, aj, *tj, c);
+            }
+            t[i + w] = c;
+        }
+        // Double them; no bit leaves the top limb because the sum is below B^(2w) / 2.
+        let mut sh = 0u64;
+        for v in t.iter_mut() {
+            let next = *v >> 63;
+            *v = (*v << 1) | sh;
+            sh = next;
+        }
+        // Add the diagonal a_i^2 at limbs 2i and 2i + 1; the total is a^2 < B^(2w), so no carry
+        // leaves the top.
+        let mut carry = 0u64;
+        for (pair, &ai) in t.as_chunks_mut::<2>().0.iter_mut().zip(a) {
+            let sq = u128::from(ai) * u128::from(ai);
+            let s = u128::from(pair[0]) + u128::from(sq as u64) + u128::from(carry);
+            pair[0] = s as u64;
+            let s = u128::from(pair[1]) + (sq >> 64) + (s >> 64);
+            pair[1] = s as u64;
+            carry = (s >> 64) as u64;
+        }
+        // Reduce: row i adds m_i n (m_i = t_i * ninv) so that limb i becomes zero. Limb i is then
+        // dead, so the row's carry out (weight B^(i + w)) is parked there and added to the high
+        // half once at the end, which avoids propagating it through the rows.
+        for i in 0..w {
+            let m = t[i].wrapping_mul(self.ninv);
+            let mut c = 0u64;
+            for (tj, &nj) in t[i..i + w].iter_mut().zip(n) {
+                (*tj, c) = mac(m, nj, *tj, c);
+            }
+            t[i] = c;
+        }
+        // (a^2 + M n) / B^w < 2 n: the high half plus the parked carries, with at most one carry
+        // out, then at most one subtraction of n.
+        let (parked, high) = t.split_at(w);
+        let mut carry = false;
+        for ((o, &h), &p) in out.iter_mut().zip(high).zip(parked) {
+            let (s, c1) = h.overflowing_add(p);
+            let (s, c2) = s.overflowing_add(u64::from(carry));
+            *o = s;
+            carry = c1 | c2;
+        }
+        if carry || ge(out, n) {
+            sub_in_place(out, n);
+        }
     }
 
     /// x = 2x mod n for x < n.
@@ -87,6 +155,13 @@ impl Mont {
             sub_in_place(x, &self.n);
         }
     }
+}
+
+/// a * b + t + c as (low, high) limbs; it cannot overflow 128 bits: (2^64-1)^2 + 2 (2^64-1) = 2^128 - 1.
+#[inline(always)]
+fn mac(a: u64, b: u64, t: u64, c: u64) -> (u64, u64) {
+    let s = u128::from(a) * u128::from(b) + u128::from(t) + u128::from(c);
+    (s as u64, (s >> 64) as u64)
 }
 
 fn ge(a: &[u64], b: &[u64]) -> bool {
@@ -129,12 +204,13 @@ pub fn fermat_base2(n: &BigUint) -> bool {
     let w = n.to_u64_digits().len();
     let nl = to_limbs(n, w);
     let ctx = Mont::new(&nl);
+    let tlen = ctx.scratch_len();
     let r = (BigUint::one() << (64 * w)) % n; // Montgomery form of 1
     let one_m = to_limbs(&r, w);
     let mut x = to_limbs(&((&r << 1u32) % n), w); // Montgomery form of 2 (top exponent bit)
     let e = n - 1u32;
     let nbits = e.bits();
-    let mut t = vec![0u64; w + 2];
+    let mut t = vec![0u64; tlen];
     let mut y = vec![0u64; w];
     for i in (0..nbits - 1).rev() {
         ctx.sqr(&x, &mut y, &mut t);
@@ -179,7 +255,7 @@ pub enum Checked {
 
 /// The Montgomery arithmetic the checked ladder uses, so that tests can wrap [`Mont`] in an adapter
 /// (for example one that corrupts an output) without any fault code in the algorithm. Every operand
-/// and result is a fully reduced Montgomery value in `[0, n)`; `t` is scratch of length `w + 2`.
+/// and result is a fully reduced Montgomery value in `[0, n)`; `t` is scratch of [`Mont::scratch_len`] limbs.
 pub trait MontOps {
     /// out = a * b * R^-1 mod n.
     fn mul(&mut self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]);
@@ -248,7 +324,9 @@ pub fn fermat_base2_gec_with<M: MontOps>(n: &BigUint, wrap: impl FnOnce(Mont) ->
     }
     let w = n.to_u64_digits().len();
     let nl = to_limbs(n, w);
-    let mut ops = wrap(Mont::new(&nl));
+    let mont = Mont::new(&nl);
+    let tlen = mont.scratch_len();
+    let mut ops = wrap(mont);
     let r = (BigUint::one() << (64 * w)) % n; // Montgomery form of 1
     let one_m = to_limbs(&r, w);
     let two_m = to_limbs(&((&r << 1u32) % n), w); // Montgomery form of 2 (top exponent bit)
@@ -257,7 +335,7 @@ pub fn fermat_base2_gec_with<M: MontOps>(n: &BigUint, wrap: impl FnOnce(Mont) ->
     let iters = bits - 1;
     let blocks = gec_blocks(bits, GEC_BLOCK);
     let full = blocks * GEC_BLOCK;
-    let mut t = vec![0u64; w + 2];
+    let mut t = vec![0u64; tlen];
     let mut y = vec![0u64; w];
     let mut x = two_m.clone();
     let mut y_prev = two_m;
