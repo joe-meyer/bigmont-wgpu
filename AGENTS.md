@@ -21,7 +21,7 @@ It is a Cargo workspace (edition 2024):
 | `crates/bigmont-cli` | the `bigmont` binary: file formats, autotuner and cache, engine |
 | `crates/bigmont-wasm` | browser (wasm32) entry points over `bigmont-core`; empty on native targets |
 | `web/` | browser test pages and generated kernels |
-| `docs/superpowers/` | design, plans, measurements and notes |
+| `docs/` | design document and measurements (`docs/results/`) |
 
 ## Commands
 

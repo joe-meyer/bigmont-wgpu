@@ -1,6 +1,6 @@
 # Device losses, adapter loss and exit crashes: investigation (2026-11-24)
 
-Three different failures turned up while validating Phase 1. They looked like one problem ("lots of device losses") and are not. This document says what is established, what is not, and what changed in the code. Raw logs are in `docs/superpowers/results/phase1/devloss/`. Single machines, small samples, p-values rough (Fisher exact, no multiple-comparison correction).
+Three different failures turned up while validating Phase 1. They looked like one problem ("lots of device losses") and are not. This document says what is established, what is not, and what changed in the code. Raw logs are in `docs/results/phase1/devloss/`. Single machines, small samples, p-values rough (Fisher exact, no multiple-comparison correction).
 
 ## Summary
 
@@ -74,6 +74,6 @@ So backends (GL or not), the TLS problem, the number of devices and the kernel a
 - The TLS fix is a Linux/glibc fix, verified on the laptop; the many-devices test also passes on the Windows desktop (where the limit does not apply).
 - All samples are single machines and small (60 to 150 processes); rates are indicative.
 
-## 6. Raw files (`docs/superpowers/results/phase1/devloss/`)
+## 6. Raw files (`docs/results/phase1/devloss/`)
 
 Desktop: `desktop-sizes-ab-allbackends-vs-vulkan.log`, `desktop-sizes-primary-backends.log`, `desktop-sizes-new-default.log`, `desktop-sizes-chain-loop.log`, `desktop-sizes-loop-part1.log`, `desktop-churn-new-vs-reuse.log`, `desktop-churn-threads-allbackends-vs-vulkan.log`. Laptop: `laptop-loop_chain.log` and `laptop-exps.log` (chain test binary loops), `laptop-churn.log`, `laptop-churn2.log` (old code, all backends), `laptop-churn3.log` (named adapter, TLS failures), `laptop-vkdbg.log` and `laptop-tls.log` (TLS evidence), `laptop-churn4.log`, `laptop-churn5.log` (fixed code), `laptop-xid-lines.txt` (kernel log). Device-loss handling (laptop): `handling-red.txt` and `handling-red-engine.txt` (the new tests on the stubs, failing), `handling-green.txt` (the same tests passing), `handling-poisoned-drop.txt` (drop time of a poisoned `Gpu`, leaked vs normal), `handling-full-suite.txt` (whole workspace on the 4070); after the review fixes, `handling-fix1-green.txt` (the device-loss, canary and unit tests) and `handling-fix1-full-suite.txt`. Machine-specific home paths in these logs are replaced with `~`.

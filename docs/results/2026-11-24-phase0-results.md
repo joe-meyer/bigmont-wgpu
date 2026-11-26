@@ -1,6 +1,6 @@
 # Phase 0 speed spike: results on the RX 6700 XT
 
-Date: 2026-11-24. Spec: `docs/superpowers/specs/2026-11-24-bigmont-wgpu-design.md`, section 4.
+Date: 2026-11-24. Spec: `docs/design.md`, section 4.
 Code under test: `crates/bigmont-core` (kernels, runner) and `crates/bigmont-core/examples/spike.rs` (sweep), at the commit that adds the `--max-count` flag.
 
 ## Summary
