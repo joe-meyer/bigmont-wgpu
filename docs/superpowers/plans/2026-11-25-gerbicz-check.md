@@ -895,6 +895,49 @@ git commit -m "docs: Gerbicz check gate and measured overhead"
 
 ---
 
+### Task 6: Simulate faults in the device, not in the runner (supersedes the host-side fault hook of Tasks 3 and 4)
+
+Design decision (user, after Task 5): the CLI `--inject` flag is gone (Task 4's follow-up commit); the runner must not carry fault-handling code either. Organic faults come from the device (a flipped read from memory, a wrong ALU or register value), so the tests simulate the device: a test builds the runner from a *mutated kernel source* and the real runner, kernels and host comparison run on top of it. The only production change is a general seam (a runner can be built from caller-supplied WGSL) plus one new check.
+
+**Files:**
+- Modify: `crates/bigmont-core/src/runner.rs` (seam; delete `Fault`, `Runner::fault`, `corrupt`, and the mid-block / mid-tail split logic; `fp.w` pass role; modulus readback compare), `crates/bigmont-core/src/lib.rs` if exports change.
+- Rewrite: `crates/bigmont-core/tests/gec.rs` (fault tests via mutated kernels); create `crates/bigmont-core/tests/common/faults.rs` (the WGSL editing helpers) and `mod faults;` from `tests/common/mod.rs`.
+- Docs: `README.md`, `CHANGELOG.md` (only if wording changes), `docs/superpowers/results/2026-11-25-gerbicz-check.md`.
+
+**Interfaces:**
+- Produces:
+  - `Runner::new_with_source_async(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32, fermat_wgsl: String) -> Result<Runner, String>` and a blocking native `Runner::new_with_source(..)`. `Runner::new_async` becomes a call of `new_with_source_async` with `cfg.try_fermat_wgsl_for(Target::host())?` (same validation, same errors). Doc: the source must follow the binding contract of `KernelConfig::try_fermat_wgsl_for` (bindings 0..5); this is a seam for experiments and for simulating faulty devices in tests.
+  - `Runner::enable_gec_with_source_async(&mut self, gpu: &Gpu, mul_wgsl: String)` and a native blocking wrapper; `enable_gec(_async)` calls it with `cfg.try_mul_wgsl_for(Target::host())?`. Same contract note (bindings of `try_mul_wgsl_for`).
+  - Pass role in `fp.w`: every ladder dispatch the runner makes writes `fp = [first, bits, words, role]` with role 0 for the primary computation (`x`, `A`, and `y` for 2^sumV) and role 1 for the tail recomputation copy (`bg_lad_tail`). The generated kernels ignore `fp.w` (their source must stay byte-identical; do not edit their comments). It exists so a simulated *transient* fault can hit one of the two redundant computations.
+  - End-of-chunk modulus check (GEC runs only): after the check steps, copy `n_buf` into a staging buffer (reuse the first half of `staging2` once the A/B compare is done, or add one if cleaner), read it back and compare per candidate with the host copy of the packed `n`; any difference raises `Alarm` for that candidate.
+- Removes: `Fault`, `Runner::fault`, `Runner::corrupt`, and every code path that existed only to inject (the 20-iteration block split, the tail split). The runner's block and tail steps become the plain versions.
+
+**Test helpers** (`tests/common/faults.rs`; all take the generated WGSL string and return a mutated one; use unique anchor strings and `assert_eq!(src.matches(anchor).count(), 1)` so a generator change fails loudly instead of silently not injecting):
+- `register_flip(src, scheme, inst, iteration)`: inserts before the unique line `let gi = fp.y - 2u - (fp.x + s);` the statement `if (inst == {inst}u && (fp.x + s) == {iteration}u && lane == 0u && fp.w == 0u) { x1 = x1 ^ 16u; }` for `Limb13` and `... { x0 = x0 ^ (1u << 17u); }` for `Limb32` (bit 17 of the integer: limb 1 bit 4 / limb 0 bit 17; the 13-bit form needs LPL >= 2, true for every size used). `iteration` is the 0-based ladder iteration whose squaring has just finished; a mid-block fault in block `b` is `b * 40 + 19`.
+- `read_flip(src, scheme, inst, first_iteration)`: a memory-style fault, a flipped bit arriving from a load at the start of the dispatch whose first iteration is `first_iteration` (a block start `b * 40`, or `nb * 40` for the tail): inserted after the unique line starting `let ninv = ninv_buf[ic]` the statement `if (inst == {inst}u && fp.x == {first_iteration}u && lane == 0u && fp.w == 0u) { <same flip as above> }`.
+- `mul_path_flip(src, scheme, inst)`: for the multiply kernel; after the same `let ninv` anchor insert `if (inst == {inst}u && lane == 0u) { <same flip applied to x1 / x0> }` (a faulty multiply unit: every multiply of that instance is hit; the multiply kernel has no iteration index).
+- `cell_flip_n(src, inst, first_iteration)`: persistent corruption of the modulus in memory: change the declaration `var<storage, read> n_limbs: array<u32>;` to `var<storage, read_write> n_limbs: array<u32>;` and, after the `let ninv` anchor, insert `if (inst == {inst}u && fp.x == {first_iteration}u && lane == 0u && fp.w == 0u) { n_limbs[off] = n0 ^ 2u; }` (flips bit 1 of limb 0, so `n` stays odd; later dispatches read the corrupted modulus).
+- `cell_flip_ninv(src, inst, first_iteration)` and `cell_flip_e(src, inst, first_iteration)`: the same for `ninv_buf` (`ninv_buf[ic] = ninv_buf[ic] ^ 4u;`, declaration changed to read_write) and for `e_words` (flip bit 0 of word 1 at index `ic * fp.z + 1u`, declaration changed to read_write).
+Check each helper against the actual generated source first (print it with `crates/bigmont-core/examples/dump_wgsl.rs` or a throwaway test) and correct the anchors to what is really there; the anchors above come from reading the generators and may need small corrections (variable names in the 32-bit kernel, `ninv` masking in the 13-bit one).
+
+**Tests** (`tests/gec.rs`, both limb schemes wherever the adapter supports them, 300-bit candidates unless noted: 299 iterations, `nb = 7`, tail 19; use `mixed()` so primes and composites occur; the helper builds the runner with `new_with_source_async` and `enable_gec_with_source_async`, mutating only the kernel(s) the case needs):
+1. Clean run equals the oracle and never alarms (keep the existing sizes 3, 41, 42, 81, 130, 300, 2029); checked and unchecked runs agree and chunking keeps the order (keep).
+2. Register fault mid-block: `register_flip(.., inst = i, iteration = b*40 + 19)` for (i, b) over several candidates and blocks including block 0, a middle block, the last block (b = nb - 1 = 6) and an index in a later chunk (cap 5): candidate i alarms, every other candidate equals the oracle; also when the target is a probable prime (it must alarm, not pass).
+3. Register fault in the tail (`iteration = nb*40 + 9`, role 0 only): alarms through the recomputation. Also a tiny candidate with no full block (bits 20, fault at iteration 5): alarms.
+4. Memory-style read faults: `read_flip` at block starts 0, 3, 6 and at the tail start: alarm.
+5. Multiply-path fault via `mul_path_flip`: alarm.
+6. Persistent modulus corruption `cell_flip_n` at a block start: alarms (this is the case that was a silent false composite before the new compare; run it first against the code without the compare to see it fail, RED, then add the compare). Also `cell_flip_ninv` and `cell_flip_e` at a block start: expected to alarm; if one of them does not, report it as a finding with the verdict observed instead of weakening the test.
+7. A fault condition that never fires (iteration beyond the run) leaves everything clean.
+8. `Runner::new_async` still returns the same errors for bad configs (existing tests keep passing).
+
+- [ ] **Step 1:** write the helpers and the tests that need only the existing runner API plus the seam (clean, register, read, mul-path, tail, never-fires); implement the seam and the `fp.w` pass role; make them pass; delete `Fault`/`corrupt`/splits and the old fault tests.
+- [ ] **Step 2:** write the modulus tests (`cell_flip_n`, `ninv`, `e`), watch `cell_flip_n` fail, add the end-of-chunk modulus compare, watch it pass.
+- [ ] **Step 3:** docs: README section "what the check does not cover": (a) a persistent fault that makes one hardware path return the wrong modulus on every read while the buffer itself is intact (every kernel then agrees on a wrong modulus, the identity holds, and the final host comparison gives a false composite with no alarm; only an independent computation, i.e. the CPU re-check of PRPs, `--verify-rate` samples, Beacon's canary and notary, can catch it); (b) CPU-answered buckets are unchecked; (c) how the detector is tested (mutated kernels simulating register, memory-read, multiply-unit and cell faults, plus the CPU model in the oracle). Results doc: the drill section already says the flag was removed; add that the same detection is now exercised by the mutated-kernel tests.
+- [ ] **Step 4:** re-measure plain vs `--gec` once the same way as Task 5 (three alternating pairs on the same file and cache, Vulkan, `--backend gpu`) because the modulus readback adds host work; update the README `Cost:` paragraph and the results doc numbers only if they changed materially, stating the new means; never invent numbers.
+- [ ] **Step 5:** `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`, `cargo test --workspace --no-fail-fast --locked -- --test-threads=1` (Vulkan), `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features --locked`, the wasm32 check. Commit in two or three logical commits (seam + fault tests; modulus check; docs and measurement).
+
+---
+
 ## PR
 
 Title `Opt-in Gerbicz error check and the --inject fault drill (closes #17, closes #12)`. Fill the "Tested on" section of the PR template from the results file (never claim a vendor that was not run; the six rows NVIDIA, AMD, Intel, Apple, Software, Browser each get a "tested" or "not tested" entry; the 13-bit multiply compiles for wasm32 but was not run in a browser unless it was). End the description with the Claude Code attribution line.
