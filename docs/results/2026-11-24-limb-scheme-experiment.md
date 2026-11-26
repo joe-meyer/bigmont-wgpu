@@ -2,7 +2,7 @@
 
 Date: 2026-11-24. Commit measured: `bbab9d1` (branch of `phase1`). Host: test-laptop (Ubuntu 26.04), RTX 4070
 Laptop (NVIDIA 580.178.04, Vulkan) and Radeon 780M (RADV PHOENIX, Vulkan). Raw outputs:
-`docs/superpowers/results/phase1/schemes/`.
+`docs/results/phase1/schemes/`.
 
 ## What was compared
 

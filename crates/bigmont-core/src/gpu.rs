@@ -275,7 +275,7 @@ pub fn parse_instance_backends(list: &str) -> Result<wgpu::Backends, String> {
 /// Vulkan made test binaries crash at exit inside the AMD driver on Windows (6 of 60 runs with all
 /// backends, 0 of 60 with Vulkan only and 0 of 60 with Vulkan + Dx12) and was associated with
 /// NVIDIA Xid 32 device losses on Linux (8 of 160 runs with all backends, 1 of 160 with Vulkan
-/// only). See docs/superpowers/results/2026-11-24-device-loss-investigation.md.
+/// only). See docs/results/2026-11-24-device-loss-investigation.md.
 pub fn instance_backends() -> wgpu::Backends {
     match std::env::var("BIGMONT_INSTANCE_BACKENDS") {
         Ok(list) if !list.trim().is_empty() => parse_instance_backends(&list).unwrap_or_else(|e| {
@@ -303,7 +303,7 @@ fn make_instance() -> wgpu::Instance {
 /// name filter, silently picks another one). Verified on the RTX 4070 laptop: 10 cycles succeed and
 /// the 11th fails; with `GLIBC_TUNABLES=glibc.rtld.optional_static_tls=65536` 40 of 40 succeed.
 /// Sharing one Instance loads the driver once. See
-/// docs/superpowers/results/2026-11-24-device-loss-investigation.md.
+/// docs/results/2026-11-24-device-loss-investigation.md.
 fn shared_instance() -> wgpu::Instance {
     static INSTANCE: OnceLock<wgpu::Instance> = OnceLock::new();
     INSTANCE.get_or_init(make_instance).clone()
