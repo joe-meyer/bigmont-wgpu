@@ -10,6 +10,12 @@
 //! and after the last block `A^(2^GEC_BLOCK) * 2^(sum V)` must equal `B` mod n. The iterations after
 //! the last full block (the tail) are run twice, on `x` and on the copy in `y_prev`, and the two
 //! results must agree mod n. A candidate failing either check gets [`Verdict::Alarm`].
+//!
+//! Every ladder dispatch gets `fp = [first iteration, bits, words, role]`. The generated kernels
+//! ignore the role (`fp.w`): 0 for the primary computation on `x`, 1 for the tail recomputation's
+//! copy, 2 for the check's own passes (`A^(2^GEC_BLOCK)` and `2^(sum V)`). It lets a test that
+//! builds the runner from a mutated kernel ([`Runner::new_with_source`]) simulate a transient fault
+//! in exactly one of these computations.
 
 use crate::gpu::{Gpu, guarded};
 use crate::kernel::{KernelConfig, Target, Variant};
@@ -61,21 +67,12 @@ impl Verdict {
     }
 }
 
-/// Test hook: a single-bit fault injected into the next [`Runner::fermat_checked`] call.
-///
-/// Candidate `index` (into that call's `ns`) has bit 17 of its ladder state flipped after 20
-/// iterations of Gerbicz block `block` (0-based). `block == gec_blocks(bits, GEC_BLOCK)` targets the
-/// tail: the flip happens after `tail / 2` of its iterations (nothing is flipped when the tail has
-/// fewer than 2). A larger block number flips nothing. The copy the tail is recomputed on is never
-/// corrupted.
-#[doc(hidden)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Fault {
-    /// Index of the candidate in the `ns` of the next checked call.
-    pub index: usize,
-    /// The 0-based block (or the tail, see above) the flip lands in.
-    pub block: u32,
-}
+/// `fp.w` of the primary computation's ladder dispatches.
+const ROLE_PRIMARY: u32 = 0;
+/// `fp.w` of the tail recomputation's copy.
+const ROLE_TAIL_COPY: u32 = 1;
+/// `fp.w` of the span check's passes over `A` and `y_prev`.
+const ROLE_CHECK: u32 = 2;
 
 /// The extra device state for checked runs ([`Runner::enable_gec`]).
 struct Gec {
@@ -90,6 +87,8 @@ struct Gec {
     y_buf: wgpu::Buffer,
     /// `[lo, hi]` of `sum V` per candidate.
     sumv: wgpu::Buffer,
+    /// `fp` of the tail recomputation's copy (role [`ROLE_TAIL_COPY`]).
+    fp_tail: wgpu::Buffer,
     /// Readback for `A` and `B` (or the tail copy).
     staging2: wgpu::Buffer,
     /// Multiply `A <- A * y_prev`.
@@ -127,9 +126,6 @@ pub struct Runner {
     pub stats: RunStats,
     /// Device state for checked runs; `None` until [`Runner::enable_gec`].
     gec: Option<Gec>,
-    /// Test hook: a fault for the next [`Runner::fermat_checked`] call, cleared by that call.
-    #[doc(hidden)]
-    pub fault: Option<Fault>,
 }
 
 /// Host-side inputs for one candidate.
@@ -158,6 +154,53 @@ impl Runner {
         bits: u32,
         capacity: u32,
     ) -> Result<Runner, String> {
+        // Checked before the source is generated, so a bad configuration gets the runner's error.
+        Self::check_new(gpu, cfg, bits, capacity)?;
+        let source = cfg
+            .try_fermat_wgsl_for(Target::host())
+            .map_err(|e| gpu.explain(e))?;
+        Self::new_with_source_async(gpu, cfg, bits, capacity, source).await
+    }
+
+    /// [`Runner::new`] with a caller-supplied Fermat ladder source instead of the generated one.
+    ///
+    /// `fermat_wgsl` must follow the binding contract of [`KernelConfig::try_fermat_wgsl_for`]
+    /// for `cfg` (bindings 0 to 5, the same instance layout and `fp` meaning; `fp.w` carries the
+    /// pass role described in the module docs). This is a seam for experiments and for simulating
+    /// faulty devices in tests; production code uses [`Runner::new`].
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn new_with_source(
+        gpu: &Gpu,
+        cfg: KernelConfig,
+        bits: u32,
+        capacity: u32,
+        fermat_wgsl: String,
+    ) -> Result<Runner, String> {
+        pollster::block_on(Runner::new_with_source_async(
+            gpu,
+            cfg,
+            bits,
+            capacity,
+            fermat_wgsl,
+        ))
+    }
+
+    /// [`Runner::new_with_source`] as a future: the form a browser needs.
+    pub async fn new_with_source_async(
+        gpu: &Gpu,
+        cfg: KernelConfig,
+        bits: u32,
+        capacity: u32,
+        fermat_wgsl: String,
+    ) -> Result<Runner, String> {
+        Self::check_new(gpu, cfg, bits, capacity)?;
+        Self::build(gpu, cfg, bits, capacity, fermat_wgsl)
+            .await
+            .map_err(|e| gpu.explain(e))
+    }
+
+    /// The configuration, size and device checks of [`Runner::new_async`].
+    fn check_new(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<(), String> {
         cfg.validate()?;
         if cfg.variant != Variant::Unrolled {
             return Err("the Fermat runner needs the unrolled variant".into());
@@ -181,10 +224,7 @@ impl Runner {
         }
         cfg.check_caps(gpu.caps())?;
         gpu.check_subgroups(cfg.tpi)?;
-        gpu.check_health()?;
-        Self::build(gpu, cfg, bits, capacity)
-            .await
-            .map_err(|e| gpu.explain(e))
+        gpu.check_health()
     }
 
     async fn build(
@@ -192,9 +232,8 @@ impl Runner {
         cfg: KernelConfig,
         bits: u32,
         capacity: u32,
+        source: String,
     ) -> Result<Runner, String> {
-        // Generate the source first: a configuration with no Fermat source is an `Err`, never a panic.
-        let source = cfg.try_fermat_wgsl_for(Target::host())?;
         let words = bits.div_ceil(32);
         let limits = gpu.device.limits();
         let max_groups = u64::from(limits.max_compute_workgroups_per_dimension.min(65535));
@@ -323,7 +362,6 @@ impl Runner {
             target_secs: 0.1,
             stats: RunStats::default(),
             gec: None,
-            fault: None,
         })
     }
 
@@ -450,7 +488,7 @@ impl Runner {
             queue.write_buffer(
                 &self.fp,
                 0,
-                bytemuck::cast_slice(&[done, bits, self.words, 0u32]),
+                bytemuck::cast_slice(&[done, bits, self.words, ROLE_PRIMARY]),
             );
             let mut enc = device.create_command_encoder(&Default::default());
             {
@@ -502,19 +540,47 @@ impl Runner {
         if self.gec.is_some() {
             return Ok(());
         }
+        let source = self
+            .cfg
+            .try_mul_wgsl_for(Target::host())
+            .map_err(|e| gpu.explain(e))?;
+        self.enable_gec_with_source_async(gpu, source).await
+    }
+
+    /// [`Runner::enable_gec`] with a caller-supplied multiply source instead of the generated one.
+    ///
+    /// `mul_wgsl` must follow the binding contract of [`KernelConfig::try_mul_wgsl_for`] for this
+    /// runner's configuration (bindings 0 to 4). This is a seam for experiments and for simulating
+    /// faulty devices in tests. Does nothing when the check state already exists.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn enable_gec_with_source(&mut self, gpu: &Gpu, mul_wgsl: String) -> Result<(), String> {
+        pollster::block_on(self.enable_gec_with_source_async(gpu, mul_wgsl))
+    }
+
+    /// [`Runner::enable_gec_with_source`] as a future: the form a browser needs.
+    pub async fn enable_gec_with_source_async(
+        &mut self,
+        gpu: &Gpu,
+        mul_wgsl: String,
+    ) -> Result<(), String> {
+        if self.gec.is_some() {
+            return Ok(());
+        }
         gpu.check_health()?;
-        let gec = self.build_gec(gpu).await.map_err(|e| gpu.explain(e))?;
+        let gec = self
+            .build_gec(gpu, mul_wgsl)
+            .await
+            .map_err(|e| gpu.explain(e))?;
         self.gec = Some(gec);
         Ok(())
     }
 
-    async fn build_gec(&self, gpu: &Gpu) -> Result<Gec, String> {
+    async fn build_gec(&self, gpu: &Gpu, source: String) -> Result<Gec, String> {
         let cfg = self.cfg;
-        let source = cfg.try_mul_wgsl_for(Target::host())?;
         let device = &gpu.device;
         let cap = u64::from(self.cap);
         let limb_bytes = cap * u64::from(cfg.limbs) * 4;
-        let (mul_params, a_buf, b_buf, y_buf, zero_e, sumv, staging2) =
+        let (mul_params, fp_tail, a_buf, b_buf, y_buf, zero_e, sumv, staging2) =
             guarded(device, "Gerbicz buffer creation", || {
                 let storage = |label: &str, size: u64, extra: wgpu::BufferUsages| {
                     device.create_buffer(&wgpu::BufferDescriptor {
@@ -524,12 +590,16 @@ impl Runner {
                         mapped_at_creation: false,
                     })
                 };
-                let mul_params = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("gec mul params"),
-                    size: 16,
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
+                let uniform = |label: &str| {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(label),
+                        size: 16,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    })
+                };
+                let mul_params = uniform("gec mul params");
+                let fp_tail = uniform("gec tail fp");
                 // A and B are read back for the comparison; x is copied into y_prev, and y_prev
                 // (the tail copy) is read back.
                 let a_buf = storage("gec A", limb_bytes, wgpu::BufferUsages::COPY_SRC);
@@ -538,13 +608,16 @@ impl Runner {
                 // Never written: wgpu zero-initialises buffers, so this is an all-zero exponent.
                 let zero_e = storage("gec zero exponent", cap * 8, wgpu::BufferUsages::empty());
                 let sumv = storage("gec sum V", cap * 8, wgpu::BufferUsages::empty());
+                // A and B side by side (or the tail copy alone).
                 let staging2 = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("gec staging"),
                     size: 2 * limb_bytes,
                     usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
-                (mul_params, a_buf, b_buf, y_buf, zero_e, sumv, staging2)
+                (
+                    mul_params, fp_tail, a_buf, b_buf, y_buf, zero_e, sumv, staging2,
+                )
             })
             .await?;
         let module = guarded(
@@ -595,13 +668,14 @@ impl Runner {
                     group(&mul, &[&mul_params, n, ninv, &b_buf, &self.x_buf]),
                     group(&lad, &[p, n, ninv, &a_buf, &zero_e, fp]),
                     group(&lad, &[p, n, ninv, &y_buf, &sumv, fp]),
-                    group(&lad, &[p, n, ninv, &y_buf, &self.e_buf, fp]),
+                    group(&lad, &[p, n, ninv, &y_buf, &self.e_buf, &fp_tail]),
                 )
             })
             .await?;
         Ok(Gec {
             mul_pipeline,
             mul_params,
+            fp_tail,
             a_buf,
             b_buf,
             y_buf,
@@ -617,8 +691,7 @@ impl Runner {
 
     /// Base-2 Fermat verdicts for `ns` with the Gerbicz check: like [`Runner::fermat`], but a
     /// candidate whose computation fails the check gets [`Verdict::Alarm`] instead of a verdict.
-    /// Needs [`Runner::enable_gec`] first (else `Err`). Consumes and clears [`Runner::fault`], also
-    /// when it returns an `Err`.
+    /// Needs [`Runner::enable_gec`] first (else `Err`).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn fermat_checked(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<Verdict>, String> {
         pollster::block_on(self.fermat_checked_async(gpu, ns))
@@ -630,8 +703,6 @@ impl Runner {
         gpu: &Gpu,
         ns: &[BigUint],
     ) -> Result<Vec<Verdict>, String> {
-        // Taken first, so the hook is cleared on every path, errors included.
-        let fault = self.fault.take();
         if self.gec.is_none() {
             return Err(NO_GEC.into());
         }
@@ -639,12 +710,8 @@ impl Runner {
         let cap = self.cap as usize;
         let mut out = Vec::with_capacity(ns.len());
         for (k, chunk) in ns.chunks(cap).enumerate() {
-            let base = k * cap;
-            let here = fault
-                .filter(|f| (base..base + chunk.len()).contains(&f.index))
-                .map(|f| (f.index - base, f.block));
             out.extend(
-                self.checked_chunk(gpu, chunk, base, here)
+                self.checked_chunk(gpu, chunk, k * cap)
                     .await
                     .map_err(|e| gpu.explain(e))?,
             );
@@ -652,13 +719,12 @@ impl Runner {
         Ok(out)
     }
 
-    /// One checked chunk; `fault` is `(index within the chunk, block)`.
+    /// One checked chunk; `base` is the index of `ns[0]` in the caller's slice (for errors).
     async fn checked_chunk(
         &mut self,
         gpu: &Gpu,
         ns: &[BigUint],
         base: usize,
-        fault: Option<(usize, u32)>,
     ) -> Result<Vec<Verdict>, String> {
         self.validate_chunk(ns, base)?;
         let count = ns.len() as u32;
@@ -701,34 +767,14 @@ impl Runner {
 
         // 2. The blocks: ladder, then (at the boundary) A <- A * y_prev, B <- B * x, y_prev <- x.
         for blk in 0..nb {
-            let first = blk * GEC_BLOCK;
-            match fault {
-                Some((idx, b)) if b == blk => {
-                    let half = GEC_BLOCK / 2;
-                    self.block_step(gpu, count, first, half, false).await?;
-                    self.corrupt(gpu, idx).await?;
-                    self.block_step(gpu, count, first + half, GEC_BLOCK - half, true)
-                        .await?;
-                }
-                _ => self.block_step(gpu, count, first, GEC_BLOCK, true).await?,
-            }
+            self.block_step(gpu, count, blk * GEC_BLOCK).await?;
         }
 
         // 3. The tail runs on `x` and on its copy in `y_prev` (both equal x0 when nb == 0); the two
         // must agree mod n.
         let mut tail_copy = Vec::new();
         if tail > 0 {
-            let first = nb * GEC_BLOCK;
-            match fault {
-                Some((idx, b)) if b == nb && tail >= 2 => {
-                    let half = tail / 2;
-                    self.tail_step(gpu, count, first, half).await?;
-                    self.corrupt(gpu, idx).await?;
-                    self.tail_step(gpu, count, first + half, tail - half)
-                        .await?;
-                }
-                _ => self.tail_step(gpu, count, first, tail).await?,
-            }
+            self.tail_step(gpu, count, nb * GEC_BLOCK, tail).await?;
             let gec = self.gec.as_ref().ok_or(NO_GEC)?;
             let mut enc = gpu.device.create_command_encoder(&Default::default());
             enc.copy_buffer_to_buffer(&gec.y_buf, 0, &gec.staging2, 0, bytes);
@@ -749,7 +795,7 @@ impl Runner {
                     gpu,
                     &gec.bg_lad_a,
                     [count, GEC_BLOCK, 0, 0],
-                    [0, GEC_BLOCK + 2, 2, 0],
+                    [0, GEC_BLOCK + 2, 2, ROLE_CHECK],
                 )
                 .await?;
             // b. y_prev <- (2^(sum V))~: from 1~, read the bits L-1..0 of `sumv`, where
@@ -758,7 +804,12 @@ impl Runner {
                 .write_buffer(&gec.y_buf, 0, bytemuck::cast_slice(&one_all));
             let l = GEC_BLOCK + (32 - nb.leading_zeros());
             dt += self
-                .ladder_pass(gpu, &gec.bg_lad_y, [count, l, 0, 0], [0, l + 1, 2, 0])
+                .ladder_pass(
+                    gpu,
+                    &gec.bg_lad_y,
+                    [count, l, 0, 0],
+                    [0, l + 1, 2, ROLE_CHECK],
+                )
                 .await?;
             // c. A <- A * 2^(sum V).
             let groups = count.div_ceil(self.cfg.instances_per_workgroup());
@@ -813,21 +864,18 @@ impl Runner {
         Ok(verdicts)
     }
 
-    /// `iters` ladder iterations from iteration `first` on `x` in one submission; at a block
-    /// `boundary` the same submission then does `A <- A * y_prev`, `B <- B * x` and `y_prev <- x`
-    /// (in that order: the multiplies use the old `y_prev`, the copy comes last).
-    async fn block_step(
-        &mut self,
-        gpu: &Gpu,
-        count: u32,
-        first: u32,
-        iters: u32,
-        boundary: bool,
-    ) -> Result<(), String> {
+    /// The [`GEC_BLOCK`] ladder iterations of the block starting at iteration `first` on `x`, then
+    /// in the same submission `A <- A * y_prev`, `B <- B * x` and `y_prev <- x` (in that order: the
+    /// multiplies use the old `y_prev`, the copy comes last).
+    async fn block_step(&mut self, gpu: &Gpu, count: u32, first: u32) -> Result<(), String> {
         let gec = self.gec.as_ref().ok_or(NO_GEC)?;
         let (device, queue) = (&gpu.device, &gpu.queue);
         let groups = count.div_ceil(self.cfg.instances_per_workgroup());
-        self.write_ladder_params(gpu, [count, iters, 0, 0], [first, self.bits, self.words, 0]);
+        self.write_ladder_params(
+            gpu,
+            [count, GEC_BLOCK, 0, 0],
+            [first, self.bits, self.words, ROLE_PRIMARY],
+        );
         let mut enc = device.create_command_encoder(&Default::default());
         {
             let mut pass = enc.begin_compute_pass(&Default::default());
@@ -835,16 +883,14 @@ impl Runner {
             pass.set_bind_group(0, &self.bind_group, &[]);
             pass.dispatch_workgroups(groups, 1, 1);
         }
-        if boundary {
-            for bg in [&gec.bg_mul_a, &gec.bg_mul_b] {
-                let mut pass = enc.begin_compute_pass(&Default::default());
-                pass.set_pipeline(&gec.mul_pipeline);
-                pass.set_bind_group(0, bg, &[]);
-                pass.dispatch_workgroups(groups, 1, 1);
-            }
-            let bytes = u64::from(count) * u64::from(self.cfg.limbs) * 4;
-            enc.copy_buffer_to_buffer(&self.x_buf, 0, &gec.y_buf, 0, bytes);
+        for bg in [&gec.bg_mul_a, &gec.bg_mul_b] {
+            let mut pass = enc.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&gec.mul_pipeline);
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups(groups, 1, 1);
         }
+        let bytes = u64::from(count) * u64::from(self.cfg.limbs) * 4;
+        enc.copy_buffer_to_buffer(&self.x_buf, 0, &gec.y_buf, 0, bytes);
         let t = Instant::now();
         queue.submit([enc.finish()]);
         gpu.wait_async().await?;
@@ -852,8 +898,9 @@ impl Runner {
         Ok(())
     }
 
-    /// `iters` tail iterations from iteration `first` on both `x` and its copy in `y_prev`, in one
-    /// submission (at most `GEC_BLOCK - 1` iterations, short enough to need no segmenting).
+    /// `iters` tail iterations from iteration `first` on both `x` (role [`ROLE_PRIMARY`]) and its
+    /// copy in `y_prev` (role [`ROLE_TAIL_COPY`]), in one submission (at most `GEC_BLOCK - 1`
+    /// iterations, short enough to need no segmenting).
     async fn tail_step(
         &mut self,
         gpu: &Gpu,
@@ -864,7 +911,16 @@ impl Runner {
         let gec = self.gec.as_ref().ok_or(NO_GEC)?;
         let (device, queue) = (&gpu.device, &gpu.queue);
         let groups = count.div_ceil(self.cfg.instances_per_workgroup());
-        self.write_ladder_params(gpu, [count, iters, 0, 0], [first, self.bits, self.words, 0]);
+        self.write_ladder_params(
+            gpu,
+            [count, iters, 0, 0],
+            [first, self.bits, self.words, ROLE_PRIMARY],
+        );
+        queue.write_buffer(
+            &gec.fp_tail,
+            0,
+            bytemuck::cast_slice(&[first, self.bits, self.words, ROLE_TAIL_COPY]),
+        );
         let mut enc = device.create_command_encoder(&Default::default());
         for bg in [&self.bind_group, &gec.bg_lad_tail] {
             let mut pass = enc.begin_compute_pass(&Default::default());
@@ -909,21 +965,6 @@ impl Runner {
         gpu.queue.submit([enc.finish()]);
         gpu.wait_async().await?;
         Ok(t.elapsed().as_secs_f64())
-    }
-
-    /// The fault hook: flips bit 17 of candidate `idx`'s ladder state in `x_buf`.
-    async fn corrupt(&self, gpu: &Gpu, idx: usize) -> Result<(), String> {
-        let limb_bits = self.cfg.scheme.limb_bits();
-        let limb = u64::from(17 / limb_bits);
-        let offset = (idx as u64 * u64::from(self.cfg.limbs) + limb) * 4;
-        let mut enc = gpu.device.create_command_encoder(&Default::default());
-        enc.copy_buffer_to_buffer(&self.x_buf, offset, &self.staging, 0, 4);
-        gpu.queue.submit([enc.finish()]);
-        let word = gpu.read_back_async(&self.staging, 4).await?;
-        let flipped = word[0] ^ (1u32 << (17 % limb_bits));
-        gpu.queue
-            .write_buffer(&self.x_buf, offset, bytemuck::bytes_of(&flipped));
-        Ok(())
     }
 }
 
