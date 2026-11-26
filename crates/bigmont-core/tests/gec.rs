@@ -243,6 +243,11 @@ fn a_register_fault_in_the_tail_is_caught_by_the_recomputation() {
             |i| i == 1,
             "register flip in a run with no full block",
         );
+        assert_eq!(
+            truth(&small)[7],
+            Verdict::Prp,
+            "slot 7 must be a probable prime"
+        );
         expect_alarms(
             &gpu,
             scheme,

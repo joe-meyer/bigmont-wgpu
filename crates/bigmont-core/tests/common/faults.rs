@@ -6,7 +6,7 @@
 //! `inst` is the instance slot within one dispatch (the candidate's index within its chunk), so a
 //! fault keyed to `inst` hits that slot in every chunk. `fp.x` is the dispatch's first ladder
 //! iteration and `fp.w` the runner's pass role (0 = the primary computation, 1 = the tail
-//! recomputation's copy). Every anchor must occur exactly once, so a generator change fails loudly
+//! recomputation's copy, 2 = the span check's own passes, which also run with `fp.x == 0`). Every anchor must occur exactly once, so a generator change fails loudly
 //! instead of silently not injecting.
 #![allow(dead_code)]
 use bigmont_core::scheme::LimbScheme;

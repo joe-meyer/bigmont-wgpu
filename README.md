@@ -119,6 +119,9 @@ What the check does not cover:
   confirm this). An unchecked run in the same situation gives a silent false composite. Only an independent computation
   catches errors outside the check: the CPU re-check of probable primes, `--verify-rate` samples, and Beacon's canary
   and notary.
+- The final read of the result when no tail recomputation runs (a candidate whose `bits - 1` is a multiple of 40, for
+  example 41 or 2,001 bits): the last block is covered by the identity, but the copy of the final value back to the host
+  is not compared with anything.
 - Buckets the CPU answers (see above). They are not checked.
 
 Cost: on 2,029-bit candidates the check lowered throughput by about 16 % (mean of three plain and three `--gec` runs of
