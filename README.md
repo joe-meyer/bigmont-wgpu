@@ -130,9 +130,9 @@ What the check does not cover:
   example 41 or 2,001 bits): the last block is covered by the identity, but the copy of the final value back to the host
   is not compared with anything.
 
-Cost: on 2,029-bit candidates the check lowered throughput by about 16 % (mean of three plain and three `--gec` runs of
-100,003 candidates, 33,957 against 28,519 tests/s, each pair between 13 % and 18 %), measured on one AMD Radeon RX 6700 XT
-(AMD proprietary driver 26.10.1, Vulkan, 13-bit limbs). The CUDA driver's kit notes report 514,850 to 581,795 tests/s with and without its check on an RTX 5090, about 11.5 %. Other GPUs
+Cost: on 2,029-bit candidates the check lowered throughput by about 15 % (mean of three plain and three `--gec` runs of
+100,003 candidates, 34,112 against 28,927 tests/s, each pair between 14.9 % and 15.4 %), measured on one AMD Radeon RX 6700 XT
+(AMD proprietary driver 26.10.1, Vulkan, 13-bit limbs, TPI 8). The CUDA driver's kit notes report 514,850 to 581,795 tests/s with and without its check on an RTX 5090, about 11.5 %. Other GPUs
 and drivers were not measured; see [the results](docs/superpowers/results/2026-11-25-gerbicz-check.md).
 
 ## Measurements

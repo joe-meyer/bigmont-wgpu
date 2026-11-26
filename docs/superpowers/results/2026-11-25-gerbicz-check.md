@@ -90,8 +90,25 @@ Three runs per mode on one machine: the `--gec` figure drifts down across the ru
 engine figure includes the CPU re-check of the probable primes (165 per run), which the plain and `--gec` paths share.
 
 For comparison, the CUDA driver's own figure: `KIT_v8.55_NOTE.md` of the Beacon repository reports 514,850 -> 581,795 tests/s
-on an RTX 5090, about 11.5 % cost. Our 16.0 % on an RX 6700 XT is in the same range but a different GPU, API, driver and
+on an RTX 5090, about 11.5 % cost. Our 16.0 % on an RX 6700 XT (15.2 % when re-measured on the final tree, below) is in the same range but a different GPU, API, driver and
 implementation, so it is a comparison and not a match, and this repository's design differs (see the profile).
+
+### Re-measured on the final tree
+
+The table above was taken before the checked path's submissions were made adaptive and before the CPU check and the
+kernel-source seam. The same measurement was repeated on the final tree (same 100,003 candidates, same warm cache, same
+adapter and driver, one warm-up run, nothing else running, plain and `--gec` alternating, plain first, release build):
+
+| Run | plain (tests/s) | `--gec` (tests/s) | cost of the pair |
+|---|---|---|---|
+| 1 | 34,116.3 | 28,870.2 | 15.4 % |
+| 2 | 34,056.4 | 28,992.5 | 14.9 % |
+| 3 | 34,162.7 | 28,919.5 | 15.3 % |
+| mean | **34,111.8** | **28,927.4** | **15.2 %** (1 - 28,927.4 / 34,111.8) |
+
+All three pairs wrote byte-identical verdict files, with `GEC alarms 0`. The earlier 16.0 % (pairs between 12.9 % and
+18.1 %) came from a noisier first measurement; this one is the figure quoted in the README. Still one GPU, one driver,
+one size and three runs per mode.
 
 ## 4. Profile (the cost is above about 15 %)
 
