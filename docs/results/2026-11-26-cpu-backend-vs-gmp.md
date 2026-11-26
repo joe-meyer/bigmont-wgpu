@@ -113,7 +113,8 @@ the tests, and keeps the section 3 gains. Its timings are noisy because the cont
 
 CPUs measured: Zen 4, Zen 3, Ivy Bridge. Not measured: Zen 1 and Zen 2, any Intel CPU with ADX (Broadwell and later), Haswell
 (BMI2 without ADX; this PR uses the portable code there, since on Zen `mulx` alone gained only 6 to 11%), and any non-x86
-CPU (the crate compiles and passes clippy for wasm32; aarch64 was not built). The assembly row is checked against the
+CPU measured or run (the crate compiles and passes `clippy -D warnings` for wasm32 and for aarch64-unknown-linux-gnu, where the
+assembly kernel is compiled out and the portable code becomes `mul`/`umulh`/`adcs`; nothing was run on ARM). The assembly row is checked against the
 portable row on lengths 0 to 40 and on all-ones and alternating operands, and the Fermat and Gerbicz tests run through it
 on every CPU that has ADX. The `xor` that clears CF and OF before the first limb is load-bearing, but removing it is not
 detected by the tests (the flags happen to be clear at entry), so it carries a comment. The full workspace suite was not run
