@@ -86,22 +86,16 @@ jobs:
   # with a non-zero value, so a kernel or runner that reads memory it never wrote
   # fails instead of passing on fresh zero pages.
   #
-  # The Linux leg is blocking. The Windows leg (lavapipe built for Windows) is new
-  # and non-blocking until it has proven stable; it exists because WARP, the only
-  # adapter a Windows runner has otherwise, lacks subgroups.
+  # The Windows leg runs Mesa's lavapipe build for Windows; it exists because WARP,
+  # the only adapter a Windows runner has otherwise, lacks subgroups.
   gpu-software:
     name: gpu-software (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            experimental: false
-          - os: windows-latest
-            experimental: true
+        os: [ubuntu-latest, windows-latest]
     env:
       BIGMONT_BACKEND: Vulkan
       LVP_POISON_MEMORY: "true"
