@@ -33,6 +33,11 @@ impl Mont {
         }
     }
 
+    /// Length of the scratch slice `t` that [`Mont::mul`] and [`Mont::sqr`] need (callers may pass a longer one).
+    pub fn scratch_len(&self) -> usize {
+        self.w + 2
+    }
+
     /// out = a * b * R^-1 mod n for a, b < n. `t` is scratch of length w + 2.
     pub fn mul(&self, a: &[u64], b: &[u64], out: &mut [u64], t: &mut [u64]) {
         let w = self.w;
