@@ -25,9 +25,18 @@ REQUIRED_PATTERNS = [
 VENDORS = ["NVIDIA", "AMD", "Intel", "Apple", "Software", "Browser"]
 VALID_RESULTS = {"tested", "not tested", "untested", "n/a", "na"}
 
-# The Result cell can offer checkboxes, "[ ] tested  [ ] not tested  [ ] n/a": tick exactly one
-# with an x. A plain word ("tested", "not tested", "n/a") is still accepted.
-CHECKBOX = re.compile(r"\[([ xX]?)\]\s*([^\[\]]*)")
+# The template offers one small checklist per vendor (GitHub renders "- [ ]" list items as clickable
+# checkboxes, but not inside table cells):
+#
+#     ### NVIDIA
+#     - [ ] tested: <GPU model, driver, OS / backend>
+#     - [ ] not tested
+#
+# Tick exactly one item; "tested" needs the details after the colon. The older table form (a plain
+# "tested", "not tested" or "n/a" in the Result column) is still accepted.
+HEADING = re.compile(r"^###\s+(.+?)\s*$")
+ITEM = re.compile(r"^\s*[-*]\s+\[([ xX]?)\]\s*(.*?)\s*$")
+PLACEHOLDER = re.compile(r"<[^<>]*>")
 
 # A reviewer-visible escape hatch for PRs touching the paths above that cannot
 # change behaviour (a pure refactor, a doc comment fix, ...).
@@ -71,17 +80,30 @@ def parse_rows(section: str):
     return rows
 
 
-def parse_result(cell: str):
-    """The (result, problem) of a Result cell: `result` is the ticked option (or the plain word),
-    `problem` says what is wrong when no single option is chosen."""
-    boxes = [(mark.strip().lower() == "x", label.strip()) for mark, label in CHECKBOX.findall(cell)]
-    if not boxes:
-        return cell.strip(), None
-    ticked = [label for on, label in boxes if on]
-    options = ", ".join(f'"{label}"' for _, label in boxes)
+def parse_blocks(section: str):
+    """Vendor blocks of the checklist form: heading text -> [(ticked, label, detail)]."""
+    blocks, current = {}, None
+    for line in section.splitlines():
+        heading = HEADING.match(line)
+        if heading:
+            current = blocks.setdefault(heading.group(1), [])
+            continue
+        item = ITEM.match(line)
+        if item and current is not None:
+            mark, text = item.groups()
+            label, _, detail = text.partition(":")
+            detail = PLACEHOLDER.sub("", detail).strip()
+            current.append((mark.strip().lower() == "x", label.strip(), detail))
+    return blocks
+
+
+def block_result(items):
+    """(result, detail, problem) for one vendor's checklist."""
+    options = ", ".join(f'"{label}"' for _, label, _ in items)
+    ticked = [(label, detail) for on, label, detail in items if on]
     if len(ticked) != 1:
-        return "", f"tick exactly one of {options} (found {len(ticked)} ticked)"
-    return ticked[0], None
+        return "", "", f"tick exactly one of {options} (found {len(ticked)} ticked)"
+    return ticked[0][0], ticked[0][1], None
 
 
 def validate(body: str) -> list[str]:
@@ -95,13 +117,18 @@ def validate(body: str) -> list[str]:
     rows = parse_rows(section)
     errors = []
     tested_count = 0
+    blocks = parse_blocks(section)
     for vendor in VENDORS:
+        block = next((v for k, v in blocks.items() if k.lower().startswith(vendor.lower())), None)
         row = next((r for r in rows if r[0].lower().startswith(vendor.lower())), None)
-        if row is None:
-            errors.append(f"Missing the {vendor} row in the Tested on table.")
+        if block is not None:
+            result, detail, problem = block_result(block)
+        elif row is not None:
+            _, detail, result = row
+            problem = None
+        else:
+            errors.append(f"Missing the {vendor} entry in the Tested on section.")
             continue
-        _, detail, cell = row
-        result, problem = parse_result(cell)
         norm = result.lower()
         if problem:
             errors.append(f"{vendor}: {problem}.")
