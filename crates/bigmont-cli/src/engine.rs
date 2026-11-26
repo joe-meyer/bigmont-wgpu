@@ -68,7 +68,7 @@ pub struct Options {
     /// (`BIGMONT_POLL_TIMEOUT_MS`, else 30 s). A longer wait counts as a device-level failure.
     pub poll_timeout: Option<Duration>,
     /// Runs every Fermat test under the Gerbicz error check: GPU buckets through
-    /// `Runner::fermat_checked`, CPU buckets (`Backend::Cpu`, buckets smaller than `min_gpu_batch`,
+    /// `Runner::fermat_checked_async`, CPU buckets (`Backend::Cpu`, buckets smaller than `min_gpu_batch`,
     /// and buckets answered on the CPU after a GPU error or a device that could not be recovered)
     /// and the CPU re-checks of GPU verdicts through `bigmont_cpu::fermat_batch_gec`. A candidate
     /// whose computation fails the check gets verdict 2 instead of a verdict, is counted in
@@ -579,7 +579,7 @@ impl Engine {
     }
 
     /// Runs the bucket on the GPU with integrity checks. `Cpu` means "use the CPU": the GPU is not
-    /// in play for this bucket, or autotuning / `Runner::new` / `Runner::fermat` returned an
+    /// in play for this bucket, or autotuning / `Runner::new_async` / `Runner::fermat_async` returned an
     /// ordinary `Err` (counted in `gpu_errors`, then the bucket is redone on the CPU).
     /// `DeviceFailure` means the device itself failed (lost, a timed-out wait, an uncaptured wgpu
     /// error): nothing of the attempt is kept, a failed tuning is not cached, and the caller
@@ -629,10 +629,12 @@ impl Engine {
                         &tuned,
                         &cfg,
                     )
-                    .and_then(|()| Runner::new(gpu, cfg, bits, self.opts.capacity))
+                    .and_then(|()| {
+                        pollster::block_on(Runner::new_async(gpu, cfg, bits, self.opts.capacity))
+                    })
                     .and_then(|mut runner| {
                         if self.opts.gec {
-                            runner.enable_gec(gpu)?;
+                            pollster::block_on(runner.enable_gec_async(gpu))?;
                         }
                         Ok(runner)
                     })
@@ -653,9 +655,9 @@ impl Engine {
             return GpuRun::Cpu;
         };
         let run = if self.opts.gec {
-            runner.fermat_checked(gpu, nums)
+            pollster::block_on(runner.fermat_checked_async(gpu, nums))
         } else {
-            runner.fermat(gpu, nums).map(|v| to_verdicts(&v))
+            pollster::block_on(runner.fermat_async(gpu, nums)).map(|v| to_verdicts(&v))
         };
         let verdicts = match run {
             Ok(v) => v,

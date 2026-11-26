@@ -712,24 +712,23 @@ impl Gpu {
         Ok(x)
     }
 
+    /// One line per adapter wgpu can enumerate (name, backend, driver, subgroup support).
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn list_adapters() -> Vec<String> {
-        pollster::block_on(async {
-            let instance = shared_instance();
-            instance
-                .enumerate_adapters(wgpu::Backends::all())
-                .await
-                .iter()
-                .map(|a| {
-                    let i = a.get_info();
-                    format!(
-                        "{} subgroups={}",
-                        describe(&i),
-                        a.features().contains(wgpu::Features::SUBGROUP)
-                    )
-                })
-                .collect()
-        })
+    pub async fn list_adapters_async() -> Vec<String> {
+        let instance = shared_instance();
+        instance
+            .enumerate_adapters(wgpu::Backends::all())
+            .await
+            .iter()
+            .map(|a| {
+                let i = a.get_info();
+                format!(
+                    "{} subgroups={}",
+                    describe(&i),
+                    a.features().contains(wgpu::Features::SUBGROUP)
+                )
+            })
+            .collect()
     }
 
     pub fn describe(&self) -> String {
@@ -753,7 +752,7 @@ impl Gpu {
 
 /// Input arrays, one entry per instance: moduli, -n^-1 mod 2^limb_bits, and starting values, as limbs.
 ///
-/// A `Batch` does not record which [`LimbScheme`] packed it: [`run`] only checks that the limb count
+/// A `Batch` does not record which [`LimbScheme`] packed it: [`run_async`] only checks that the limb count
 /// matches the configuration's. A batch packed for one scheme and run with a configuration of the
 /// other scheme (with the same limb count) gives garbage without an error. Build the batch for the
 /// configuration you run it with (`Batch::from_values_cfg`).
@@ -853,18 +852,6 @@ pub(crate) async fn guarded<T>(
 ///
 /// `batch` must have been packed for `cfg`'s limb scheme (see the warning on [`Batch`]): only the
 /// limb count is checked.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn run(
-    gpu: &Gpu,
-    cfg: KernelConfig,
-    batch: &Batch,
-    squarings: u32,
-    repeats: u32,
-) -> Result<Run, String> {
-    pollster::block_on(run_async(gpu, cfg, batch, squarings, repeats))
-}
-
-/// [`run`] as a future: the form a browser needs (see [`Gpu::wait_async`]).
 pub async fn run_async(
     gpu: &Gpu,
     cfg: KernelConfig,
@@ -911,7 +898,7 @@ pub async fn run_async(
         .map_err(|e| gpu.explain(e))
 }
 
-/// The device part of [`run`] (inputs already validated); any `Err` is passed through
+/// The device part of [`run_async`] (inputs already validated); any `Err` is passed through
 /// [`Gpu::explain`] by the caller.
 async fn run_on_device(
     gpu: &Gpu,
@@ -1033,17 +1020,6 @@ async fn run_on_device(
 /// result limbs (`values.len() * cfg.limbs` words, in `cfg`'s limb scheme). Every `n` must be odd
 /// with `16n < R`, and every `a` and `b` below `4n`. A differential-test harness for the multiply
 /// kernel the Gerbicz check uses.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn run_mul(
-    gpu: &Gpu,
-    cfg: KernelConfig,
-    values: &[(BigUint, BigUint, BigUint)],
-    times: u32,
-) -> Result<Vec<u32>, String> {
-    pollster::block_on(run_mul_async(gpu, cfg, values, times))
-}
-
-/// [`run_mul`] as a future: the form a browser needs (see [`Gpu::wait_async`]).
 pub async fn run_mul_async(
     gpu: &Gpu,
     cfg: KernelConfig,
@@ -1085,7 +1061,7 @@ pub async fn run_mul_async(
         .map_err(|e| gpu.explain(e))
 }
 
-/// The device part of [`run_mul`] (inputs already validated); any `Err` is passed through
+/// The device part of [`run_mul_async`] (inputs already validated); any `Err` is passed through
 /// [`Gpu::explain`] by the caller.
 async fn mul_on_device(
     gpu: &Gpu,

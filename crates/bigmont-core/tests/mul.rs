@@ -1,6 +1,6 @@
 //! The general Montgomery multiply kernel against the oracle, both limb schemes.
 mod common;
-use bigmont_core::gpu::run_mul;
+use bigmont_core::gpu::run_mul_async;
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
@@ -47,7 +47,7 @@ fn check(scheme: LimbScheme, tpi: u32, wg: u32, bits: u32) {
     let values = cases(bits, 5);
     let limbs = cfg.limbs as usize;
     let r_bits = cfg.r_bits();
-    let out = run_mul(&gpu, cfg, &values, 1).expect("run_mul");
+    let out = pollster::block_on(run_mul_async(&gpu, cfg, &values, 1)).expect("run_mul");
     for (i, (n, a, b)) in values.iter().enumerate() {
         let got_limbs = &out[i * limbs..(i + 1) * limbs];
         assert!(
@@ -87,7 +87,7 @@ fn repeated_multiplication_chains_like_the_oracle() {
         return;
     };
     let values = cases(300, 6);
-    let out = run_mul(&gpu, cfg, &values, 3).expect("run_mul");
+    let out = pollster::block_on(run_mul_async(&gpu, cfg, &values, 3)).expect("run_mul");
     let limbs = cfg.limbs as usize;
     for (i, (n, a, b)) in values.iter().enumerate() {
         let mut x = a.clone();

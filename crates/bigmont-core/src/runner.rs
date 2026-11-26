@@ -1,11 +1,11 @@
 //! Reusable Fermat-test runner: shader, pipeline and buffers are built once per (config, bits).
 //!
-//! Each call to [`Runner::fermat`] prepares the Montgomery inputs on the host (`R mod n`, the start
+//! Each call to [`Runner::fermat_async`] prepares the Montgomery inputs on the host (`R mod n`, the start
 //! value `2R mod n`, `-n^-1 mod 2^limb_bits`, and the exponent `n - 1`), uploads them into the persistent
 //! buffers and runs the `bits - 1` ladder iterations as a sequence of short dispatches ("segments"),
 //! so no single submission runs long enough to trip a driver watchdog (Windows TDR).
 //!
-//! [`Runner::fermat_checked`] (after [`Runner::enable_gec`]) adds the Gerbicz-Li error check: every
+//! [`Runner::fermat_checked_async`] (after [`Runner::enable_gec_async`]) adds the Gerbicz-Li error check: every
 //! block of [`GEC_BLOCK`] ladder iterations ends with `A <- A * y_prev`, `B <- B * x`, `y_prev <- x`,
 //! and after the last block `A^(2^GEC_BLOCK) * 2^(sum V)` must equal `B` mod n. The iterations after
 //! the last full block (the tail) are run twice, on `x` and on the copy in `y_prev`, and the two
@@ -20,7 +20,7 @@
 //! Every ladder dispatch gets `fp = [first iteration, bits, words, role]`. The generated kernels
 //! ignore the role (`fp.w`): 0 for the primary computation on `x`, 1 for the tail recomputation's
 //! copy, 2 for the check's own passes (`A^(2^GEC_BLOCK)` and `2^(sum V)`). It lets a test that
-//! builds the runner from a mutated kernel ([`Runner::new_with_source`]) simulate a transient fault
+//! builds the runner from a mutated kernel ([`Runner::new_with_source_async`]) simulate a transient fault
 //! in exactly one of these computations.
 
 use crate::gpu::{Gpu, guarded};
@@ -52,7 +52,7 @@ pub const MIN_BITS: u32 = 2;
 /// The error of a checked run on a runner without the Gerbicz state.
 const NO_GEC: &str = "checked runs need Runner::enable_gec first";
 
-/// The outcome of one checked Fermat test ([`Runner::fermat_checked`]).
+/// The outcome of one checked Fermat test ([`Runner::fermat_checked_async`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
     /// `2^(n-1) != 1 (mod n)`: n is composite.
@@ -82,7 +82,7 @@ const ROLE_TAIL_COPY: u32 = 1;
 /// `fp.w` of the span check's passes over `A` and `y_prev`.
 const ROLE_CHECK: u32 = 2;
 
-/// The extra device state for checked runs ([`Runner::enable_gec`]).
+/// The extra device state for checked runs ([`Runner::enable_gec_async`]).
 struct Gec {
     mul_pipeline: wgpu::ComputePipeline,
     /// `[count, 1, 0, 0]` for the multiply kernel.
@@ -133,7 +133,7 @@ pub struct Runner {
     pub target_secs: f64,
     /// Accumulated timings and counts.
     pub stats: RunStats,
-    /// Device state for checked runs; `None` until [`Runner::enable_gec`].
+    /// Device state for checked runs; `None` until [`Runner::enable_gec_async`].
     gec: Option<Gec>,
     /// The checked path's adapted segment length, kept across blocks, passes and chunks.
     checked_segment: u32,
@@ -171,12 +171,6 @@ impl Runner {
     /// Builds the Fermat shader, pipeline and buffers for `bits`-bit candidates, `bits >= MIN_BITS`
     /// (2). `capacity` (the most candidates per dispatch) is clamped to the dispatch-size and
     /// storage-binding limits.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(gpu: &Gpu, cfg: KernelConfig, bits: u32, capacity: u32) -> Result<Runner, String> {
-        pollster::block_on(Runner::new_async(gpu, cfg, bits, capacity))
-    }
-
-    /// [`Runner::new`] as a future: the form a browser needs.
     pub async fn new_async(
         gpu: &Gpu,
         cfg: KernelConfig,
@@ -191,30 +185,12 @@ impl Runner {
         Self::new_with_source_async(gpu, cfg, bits, capacity, source).await
     }
 
-    /// [`Runner::new`] with a caller-supplied Fermat ladder source instead of the generated one.
+    /// [`Runner::new_async`] with a caller-supplied Fermat ladder source instead of the generated one.
     ///
     /// `fermat_wgsl` must follow the binding contract of [`KernelConfig::try_fermat_wgsl_for`]
     /// for `cfg` (bindings 0 to 5, the same instance layout and `fp` meaning; `fp.w` carries the
     /// pass role described in the module docs). This is a seam for experiments and for simulating
-    /// faulty devices in tests; production code uses [`Runner::new`].
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new_with_source(
-        gpu: &Gpu,
-        cfg: KernelConfig,
-        bits: u32,
-        capacity: u32,
-        fermat_wgsl: String,
-    ) -> Result<Runner, String> {
-        pollster::block_on(Runner::new_with_source_async(
-            gpu,
-            cfg,
-            bits,
-            capacity,
-            fermat_wgsl,
-        ))
-    }
-
-    /// [`Runner::new_with_source`] as a future: the form a browser needs.
+    /// faulty devices in tests; production code uses [`Runner::new_async`].
     pub async fn new_with_source_async(
         gpu: &Gpu,
         cfg: KernelConfig,
@@ -404,12 +380,6 @@ impl Runner {
     /// candidates; they are processed in chunks of `capacity()`. A lost device, a timed-out wait
     /// or an uncaptured wgpu error is an `Err` (see `Gpu::check_health`); the runner's buffers are
     /// then in an unknown state and it should be dropped.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn fermat(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<bool>, String> {
-        pollster::block_on(self.fermat_async(gpu, ns))
-    }
-
-    /// [`Runner::fermat`] as a future: the form a browser needs. Natively it blocks while it runs.
     pub async fn fermat_async(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<bool>, String> {
         gpu.check_health()?;
         let mut out = Vec::with_capacity(ns.len());
@@ -620,15 +590,9 @@ impl Runner {
         Ok(x)
     }
 
-    /// Allocates the state for checked runs ([`Runner::fermat_checked`]): the multiply pipeline and
+    /// Allocates the state for checked runs ([`Runner::fermat_checked_async`]): the multiply pipeline and
     /// three more numbers per candidate (`A`, `B`, `y_prev`) plus small buffers. Calling it again
     /// does nothing. Errors (including a lost device) are an `Err`.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn enable_gec(&mut self, gpu: &Gpu) -> Result<(), String> {
-        pollster::block_on(self.enable_gec_async(gpu))
-    }
-
-    /// [`Runner::enable_gec`] as a future: the form a browser needs.
     pub async fn enable_gec_async(&mut self, gpu: &Gpu) -> Result<(), String> {
         if self.gec.is_some() {
             return Ok(());
@@ -640,17 +604,11 @@ impl Runner {
         self.enable_gec_with_source_async(gpu, source).await
     }
 
-    /// [`Runner::enable_gec`] with a caller-supplied multiply source instead of the generated one.
+    /// [`Runner::enable_gec_async`] with a caller-supplied multiply source instead of the generated one.
     ///
     /// `mul_wgsl` must follow the binding contract of [`KernelConfig::try_mul_wgsl_for`] for this
     /// runner's configuration (bindings 0 to 4). This is a seam for experiments and for simulating
     /// faulty devices in tests. Does nothing when the check state already exists.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn enable_gec_with_source(&mut self, gpu: &Gpu, mul_wgsl: String) -> Result<(), String> {
-        pollster::block_on(self.enable_gec_with_source_async(gpu, mul_wgsl))
-    }
-
-    /// [`Runner::enable_gec_with_source`] as a future: the form a browser needs.
     pub async fn enable_gec_with_source_async(
         &mut self,
         gpu: &Gpu,
@@ -782,15 +740,9 @@ impl Runner {
         })
     }
 
-    /// Base-2 Fermat verdicts for `ns` with the Gerbicz check: like [`Runner::fermat`], but a
+    /// Base-2 Fermat verdicts for `ns` with the Gerbicz check: like [`Runner::fermat_async`], but a
     /// candidate whose computation fails the check gets [`Verdict::Alarm`] instead of a verdict.
-    /// Needs [`Runner::enable_gec`] first (else `Err`).
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn fermat_checked(&mut self, gpu: &Gpu, ns: &[BigUint]) -> Result<Vec<Verdict>, String> {
-        pollster::block_on(self.fermat_checked_async(gpu, ns))
-    }
-
-    /// [`Runner::fermat_checked`] as a future: the form a browser needs.
+    /// Needs [`Runner::enable_gec_async`] first (else `Err`).
     pub async fn fermat_checked_async(
         &mut self,
         gpu: &Gpu,

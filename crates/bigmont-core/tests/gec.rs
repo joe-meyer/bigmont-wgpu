@@ -1,8 +1,8 @@
-//! The Gerbicz check in `Runner::fermat_checked`: clean runs agree with the oracle and never alarm,
+//! The Gerbicz check in `Runner::fermat_checked_async`: clean runs agree with the oracle and never alarm,
 //! and simulated device faults alarm exactly the hit candidates.
 //!
 //! Faults are simulated in the device, not in the runner: the runner is built from a mutated kernel
-//! source (`common::faults`) through `Runner::new_with_source` / `Runner::enable_gec_with_source`,
+//! source (`common::faults`) through `Runner::new_with_source_async` / `Runner::enable_gec_with_source_async`,
 //! and the real runner, kernels and host comparison run on top of it.
 mod common;
 use bigmont_core::gpu::Gpu;
@@ -46,11 +46,11 @@ fn config(gpu: &Gpu, scheme: LimbScheme, bits: u32) -> Option<KernelConfig> {
     Some(cfg)
 }
 
-/// A checked runner built the production way (`Runner::new`, `enable_gec`).
+/// A checked runner built the production way (`Runner::new_async`, `enable_gec`).
 fn runner(gpu: &Gpu, scheme: LimbScheme, bits: u32, cap: u32) -> Option<Runner> {
     let cfg = config(gpu, scheme, bits)?;
-    let mut r = Runner::new(gpu, cfg, bits, cap).expect("runner");
-    r.enable_gec(gpu).expect("enable_gec");
+    let mut r = pollster::block_on(Runner::new_async(gpu, cfg, bits, cap)).expect("runner");
+    pollster::block_on(r.enable_gec_async(gpu)).expect("enable_gec");
     Some(r)
 }
 
@@ -70,9 +70,9 @@ fn faulty(
             .expect("fermat source"),
     );
     let m = mul(&cfg.try_mul_wgsl_for(Target::host()).expect("mul source"));
-    let mut r = Runner::new_with_source(gpu, cfg, bits, cap, f).expect("runner from source");
-    r.enable_gec_with_source(gpu, m)
-        .expect("enable_gec from source");
+    let mut r = pollster::block_on(Runner::new_with_source_async(gpu, cfg, bits, cap, f))
+        .expect("runner from source");
+    pollster::block_on(r.enable_gec_with_source_async(gpu, m)).expect("enable_gec from source");
     Some(r)
 }
 
@@ -126,7 +126,7 @@ fn expect_alarms(
     let Some(mut r) = faulty(gpu, scheme, bits, cap, fermat, mul) else {
         return false;
     };
-    let got = r.fermat_checked(gpu, ns).expect("fermat_checked");
+    let got = pollster::block_on(r.fermat_checked_async(gpu, ns)).expect("fermat_checked");
     let want: Vec<Verdict> = truth(ns)
         .into_iter()
         .enumerate()
@@ -147,7 +147,8 @@ fn a_clean_checked_run_equals_the_oracle_and_never_alarms() {
                 break;
             };
             let ns = mixed(bits, 12, 2, 40 + u64::from(bits));
-            let got = r.fermat_checked(&gpu, &ns).expect("fermat_checked");
+            let got =
+                pollster::block_on(r.fermat_checked_async(&gpu, &ns)).expect("fermat_checked");
             assert_eq!(got, truth(&ns), "{scheme:?} {bits} bits");
         }
     }
@@ -160,8 +161,8 @@ fn checked_and_unchecked_runs_agree_and_chunking_keeps_the_order() {
         return;
     };
     let ns = mixed(300, 17, 3, 9); // 20 candidates over chunks of 5
-    let checked = r.fermat_checked(&gpu, &ns).expect("checked");
-    let plain = r.fermat(&gpu, &ns).expect("plain");
+    let checked = pollster::block_on(r.fermat_checked_async(&gpu, &ns)).expect("checked");
+    let plain = pollster::block_on(r.fermat_async(&gpu, &ns)).expect("plain");
     let from_plain: Vec<Verdict> = plain
         .iter()
         .map(|&p| if p { Verdict::Prp } else { Verdict::Composite })
@@ -352,8 +353,9 @@ fn a_modulus_wrong_on_every_load_alarms() {
             break;
         };
         let f = bad_modulus_path(&cfg.try_fermat_wgsl_for(Target::host()).unwrap(), 11);
-        let mut r = Runner::new_with_source(&gpu, cfg, BITS, 16, f).expect("runner");
-        let plain = r.fermat(&gpu, &ns).expect("plain");
+        let mut r = pollster::block_on(Runner::new_with_source_async(&gpu, cfg, BITS, 16, f))
+            .expect("runner");
+        let plain = pollster::block_on(r.fermat_async(&gpu, &ns)).expect("plain");
         assert!(!plain[11], "{scheme:?}: the unchecked run must be fooled");
         for inst in [11u32, 3] {
             expect_alarms(
@@ -472,7 +474,8 @@ fn checked_submissions_are_split_like_the_plain_path() {
                 return;
             };
             r.segment_override = Some(seg);
-            let got = r.fermat_checked(&gpu, &ns).expect("fermat_checked");
+            let got =
+                pollster::block_on(r.fermat_checked_async(&gpu, &ns)).expect("fermat_checked");
             assert_eq!(got, truth(&ns), "{scheme:?}, segments of {seg}");
             assert_eq!(
                 r.stats.dispatches,
@@ -500,12 +503,12 @@ fn the_adaptive_segment_length_carries_across_blocks_and_chunks() {
             return;
         };
         r.target_secs = 1e9;
-        let got = r.fermat_checked(&gpu, &ns[..6]).expect("first chunk");
+        let got = pollster::block_on(r.fermat_checked_async(&gpu, &ns[..6])).expect("first chunk");
         assert_eq!(got, truth(&ns[..6]), "{scheme:?}");
         // Block 0: 1 + 2 + 4 + 8 + 16, then the remaining 9; block 1 onwards: one each.
         assert_eq!(r.stats.dispatches, u64::from(6 + NB - 1 + 3), "{scheme:?}");
         let before = r.stats.dispatches;
-        let got = r.fermat_checked(&gpu, &ns[6..]).expect("second chunk");
+        let got = pollster::block_on(r.fermat_checked_async(&gpu, &ns[6..])).expect("second chunk");
         assert_eq!(got, truth(&ns[6..]), "{scheme:?}");
         assert_eq!(r.stats.dispatches - before, u64::from(NB + 3), "{scheme:?}");
     }
@@ -533,7 +536,8 @@ fn faults_still_alarm_with_split_blocks() {
                 return;
             };
             r.segment_override = Some(7);
-            let got = r.fermat_checked(&gpu, &ns).expect("fermat_checked");
+            let got =
+                pollster::block_on(r.fermat_checked_async(&gpu, &ns)).expect("fermat_checked");
             let want: Vec<Verdict> = truth(&ns)
                 .into_iter()
                 .enumerate()
@@ -557,8 +561,8 @@ fn checking_needs_enable_gec() {
     let Some(cfg) = config(&gpu, LimbScheme::Limb13, 300) else {
         return;
     };
-    let mut r = Runner::new(&gpu, cfg, 300, 8).expect("runner");
-    let err = r.fermat_checked(&gpu, &mixed(300, 2, 0, 1)).unwrap_err();
+    let mut r = pollster::block_on(Runner::new_async(&gpu, cfg, 300, 8)).expect("runner");
+    let err = pollster::block_on(r.fermat_checked_async(&gpu, &mixed(300, 2, 0, 1))).unwrap_err();
     assert!(err.contains("enable_gec"), "{err}");
 }
 

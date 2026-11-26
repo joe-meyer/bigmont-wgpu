@@ -80,9 +80,12 @@ device. Always run the suite with `--test-threads=1`.
   implied. Mark it "n/a" only when the change truly cannot reach a browser (for example
   the native-only 32-bit scheme, or the CLI alone).
 - **`bigmont-core` must keep compiling for wasm32 (CI `wasm-check`).** Its real work is in
-  `async fn`s (`Gpu::open_async`, `Runner::fermat_async`, `run_async`, ...); the blocking forms are
-  native-only wrappers over them. Don't add blocking waits, threads, `Instant::now()` from `std`
-  (use `web_time`) or other native-only calls outside `#[cfg(not(target_arch = "wasm32"))]`.
+  `async fn`s (`Gpu::open_async`, `Runner::fermat_async`, `run_async`, ...), and the crate is
+  async-only: don't add a blocking twin of an async function. Native callers (the CLI, tests,
+  examples) run them with `pollster::block_on(...)`. The few blocking items that remain are native
+  code with their own behaviour, not wrappers (`Gpu::open` takes the open lock, `Gpu::wait` and
+  `Gpu::read_back` poll with a timeout). Don't add blocking waits, threads, `Instant::now()` from
+  `std` (use `web_time`) or other native-only calls outside `#[cfg(not(target_arch = "wasm32"))]`.
 - **Handle device loss.** GPU calls can fail or reset mid-run; return errors,
   never panic or hang. The `devloss` tests cover this.
 - **No unsafe** unless unavoidable; if added, document the invariant on the line above.

@@ -5,6 +5,10 @@
 //! - [`gpu`]: adapter selection and device setup, plus the one-shot squaring-chain harness.
 //! - [`kernel`]: kernel configuration and WGSL generation (native and browser targets).
 //! - [`runner`]: the persistent-buffer Fermat runner the `bigmont` CLI drives.
+//!
+//! The work is `async` (a browser cannot block): `Runner::new_async`, `Runner::fermat_async`,
+//! `gpu::run_async` and the rest. Native callers run them with `pollster::block_on`; there are no
+//! blocking twins.
 
 pub mod gpu;
 pub mod kernel;

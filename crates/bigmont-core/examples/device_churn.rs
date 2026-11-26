@@ -14,7 +14,7 @@
 //!
 //! A clean run exits 0; the interesting outcomes are a hang, a crash at exit, or a device-lost error.
 
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 
 fn make_gpu(vkonly: bool) -> Gpu {
@@ -83,7 +83,7 @@ fn main() {
     let batch = Batch::from_values(&Batch::random_values(70, 2029, 7));
 
     let cycle = |i: u32, gpu: &Gpu| {
-        let r = run(gpu, cfg, &batch, squarings, 1).expect("run");
+        let r = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1)).expect("run");
         eprintln!(
             "cycle {i}: {} limbs back, {:.4} s | {} [{:?}] | {}",
             r.x.len(),

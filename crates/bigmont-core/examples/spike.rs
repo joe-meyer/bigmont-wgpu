@@ -19,7 +19,7 @@
 //! Run benchmarks in a single process (this example does). The exit status is nonzero if any
 //! configuration failed validation, was rejected, or failed to benchmark.
 
-use bigmont_core::gpu::{Batch, Gpu, Run, run};
+use bigmont_core::gpu::{Batch, Gpu, Run, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_oracle::{LIMB_MASK, LIMBS, mont_square_chain, unpack_limbs};
 use num_bigint::BigUint;
@@ -29,7 +29,7 @@ const MAD_PER_SQUARING: f64 = 2.0 * (LIMBS * LIMBS) as f64;
 
 /// Why a configuration did not get a speed.
 enum Failure {
-    /// The shader, pipeline, buffers or dispatch were rejected or errored (`run` returned Err).
+    /// The shader, pipeline, buffers or dispatch were rejected or errored (`run_async` returned Err).
     Rejected(String),
     /// The kernel ran but produced a wrong result.
     Wrong(String),
@@ -39,7 +39,7 @@ enum Failure {
 fn validate(gpu: &Gpu, cfg: KernelConfig) -> Result<(), Failure> {
     let values = Batch::random_values(50, BITS, 11);
     let batch = Batch::from_values(&values);
-    let out = run(gpu, cfg, &batch, 3, 1).map_err(Failure::Rejected)?;
+    let out = pollster::block_on(run_async(gpu, cfg, &batch, 3, 1)).map_err(Failure::Rejected)?;
     for (i, (n, x0)) in values.iter().enumerate() {
         let limbs = &out.x[i * LIMBS..(i + 1) * LIMBS];
         if limbs.iter().any(|&l| l > LIMB_MASK) {
@@ -185,11 +185,13 @@ fn bench(
     loop {
         let values = Batch::random_values(count, BITS, 99);
         let batch = Batch::from_values(&values);
-        let probe = run(gpu, cfg, &batch, 2, 1).map_err(Failure::Rejected)?;
+        let probe =
+            pollster::block_on(run_async(gpu, cfg, &batch, 2, 1)).map_err(Failure::Rejected)?;
         if fixed_count.is_some() || probe.best_secs >= 0.05 || count >= cap {
-            // `run` chains `repeats` dispatches from the previous output, so the output of
-            // run(.., s, r) has had s * r squarings.
-            let short = run(gpu, cfg, &batch, 2, 5).map_err(Failure::Rejected)?;
+            // `run_async` chains `repeats` dispatches from the previous output, so the output of
+            // pollster::block_on(run_async(.., s, r)) has had s * r squarings.
+            let short =
+                pollster::block_on(run_async(gpu, cfg, &batch, 2, 5)).map_err(Failure::Rejected)?;
             let short_secs = short.best_secs;
             let verified_short = verify_timed(&values, per_wg, &short, 2, 5, "short run")?;
             let (mut long_squarings, mut long_secs) = (2u32, short_secs);
@@ -202,7 +204,8 @@ fn bench(
                 {
                     break;
                 }
-                long_run = run(gpu, cfg, &batch, next, 3).map_err(Failure::Rejected)?;
+                long_run = pollster::block_on(run_async(gpu, cfg, &batch, next, 3))
+                    .map_err(Failure::Rejected)?;
                 long_secs = long_run.best_secs;
                 long_squarings = next;
                 long_repeats = 3;
@@ -240,7 +243,7 @@ fn bench(
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--list") {
-        for a in Gpu::list_adapters() {
+        for a in pollster::block_on(Gpu::list_adapters_async()) {
             println!("{a}");
         }
         return;

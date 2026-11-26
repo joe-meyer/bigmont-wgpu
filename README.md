@@ -34,7 +34,7 @@ Raw speed matters, but it comes second: where portability and speed conflict, po
 
 ## What it does
 
-- The engine (`bigmont-core`, `Runner::fermat`) takes plain big integers and returns Fermat verdicts. The `bigmont`
+- The engine (`bigmont-core`, `Runner::fermat_async`) takes plain big integers and returns Fermat verdicts. The `bigmont`
   command-line driver is one ready-made front end on top of it.
 - The driver also implements the in-driver early-exit interface (`--bins`, `--ee SIZES`, `--chunk`, `--growth`, `--marker`,
   `--lock`) used by the existing CUDA pipeline's feeders: candidates are grouped into ks, tested in waves, and a k stops at its

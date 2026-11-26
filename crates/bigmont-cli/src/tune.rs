@@ -1,7 +1,7 @@
 //! Autotuning and per-adapter self-validation: every kernel configuration is checked against the
 //! CPU references before it is timed, and the fastest verified one is cached per adapter and size.
 
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
@@ -202,7 +202,7 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
     values.push((all_ones.clone(), &all_ones - 1u32));
     let squarings = 3;
     let batch = Batch::from_values_cfg(&values, &cfg);
-    let result = run(gpu, cfg, &batch, squarings, 1)?;
+    let result = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?;
     for (i, (n, x0)) in values.iter().enumerate() {
         let got_limbs = &result.x[i * limbs..(i + 1) * limbs];
         if !scheme.normalised(got_limbs) {
@@ -219,8 +219,8 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
 
     // (b) Fermat ladder: composites, probable primes and the all-ones number, in several chunks.
     let set = fermat_set(bits);
-    let mut runner = Runner::new(gpu, cfg, bits, 8)?;
-    let verdicts = runner.fermat(gpu, &set.ns)?;
+    let mut runner = pollster::block_on(Runner::new_async(gpu, cfg, bits, 8))?;
+    let verdicts = pollster::block_on(runner.fermat_async(gpu, &set.ns))?;
     for (i, (got, want)) in verdicts.iter().zip(&set.expect).enumerate() {
         if got != want {
             return Err(format!(
@@ -255,7 +255,7 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
 
     let mut squarings = 8u32;
     loop {
-        let t = run(gpu, cfg, &batch, squarings, 1)?.best_secs;
+        let t = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?.best_secs;
         if t >= MEASURE_TARGET_SECS || u64::from(count) * u64::from(squarings) >= max_work {
             break;
         }
@@ -264,7 +264,7 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     let mut best = f64::MAX;
     let mut last = None;
     for _ in 0..2 {
-        let r = run(gpu, cfg, &batch, squarings, 1)?;
+        let r = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?;
         best = best.min(r.best_secs);
         last = Some(r);
     }

@@ -2,7 +2,7 @@
 //! other GPU tests: a missing adapter, SHADER_INT64 or subgroup width fails unless
 //! BIGMONT_ALLOW_SKIP=1.
 mod common;
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
@@ -68,7 +68,7 @@ fn check(gpu: &Gpu, bits: u32, tpi: u32, wg: u32, count: usize, squarings: u32, 
         0xc0de ^ u64::from(bits) ^ (u64::from(tpi) << 24) ^ (u64::from(wg) << 32),
     );
     let batch = Batch::from_values_cfg(&vals, &cfg);
-    let out = run(gpu, cfg, &batch, squarings, repeats)
+    let out = pollster::block_on(run_async(gpu, cfg, &batch, squarings, repeats))
         .unwrap_or_else(|e| panic!("{cfg:?}: run failed: {e}"));
     let l = cfg.limbs as usize;
     assert_eq!(out.x.len(), count * l);

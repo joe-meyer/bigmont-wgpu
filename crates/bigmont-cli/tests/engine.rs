@@ -602,8 +602,9 @@ fn a_retargeted_32_bit_kernel_that_is_smaller_than_the_self_tested_one_gives_ora
         tune::self_test(&gpu, tuned, CLASS_REP).unwrap_or_else(|e| panic!("{e}"));
         let exact = tuned.retarget(SHORTER);
         assert!(exact.limbs < tuned.limbs, "{tuned:?} -> {exact:?}");
-        let mut runner = Runner::new(&gpu, exact, SHORTER, 32).expect("runner at the exact length");
-        let got = runner.fermat(&gpu, &ns).expect("fermat");
+        let mut runner = pollster::block_on(Runner::new_async(&gpu, exact, SHORTER, 32))
+            .expect("runner at the exact length");
+        let got = pollster::block_on(runner.fermat_async(&gpu, &ns)).expect("fermat");
         assert_eq!(
             got, want,
             "tpi {tpi}: {} limbs at {SHORTER} bits (self-tested with {})",

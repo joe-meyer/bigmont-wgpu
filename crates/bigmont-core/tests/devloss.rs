@@ -8,7 +8,7 @@
 #![allow(clippy::err_expect)] // Run and Runner are not Debug
 
 mod common;
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_oracle::{XorShift64, fermat_base2, random_odd_modulus};
@@ -61,25 +61,31 @@ fn a_destroyed_device_gives_device_lost_errors_not_panics() {
     let want: Vec<bool> = ns.iter().map(fermat_base2).collect();
 
     // Healthy first: both entry points work and the device reports no problem.
-    run(&gpu, cfg, &batch, 3, 1).expect("healthy run");
-    let mut runner = Runner::new(&gpu, cfg, BITS, 16).expect("healthy runner");
-    assert_eq!(runner.fermat(&gpu, &ns).expect("healthy fermat"), want);
+    pollster::block_on(run_async(&gpu, cfg, &batch, 3, 1)).expect("healthy run");
+    let mut runner =
+        pollster::block_on(Runner::new_async(&gpu, cfg, BITS, 16)).expect("healthy runner");
+    assert_eq!(
+        pollster::block_on(runner.fermat_async(&gpu, &ns)).expect("healthy fermat"),
+        want
+    );
     assert!(!gpu.is_lost());
     gpu.check_health().expect("healthy device");
 
     gpu.device.destroy();
     let t = Instant::now();
-    let e = no_panic("run on a destroyed device", || run(&gpu, cfg, &batch, 3, 1))
-        .err()
-        .expect("run on a destroyed device must fail");
+    let e = no_panic("run on a destroyed device", || {
+        pollster::block_on(run_async(&gpu, cfg, &batch, 3, 1))
+    })
+    .err()
+    .expect("run on a destroyed device must fail");
     assert!(e.contains("device lost"), "{e}");
     let e = no_panic("Runner::fermat on a destroyed device", || {
-        runner.fermat(&gpu, &ns)
+        pollster::block_on(runner.fermat_async(&gpu, &ns))
     })
     .expect_err("fermat on a destroyed device must fail");
     assert!(e.contains("device lost"), "{e}");
     let e = no_panic("Runner::new on a destroyed device", || {
-        Runner::new(&gpu, cfg, BITS, 16)
+        pollster::block_on(Runner::new_async(&gpu, cfg, BITS, 16))
     })
     .err()
     .expect("Runner::new on a destroyed device must fail");
@@ -109,7 +115,7 @@ fn a_wait_longer_than_the_poll_timeout_is_a_timed_out_error() {
     let mut squarings = 4u32;
     let e = loop {
         match no_panic("a run with a 1 ms poll timeout", || {
-            run(&gpu, cfg, &batch, squarings, 1)
+            pollster::block_on(run_async(&gpu, cfg, &batch, squarings, 1))
         }) {
             Ok(r) => {
                 assert!(
@@ -128,9 +134,11 @@ fn a_wait_longer_than_the_poll_timeout_is_a_timed_out_error() {
     assert!(gpu.check_health().unwrap_err().contains("timed out"));
     // Every later call fails at once (the device may never finish its work).
     let t = Instant::now();
-    let e = no_panic("a run on a poisoned Gpu", || run(&gpu, cfg, &batch, 1, 1))
-        .err()
-        .expect("a poisoned Gpu must refuse work");
+    let e = no_panic("a run on a poisoned Gpu", || {
+        pollster::block_on(run_async(&gpu, cfg, &batch, 1, 1))
+    })
+    .err()
+    .expect("a poisoned Gpu must refuse work");
     assert!(e.contains("timed out"), "{e}");
     assert!(t.elapsed() < Duration::from_secs(1));
     // Dropping the poisoned Gpu must not block on the outstanding work (it is leaked instead).
@@ -173,7 +181,7 @@ fn an_uncaptured_wgpu_error_is_recorded_instead_of_panicking() {
     assert!(!gpu.is_lost(), "a validation error is not a lost device");
     // The entry points refuse to run on a device that reported an uncaptured error.
     let e = no_panic("run after an uncaptured error", || {
-        run(&gpu, cfg, &squaring_batch(cfg, 8, 4), 3, 1)
+        pollster::block_on(run_async(&gpu, cfg, &squaring_batch(cfg, 8, 4), 3, 1))
     })
     .err()
     .expect("run must fail");
@@ -220,10 +228,10 @@ fn the_poll_panic_hook_reaches_the_entry_points() {
         return;
     };
     let batch = squaring_batch(cfg, 64, 5);
-    run(&gpu, cfg, &batch, 3, 1).expect("healthy run");
+    pollster::block_on(run_async(&gpu, cfg, &batch, 3, 1)).expect("healthy run");
     gpu.inject_poll_panic();
     let e = no_panic("run with an injected poll panic", || {
-        run(&gpu, cfg, &batch, 3, 1)
+        pollster::block_on(run_async(&gpu, cfg, &batch, 3, 1))
     })
     .err()
     .expect("run must fail");

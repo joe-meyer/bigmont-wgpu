@@ -6,6 +6,9 @@ All notable changes are documented here. Format based on
 
 ## [Unreleased]
 
+### Changed
+- **Breaking (library API):** `bigmont-core` is async-only. The blocking twins are removed: `Runner::new`, `Runner::new_with_source`, `Runner::fermat`, `Runner::enable_gec`, `Runner::enable_gec_with_source`, `Runner::fermat_checked`, `gpu::run`, `gpu::run_mul` and `Gpu::list_adapters`. Use the `_async` forms (`Gpu::list_adapters` is now `list_adapters_async`) and block with `pollster::block_on` where you need to. `Gpu::new`, `Gpu::open` (it holds the open lock), `Gpu::wait` and `Gpu::read_back` stay.
+
 ### Added
 - Minimum supported Rust version declared: 1.90 (`rust-version` in the workspace manifest), the highest minimum among our dependencies; the early-exit lock needs 1.89.
 - CI, release automation, `AGENTS.md`, and AI contribution guidelines.

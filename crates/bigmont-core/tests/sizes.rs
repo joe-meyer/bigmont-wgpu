@@ -1,5 +1,5 @@
 mod common;
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
@@ -20,7 +20,8 @@ fn check_size(cfg: KernelConfig, squarings: u32) {
     let sparse = (BigUint::one() << (bits - 1)) + 1u32;
     values.push((sparse.clone(), &sparse - 1u32));
     let batch = Batch::from_values_n(&values, limbs);
-    let result = run(&gpu, cfg, &batch, squarings, 1).expect("run failed");
+    let result =
+        pollster::block_on(run_async(&gpu, cfg, &batch, squarings, 1)).expect("run failed");
     for (i, (n, x0)) in values.iter().enumerate() {
         let got_limbs = &result.x[i * limbs..(i + 1) * limbs];
         assert!(
@@ -54,7 +55,7 @@ fn check_size32(gpu: &Gpu, tpi: u32, limbs: u32, squarings: u32) {
     let sparse = (BigUint::one() << (bits - 1)) + 1u32;
     values.push((sparse.clone(), &sparse - 1u32));
     let batch = Batch::from_values_cfg(&values, &cfg);
-    let result = run(gpu, cfg, &batch, squarings, 1).expect("run failed");
+    let result = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1)).expect("run failed");
     let l = limbs as usize;
     for (i, (n, x0)) in values.iter().enumerate() {
         let got = cfg.scheme.unpack(&result.x[i * l..(i + 1) * l]);
@@ -189,7 +190,7 @@ fn batch_limb_mismatch_is_an_error_not_a_panic() {
     };
     let values = Batch::random_values(4, 1019, 1);
     let batch = Batch::from_values_n(&values, 80);
-    assert!(run(&gpu, cfg, &batch, 1, 1).is_err());
+    assert!(pollster::block_on(run_async(&gpu, cfg, &batch, 1, 1)).is_err());
 }
 
 /// One and two limbs per lane (the top limb of a lane is also its limb 0).

@@ -12,7 +12,7 @@
 //! status is nonzero. Schemes the adapter cannot run (see `KernelConfig::requires`) are skipped
 //! with a note.
 
-use bigmont_core::gpu::{Batch, Gpu, run};
+use bigmont_core::gpu::{Batch, Gpu, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::scheme::LimbScheme;
 use num_bigint::BigUint;
@@ -100,7 +100,7 @@ fn verify(
     values: &[(BigUint, BigUint)],
     batch: &Batch,
 ) -> Result<usize, String> {
-    let out = run(gpu, cfg, batch, VERIFY_SQUARINGS, 1)?;
+    let out = pollster::block_on(run_async(gpu, cfg, batch, VERIFY_SQUARINGS, 1))?;
     let l = cfg.limbs as usize;
     let idx = sample_indices(values.len() as u32, cfg.instances_per_workgroup());
     let bad: Vec<String> = std::thread::scope(|s| {
@@ -185,7 +185,8 @@ fn main() {
                 let mut slopes = Vec::new();
                 for r in 0..runs {
                     match slope(count, |sq, rep| {
-                        run(&gpu, cfg, &batch, sq, rep).map(|x| x.best_secs)
+                        pollster::block_on(run_async(&gpu, cfg, &batch, sq, rep))
+                            .map(|x| x.best_secs)
                     }) {
                         Ok((sl, s, t)) => match verify(&gpu, cfg, &values, &batch) {
                             Ok(v) => {
@@ -265,7 +266,7 @@ fn main() {
         }
     }
     if failures > 0 {
-        eprintln!("{failures} configuration run(s) failed");
+        eprintln!("{failures} configuration pollster::block_on(run_async(s)) failed");
         std::process::exit(1);
     }
 }
