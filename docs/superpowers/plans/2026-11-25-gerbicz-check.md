@@ -938,6 +938,53 @@ Check each helper against the actual generated source first (print it with `crat
 
 ---
 
+### Task 7: GEC submissions adapt to the device (no fixed 40-iteration submission)
+
+Problem (found in review): the plain path adapts each submission to about `target_secs` (starting at 1 iteration) to stay clear of the driver watchdog (Windows TDR) and the poll timeout, but the checked path submits a whole 40-iteration block, the 40/up-to-64-iteration check passes and the whole tail (two ladder passes) in one submission each, whatever the device speed. On a slow adapter with a large capacity one submission can pass the watchdog (the failure mode is safe, device loss then CPU fallback, but `--gec` becomes unusable there).
+
+**Files:** modify `crates/bigmont-core/src/runner.rs`; tests in `crates/bigmont-core/tests/gec.rs`; `README.md` (remove the "fixed length" caveat if it is mentioned), `docs/superpowers/results/2026-11-25-gerbicz-check.md` (note the change, no new numbers unless re-measured).
+
+**Requirements**
+- Every ladder-kernel submission made by the checked path is bounded by the same adaptive segment length the plain path uses (`segment_override` if set, else grown/shrunk toward `target_secs` from measured per-iteration time, at most doubling per submission as `ladder_range` does). That covers: the 40 iterations of a block (the boundary multiplies `A*=y_prev`, `B*=x`, `y_prev<-x` are added to the submission of the block's LAST segment, never to an earlier one), the 40 squarings of `A`, the `2^sum V` ladder, and the tail (each segment submission contains both tail passes, `x` and the `y` copy, with identical params).
+- The segment length is carried across blocks, across the check passes and across chunks within a runner (a runner field), so a fast device still runs a whole block in one submission and pays no extra submissions compared to today; only a device where a block exceeds the target splits it. Do not restart from 1 iteration per block.
+- `fp.x` (first iteration) stays the iteration index at the start of each segment, so every existing mutated-kernel test keyed to `fp.x + s` or to a block start (`fp.x == b * 40`) still hits the same iteration. Fault tests keyed to a block start still work because every block still begins a dispatch.
+- Results must be identical to today's for every segment length (the segmentation does not change the arithmetic).
+- Add `RunStats::dispatches: u64` (number of ladder-kernel submissions, plain and checked) if it is a few-line change; the test below uses it. If you find a cleaner observable, use it and say so.
+
+**Tests** (`tests/gec.rs`, both limb schemes, real GPU, `--test-threads=1`):
+1. With `runner.segment_override = Some(3)` and 300-bit candidates (7 blocks + 19-iteration tail): clean run equals the oracle, no alarms; `stats.dispatches` for the chunk is at least `7 * 14` (each block split into 14 segments of at most 3) and greater than the same run with `segment_override = Some(1000)` (where each block is one submission, so about 7 + tail + check submissions).
+2. With `segment_override = Some(7)`: a mid-block register fault, a block-start read fault and a tail fault each still alarm only their candidate (reuse the existing helpers and expectations).
+3. The existing tests keep passing unchanged.
+
+**Steps:** write test 1 (RED: it fails because blocks are never split), refactor `block_step`/`tail_step`/the check passes onto one segmented-submission helper, make the tests pass, run the full core suite on Vulkan, fmt, clippy, doc, wasm32 check, commit (`fix(core): split the checked path's submissions like the plain path`).
+
+---
+
+### Task 8: the check on the CPU path too
+
+Problem: with `--gec`, buckets answered by the CPU (small buckets, GPU errors, `--backend cpu`) give unchecked verdicts, so the flag silently does not apply. A CPU computing a Fermat test can also hit a silent error; the contract should be "with `--gec`, every verdict is either checked or reported as 2".
+
+**Files:** modify `crates/bigmont-cpu/src/lib.rs`, `crates/bigmont-cpu/tests/cpu.rs`, `crates/bigmont-cli/src/engine.rs` (CPU path, integrity pass, report, docs), `crates/bigmont-cli/src/main.rs` (USAGE/module doc text only), `crates/bigmont-cli/tests/engine.rs`, `README.md`, `CHANGELOG.md`, results doc if it states the CPU is unchecked.
+
+**Interfaces**
+- In `bigmont-cpu`: `pub enum Checked { Composite, Prp, Alarm }` (`Clone, Copy, Debug, PartialEq, Eq`) and
+  `pub fn fermat_base2_gec(n: &BigUint) -> Checked` (same degenerate-input rules as `fermat_base2`: below 2 or even is `Composite`, 2 is `Prp`) and `pub fn fermat_batch_gec(ns: &[BigUint], threads: usize) -> Vec<Checked>` (same threading as `fermat_batch`).
+- Algorithm (the same as the GPU path, on the CPU's fully reduced Montgomery values, so comparisons are plain equality of reduced limbs): block size `bigmont_oracle::GEC_BLOCK` (40; add `bigmont-oracle` as a dependency of `bigmont-cpu` only if it is not one yet, otherwise define the constant by importing it; check `Cargo.toml` and do not create a dependency cycle), `A = B = 1~`, `y_prev = x0 = 2~`; each block of 40 iterations ends with `A = A*y_prev`, `B = B*x`, `y_prev = x`; after the loop `chk = A` squared 40 times, times `2^(sum V)` (compute it as the Montgomery form of 2^sumV by the same ladder from `1~` over the bits of `sum V` computed with `bigmont_oracle::gec_window_sum_words`, or by `mul`s of `2~`; keep it simple and correct), compared with `B`; the tail (`(bits - 1) % 40` iterations, also the whole run when there is no full block) is recomputed on a copy of `y_prev` and compared with `x`. Any mismatch is `Alarm`. Otherwise `Prp` iff `x == 1~`.
+- Test seam (principled, no fault code in the algorithm): make the check generic over a small trait for the arithmetic it uses, e.g. `trait MontOps { fn mul(&mut self, ..); fn sqr(..); fn double(..); }` implemented by `Mont` for production; tests wrap `Mont` in a faulty adapter that counts operations and flips a bit of the output of operation number K (`K` chosen inside the blocks, in the tail, in the check passes, and "never"). The adapter must hit only one of the two redundant tail computations (it counts operations, so it naturally does). The public functions use the real `Mont`.
+- `bigmont-cli`: the engine's CPU path (`Engine::cpu`) uses `fermat_batch_gec` when `Options::gec` is set and maps `Checked` to `bigmont_core::runner::Verdict` (add `Verdict::Alarm` counting to `report.gec_alarms` with a per-bucket log line like the GPU path). The integrity pass's CPU re-check closure now returns `Vec<Verdict>`; with `gec` it uses `fermat_batch_gec`, without it `fermat_batch`. When the re-check of a GPU `Prp` or sampled composite itself alarms, the candidate's verdict becomes `Alarm` (neither side can be trusted; the caller retests) and it counts in `gec_alarms`. `--backend cpu --gec` therefore works and checks everything; remove any statement that CPU buckets are unchecked (README, `Options::gec` doc, USAGE, main.rs module doc, CHANGELOG, results doc, the PR body will be updated by the controller).
+
+**Tests**
+1. `bigmont-cpu` (no GPU): clean `fermat_base2_gec` equals `fermat_base2` (mapped) for bit lengths 2, 3, 40, 41, 42, 81, 130, 300, 1019, random odd numbers plus probable primes (`bigmont_oracle::random_prp`); the degenerate inputs; `fermat_batch_gec` equals element-wise results with several thread counts.
+2. Faulty adapter: a flip at operation K inside block 0, a middle block, the last block, in the tail, in the check passes (the squarings of `A` and the `2^sumV` part), and for a 20-bit candidate with no full block: always `Alarm`; a flip at an operation index beyond the run: clean. A fault that hits a probable prime must give `Alarm`, not `Prp`.
+3. Engine (no GPU needed): `Backend::Cpu` with `gec: true` returns the same verdict bytes as with `gec: false` on a mixed batch including degenerate inputs, `gec_alarms == 0`; the pure `integrity_pass` unit tests are updated for the `Vec<Verdict>` closure and gain: (f) a CPU re-check alarm turns a GPU `Prp` into `Alarm`, is counted once, and (g) with `gec` off the closure is never asked for alarms (plain path unchanged).
+4. CLI: `bigmont --backend cpu --gec` on a small file writes the same verdicts as without `--gec` and prints `GEC alarms 0` (no GPU needed; use the existing helpers).
+
+**Cost:** the CPU check adds about the same relative overhead as the GPU one (two multiplies per block plus about 86 squarings per run); state this qualitatively, do not invent a number. If you measure it, name the CPU and the command.
+
+**Steps:** tests first (RED), implement `bigmont-cpu`, then engine and CLI, then docs; fmt, clippy `-D warnings`, `cargo test --workspace --no-fail-fast --locked -- --test-threads=1` (Vulkan), doc with `-D warnings`, wasm32 check (`bigmont-cpu` is in the wasm check: it must still compile for wasm32, so keep `std::thread` use exactly where it is today and add none outside `fermat_batch_gec`'s native threading, which mirrors `fermat_batch`). Commits: `feat(cpu): Gerbicz check on the CPU path`, `feat(cli): check the CPU path too with --gec`, `docs: ...`.
+
+---
+
 ## PR
 
 Title `Opt-in Gerbicz error check and the --inject fault drill (closes #17, closes #12)`. Fill the "Tested on" section of the PR template from the results file (never claim a vendor that was not run; the six rows NVIDIA, AMD, Intel, Apple, Software, Browser each get a "tested" or "not tested" entry; the 13-bit multiply compiles for wasm32 but was not run in a browser unless it was). End the description with the Claude Code attribution line.
