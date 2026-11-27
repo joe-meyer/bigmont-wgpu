@@ -398,6 +398,8 @@ fn autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers
     // Whichever scheme Auto picked, the shape at 2 bits is the same kernel (4 limbs at tpi 4, ...).
     let at = |scheme, bits| {
         KernelConfig::for_bits_scheme(scheme, bits, first.cfg.tpi, first.cfg.wg, Variant::Unrolled)
+            .with_squaring(first.cfg.squaring)
+            .with_packing(first.cfg.packing)
     };
     assert_eq!(first.cfg, at(first.cfg.scheme, 2));
     for bits in [20u32, 40, 48] {
