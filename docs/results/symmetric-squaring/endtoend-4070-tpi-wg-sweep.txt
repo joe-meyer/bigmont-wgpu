@@ -1,0 +1,24 @@
+tpi 4 wg 64 rep 1 fused    : 71874.6 tests/s
+tpi 4 wg 64 rep 1 symmetric: 73146.6 tests/s
+tpi 4 wg 64 rep 2 fused    : 71902.1 tests/s
+tpi 4 wg 64 rep 2 symmetric: 73065.7 tests/s
+tpi 4 wg 128 rep 1 fused    : 71764.6 tests/s
+tpi 4 wg 128 rep 1 symmetric: 73080.8 tests/s
+tpi 4 wg 128 rep 2 fused    : 71634.3 tests/s
+tpi 4 wg 128 rep 2 symmetric: 72812.6 tests/s
+tpi 4 wg 256 rep 1 fused    : 67873.1 tests/s
+tpi 4 wg 256 rep 1 symmetric: 68798.2 tests/s
+tpi 4 wg 256 rep 2 fused    : 67865.2 tests/s
+tpi 4 wg 256 rep 2 symmetric: 68593.2 tests/s
+tpi 8 wg 64 rep 1 fused    : 67735.9 tests/s
+tpi 8 wg 64 rep 1 symmetric: 70267.2 tests/s
+tpi 8 wg 64 rep 2 fused    : 67822.6 tests/s
+tpi 8 wg 64 rep 2 symmetric: 70245.0 tests/s
+tpi 8 wg 128 rep 1 fused    : 67761.7 tests/s
+tpi 8 wg 128 rep 1 symmetric: 70412.8 tests/s
+tpi 8 wg 128 rep 2 fused    : 67889.7 tests/s
+tpi 8 wg 128 rep 2 symmetric: 69910.1 tests/s
+tpi 8 wg 256 rep 1 fused    : 65916.9 tests/s
+tpi 8 wg 256 rep 1 symmetric: 67462.7 tests/s
+tpi 8 wg 256 rep 2 fused    : 65713.3 tests/s
+tpi 8 wg 256 rep 2 symmetric: 67435.6 tests/s

@@ -1,0 +1,35 @@
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+2029 bits: limb class 157, tuned at 2037 bits, --limbs auto, 30 candidate configurations
+scheme  tpi    wg      squarings/s  status
+    13    4    64         67970072  ok
+    13    4   128         70870680  ok
+    13    4   256         71448473  ok
+    13    8    64         71512184  ok
+    13    8   128         74651137  ok
+    13    8   256         75365281  ok
+    13   16    64         51618772  ok
+    13   16   128         56801523  ok
+    13   16   256         59742559  ok
+    13   32    64         36618300  ok
+    13   32   128         41661740  ok
+    13   32   256         44996020  ok
+    32    4    64         49494109  ok
+   32s    4    64         50617210  ok
+    32    4   128         50568572  ok
+   32s    4   128         53247345  ok
+    32    4   256         50876124  ok
+   32s    4   256         54482448  ok
+    32    8    64         48192997  ok
+   32s    8    64         51710796  ok
+    32    8   128         49121395  ok
+   32s    8   128         53756726  ok
+    32    8   256         49575249  ok
+   32s    8   256         54265062  ok
+    32   16    64         39771892  ok
+    32   16   128         41125385  ok
+    32   16   256         41300650  ok
+    32   32    64         29390812  ok
+    32   32   128         31060912  ok
+    32   32   256         32058309  ok
+best: scheme 13 tpi 8 wg 256 at 75365281 squarings/s
+not cached (--no-cache, or no cache location)
