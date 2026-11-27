@@ -44,10 +44,16 @@ Each is a trait that says what it computes, not how.
 | Algorithm | Meaning | Today's code |
 |---|---|---|
 | `FermatTest` | verdicts for a batch of odd numbers (base-2 probable prime) | `Runner`, `Engine`, `fermat_base2` |
-| `GerbiczChecked` | the same, with the error check as a wrapper that can alarm | the `--gec` path |
 | `Search` | iterates a `FermatTest` over groups (section 5) | `schedule::run_waves` |
 
 Implementations are strategies: `CpuFermat`, `GpuFermat(KernelConfig)`, and `HybridFermat` (today's `Engine`).
+
+**Decorator or mode?** A feature is a decorator only if it can be written knowing nothing but the inputs and the returned
+verdicts. `HybridFermat` (GPU first, CPU re-check of probable primes and disagreements), device-loss retry and verification
+sampling qualify. The Gerbicz-Li check does not: it needs the ladder's state at every 40-iteration block boundary (the running
+products `A` and `B`, the previous block's `y_prev`, the Montgomery multiply kernel, and a doubled recomputation of the tail
+iterations), none of which leave the runner. So "checked" is an option on `CpuFermat` and `GpuFermat`, and its only visible effect
+is that a mismatch yields the `Retest` verdict.
 
 **Two ways in.** A concrete factory returns a specific implementation (`Fermat::cpu()`, `Fermat::gpu(&gpu, config)`). An abstract
 factory returns the best implementation for this adapter and size, using the tuner and a `Cache` (`Fermat::tuned(&gpu, bits, &cache)`).
@@ -57,8 +63,16 @@ structure) are the reason it picks one `GpuFermat` over another; they are not pa
 `async fn` in traits is not object-safe, so "return whichever implementation" is an enum, `AnyFermat`, not a boxed trait object.
 The set of backends is closed, the enum is zero-cost, and it works on wasm.
 
-**Verdicts.** `Verdict` is `Composite` (0), `ProbablePrime` (1), `Retest` (2, a Gerbicz alarm). A skipped candidate is not a
-verdict; it carries the output marker byte (section 5).
+**Verdicts.** One `Verdict` enum for the whole library, replacing today's three overlapping sets (the engine's `Verdict`, the
+CPU backend's `Checked`, and raw `u8`): `Composite` (0, certain: a failed Fermat test is a proof), `ProbablePrime` (1, passed, not
+proven), `Retest` (2, a Gerbicz alarm). It is `#[non_exhaustive]`. The reference arithmetic returns the same enum, and differential
+tests compare `passes_fermat()`, not full equality. A skipped candidate is not a verdict; it carries the output marker byte
+(section 5).
+
+**Deferred: a proven `Prime`.** No test we run proves primality, and at 2,029 bits that needs a different algorithm (ECPP or a
+Pocklington-style certificate). When a `PrimalityProof` algorithm exists it takes a `ProbablePrime` and returns `Prime` with a
+certificate, or `Unproven`; the variant is added then. The verdict file bytes (0, 1, 2; 3 to 255 are skip markers) would need a
+format version bump for it.
 
 ## 4. Seams
 
