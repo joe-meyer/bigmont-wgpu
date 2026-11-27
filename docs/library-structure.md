@@ -10,7 +10,7 @@ Status: **draft for review, nothing implemented.** Decisions below were made in 
 special-form tests.
 
 **This spec's scope is phase 1: consolidation.** All of today's logic moves into one library, renamed `meganum` (today's
-`bigmont-core`). The command-line binary, the wasm shim and the web pages become thin shells over it. They own only what a library
+`bigmont-core`). The command-line binary becomes a thin shell over it, and today's wasm shim and web pages become the browser integration suite. They own only what a library
 should not: argument parsing, files and locks, printing, and browser storage. They double as the integration suite: they show how an
 application uses the library. Phase 1 builds nothing new beyond the work section 9 names; it gives the later phases their seams.
 
@@ -50,9 +50,10 @@ meganum/src/                    the library (today's crates/bigmont-core)
   canary/         expected-verdict checks
 shells/
   cli/            the `bigmont` binary: args, files, lock, printing
-  wasm/           wasm-bindgen glue, browser storage
-  web/            pages over the wasm shell
-integration tests run the real binary and the web pages
+tests/
+  cli/            runs the real binary against fixture files
+  browser/        proves the library runs in a browser: pages plus an unpublished wasm-bindgen harness crate
+                  (today's web/ and crates/bigmont-wasm)
 ```
 
 Dependencies point down only: `search` over `executor` over `algorithm` over `tune` over `arith` and `device` over `reference`. No
@@ -242,6 +243,8 @@ Fermat driver, early-exit fold, harvest, gap walk, notary, and ECPP certificatio
 5. **Special-form tests:** `Proth` and `Llr` for `k 2^n +- 1`.
 6. **Strong general tests:** `MillerRabin`, `Bpsw` (Beacon's notary and walk).
 7. **Proofs:** `PrimalityProof` (certificates), and with it the proven `Prime` verdict.
+8. **JavaScript package:** wasm-bindgen bindings published for JavaScript and TypeScript callers, with no logic of their own. Rust
+   applications that target the browser do not need it; they depend on `meganum` directly.
 
 Phases 2 to 7 are ordered by dependency, not by priority; 6 can come before 3 to 5 since it reuses today's arithmetic.
 
@@ -262,8 +265,11 @@ Each step is its own PR, keeps `cargo test --workspace` green, and keeps every o
    device; `schedule` and `run_waves` become thin wrappers.
 7. Public surface: `prelude`, the `ProbablePrimeTest` trait, factories, tiers documented; submit/collect split on the GPU path, with
    a separate prepare phase so a shell can lock only the GPU phase.
-8. Shells thin (`shells/cli`, `shells/wasm`, `shells/web`): no logic left in them; the integration suite runs the real binary and
-   the web pages.
+8. The CLI becomes a thin shell (`shells/cli`) with no logic left in it. `web/` and `crates/bigmont-wasm` become `tests/browser/`: the
+   pages plus an unpublished wasm-bindgen harness. The kernels the pages load are generated at test time by `dump_wgsl` instead of
+   committed, so they cannot drift from the generator. The suite covers what `index.html`, `fermat.html` and `rust.html` cover
+   today (generated kernels compile and compute in the browser's WebGPU; the real Rust runner against a BigInt oracle), and
+   `tests/cli/` runs the real binary.
 9. Rename `bigmont-core` to `meganum` (after the name is confirmed free), with the old crate names re-exporting for one release.
 
 Every step touching the library also needs the wasm32 compile check and, per AGENTS.md, the browser pages run in a WebGPU browser.
