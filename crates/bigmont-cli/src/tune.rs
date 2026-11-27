@@ -1,7 +1,7 @@
 //! Autotuning and per-adapter self-validation: every kernel configuration is checked against the
 //! CPU references before it is timed, and the fastest verified one is cached per adapter and size.
 
-use bigmont_core::gpu::{Batch, Gpu, run_async};
+use bigmont_core::gpu::{Batch, Gpu, SquaringKernel, run_async};
 use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
@@ -277,10 +277,12 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
 
 /// Verified squarings per second for `cfg` (one squaring = one Montgomery squaring of one number).
 /// Work grows from a small dispatch, so no single submission runs long enough to trip a driver
-/// watchdog.
+/// watchdog. The kernel is compiled once and every timed dispatch reuses it (compiling used to be
+/// repeated for each of the ten or so dispatches, which dominated tuning on a software rasteriser).
 pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     cfg.validate()?;
     gpu.check_health()?;
+    let kernel = pollster::block_on(SquaringKernel::new_async(gpu, cfg))?;
     let limbs = cfg.limbs as usize;
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;
     let per_group = cfg.instances_per_workgroup();
@@ -295,7 +297,7 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
 
     let mut squarings = 8u32;
     loop {
-        let t = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?.best_secs;
+        let t = pollster::block_on(kernel.run_async(gpu, &batch, squarings, 1))?.best_secs;
         if t >= MEASURE_TARGET_SECS || u64::from(count) * u64::from(squarings) >= max_work {
             break;
         }
@@ -304,7 +306,7 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     let mut best = f64::MAX;
     let mut last = None;
     for _ in 0..2 {
-        let r = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?;
+        let r = pollster::block_on(kernel.run_async(gpu, &batch, squarings, 1))?;
         best = best.min(r.best_secs);
         last = Some(r);
     }
