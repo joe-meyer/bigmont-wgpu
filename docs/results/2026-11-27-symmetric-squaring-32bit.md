@@ -5,7 +5,7 @@ appears twice in `x^2`. This note covers the first cooperative kernel that uses 
 scheme (`crates/bigmont-core/src/limb32sq.rs`), offered to the autotuner as an extra candidate next to the existing fused loop.
 The one-thread experiment that preceded it is in `2026-11-26-gpu-squaring-symmetry.md`.
 
-**Result in short.** On the RTX 4070 Laptop the symmetric kernel is 5.6% (TPI 4) and 3.8% (TPI 8) faster than the fused one at
+**Result in short.** (This change also fixes the tuner's workgroup choice, section 5, worth about 6% on the laptop.) On the RTX 4070 Laptop the symmetric kernel is 5.6% (TPI 4) and 3.8% (TPI 8) faster than the fused one at
 2,029 bits in the kernel-only benchmark, and 0.9% to 1.8% (TPI 4) and 2.4% to 3.9% (TPI 8) faster end to end through the real
 runner, depending on workgroup size. On the RX 6700 XT, where the 32-bit scheme is not the winner, it is 17% to 19% faster kernel-only and about 14.5% end to
 end when the 32-bit scheme is forced. It is a measured candidate: the tuner picks it only where it wins. The end-to-end gain on
@@ -116,13 +116,23 @@ sweep on the laptop (TPI 4, wg 256): +3.0% at 4,096, +1.2% at 16,384 and +0.3% t
   gathered operands to `x`, overstated the gather cost because it let the compiler share work between mirrored products; it was
   discarded.
 
-## 5. A separate finding: the tuner's workgroup choice
+## 5. The tuner's workgroup choice (fixed in the same change)
 
-The tuner always picked workgroup 256 on the laptop, and the end-to-end sweep shows it is about 6% slower than workgroup 64 or 128
-for both squaring structures (TPI 4 fused: 67.9k against 71.9k tests/s). `tune::measure` times every configuration with a fixed
-number of workgroups (256), so the instance count differs by workgroup size (at TPI 4, 4,096 instances at wg 64 against 16,384 at
-wg 256) while the runner always uses a capacity of 16,384. This looks like a bias against small workgroups in the tuner. It is
-independent of this change and is not fixed here.
+The tuner always picked workgroup 256 on the laptop, and the end-to-end sweep shows that is about 6% slower than workgroup 64 or
+128 for both squaring structures (TPI 4 fused: 67.9k against 71.9k tests/s). `tune::measure` timed every configuration with a
+fixed number of workgroups (256), so the instance count depended on the workgroup size (at TPI 4, 4,096 instances at wg 64
+against 16,384 at wg 256) while the runner always uses a capacity of 16,384: small workgroups were under-filled in the
+measurement and looked slower than they are in the engine. It now times every candidate on 16,384 instances (rounded up to whole
+workgroups).
+
+| After the fix | Tuner's pick | End to end (tests/s, wall) |
+|---|---|---|
+| RTX 4070 Laptop | symmetric, TPI 4, wg 64 or 128 | 73,493 / 73,595 / 73,300 (before: 68.7k with the symmetric kernel at wg 256, 67.9k with the fused kernel at wg 256) |
+| RX 6700 XT | 13-bit, TPI 8, wg 64 or 256 (near tie) | 35,798 / 35,977 / 35,966 (before: 36,036; no change) |
+
+So on the laptop the real rate is about 8% above the engine before this change (73.5k against 67.9k): roughly 1.7% from the
+symmetric kernel and the rest from the tuner. `--limbs 13` picks are affected the same way. Raw: `endtoend-4070-after-tuner-fix.txt`,
+`tuneauto-4070-after-tuner-fix.txt`.
 
 ## 6. Correctness
 
