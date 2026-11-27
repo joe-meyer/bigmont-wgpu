@@ -161,7 +161,7 @@ browser.
 
 - Crate name: keep `bigmont-core` (it is now the whole library) or rename to `bigmont`.
 - `RetireRule` as a trait now, or a plain `FirstHit` function until a second rule exists. Default: the function.
-- `AnyFermat` enum against boxed futures: the spec says enum; confirm when writing `GerbiczChecked` as a wrapper.
+- `AnyFermat` enum against boxed futures: the spec says enum; confirm when writing the checked-mode option on `GpuFermat`.
 - Whether `reference` and `cpu` get cargo features so a browser build can leave `cpu` out. Default: always compiled; the
   wasm32 single-thread path makes it harmless.
 - A generic `Pipeline` in the library (section 6). Default: no.
