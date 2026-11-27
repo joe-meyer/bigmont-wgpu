@@ -3,7 +3,7 @@
 //! BIGMONT_ALLOW_SKIP=1.
 mod common;
 use bigmont_core::gpu::{Batch, Gpu, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Squaring, Variant};
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
 use num_bigint::BigUint;
@@ -49,8 +49,26 @@ fn values(bits: u32, count: usize, seed: u64) -> Vec<(BigUint, BigUint)> {
     v
 }
 
+/// Runs the check for both squaring structures: the fused loop and the symmetric squaring.
 fn check(gpu: &Gpu, bits: u32, tpi: u32, wg: u32, count: usize, squarings: u32, repeats: u32) {
-    let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb32, bits, tpi, wg, Variant::Unrolled);
+    for squaring in [Squaring::Fused, Squaring::Symmetric] {
+        check_with(gpu, squaring, bits, tpi, wg, count, squarings, repeats);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn check_with(
+    gpu: &Gpu,
+    squaring: Squaring,
+    bits: u32,
+    tpi: u32,
+    wg: u32,
+    count: usize,
+    squarings: u32,
+    repeats: u32,
+) {
+    let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb32, bits, tpi, wg, Variant::Unrolled)
+        .with_squaring(squaring);
     if !gpu.caps().satisfies(cfg.requires()) {
         common::skip(format!(
             "{cfg:?}: the adapter lacks {}",

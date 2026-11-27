@@ -74,6 +74,17 @@ diagnostic(off, subgroup_uniformity);
     }
 }
 
+/// How a cooperative 32-bit kernel squares. `Fused` interleaves the product and the reduction word by
+/// word (`limb32.rs`). `Symmetric` computes `x^2` once, with about three quarters of the limb products
+/// (cross terms once, rediagonalised across the lanes), then reduces it (`limb32sq.rs`); the tuner
+/// times both and picks per adapter. Multiply mode always uses the fused code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Squaring {
+    #[default]
+    Fused,
+    Symmetric,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KernelConfig {
     /// Lanes per number: 1 (one thread per number) or a cooperative width.
@@ -86,6 +97,8 @@ pub struct KernelConfig {
     pub limbs: u32,
     /// The limb representation (radix) of the kernel.
     pub scheme: LimbScheme,
+    /// How the 32-bit scheme squares (see [`Squaring`]); `Fused` for every other configuration.
+    pub squaring: Squaring,
 }
 
 impl KernelConfig {
@@ -97,7 +110,15 @@ impl KernelConfig {
             variant,
             limbs: LIMBS as u32,
             scheme: LimbScheme::Limb13,
+            squaring: Squaring::Fused,
         }
+    }
+
+    /// The same configuration with the given squaring structure (valid for the 32-bit scheme only; see
+    /// [`KernelConfig::validate`]).
+    pub const fn with_squaring(mut self, squaring: Squaring) -> Self {
+        self.squaring = squaring;
+        self
     }
 
     pub const fn with_limbs(mut self, limbs: u32) -> Self {
@@ -130,6 +151,7 @@ impl KernelConfig {
     /// The same scheme, lane count, workgroup size and variant, with the limb count for `bits`.
     pub fn retarget(&self, bits: u32) -> KernelConfig {
         Self::for_bits_scheme(self.scheme, bits, self.tpi, self.wg, self.variant)
+            .with_squaring(self.squaring)
     }
 
     /// `log2 R` of this configuration.
@@ -202,6 +224,9 @@ impl KernelConfig {
                     .to_string(),
             );
         }
+        if self.squaring == Squaring::Symmetric && self.scheme != LimbScheme::Limb32 {
+            return Err("symmetric squaring is generated for the 32-bit scheme only".to_string());
+        }
         Ok(())
     }
 
@@ -233,6 +258,9 @@ impl KernelConfig {
         if self.scheme == LimbScheme::Limb32 {
             if self.variant != Variant::Unrolled {
                 return Err("32-bit limbs are generated for the unrolled variant only".to_string());
+            }
+            if self.squaring == Squaring::Symmetric {
+                return crate::limb32sq::wgsl(self, crate::unrolled::Mode::Squarings);
             }
             return crate::limb32::wgsl(self, crate::unrolled::Mode::Squarings);
         }
@@ -278,6 +306,9 @@ impl KernelConfig {
             return Err("the Fermat ladder is generated for the unrolled variant only".to_string());
         }
         if self.scheme == LimbScheme::Limb32 {
+            if self.squaring == Squaring::Symmetric {
+                return crate::limb32sq::wgsl(self, crate::unrolled::Mode::Fermat);
+            }
             return crate::limb32::wgsl(self, crate::unrolled::Mode::Fermat);
         }
         Ok(crate::unrolled::wgsl(

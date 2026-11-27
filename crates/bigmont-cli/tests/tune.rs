@@ -3,7 +3,7 @@ use bigmont_cli::tune::{
     SchemeChoice::{self, Auto, Only},
 };
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Squaring, Variant};
 use bigmont_core::scheme::LimbScheme::{Limb13, Limb32};
 use std::path::{Path, PathBuf};
 
@@ -593,6 +593,7 @@ fn candidates_offer_a_scheme_only_when_the_adapter_caps_allow_it() {
         assert_eq!(
             *cfg,
             KernelConfig::for_bits_scheme(cfg.scheme, bits, cfg.tpi, cfg.wg, Variant::Unrolled)
+                .with_squaring(cfg.squaring)
         );
     }
 }
@@ -852,4 +853,64 @@ fn a_32_bit_cache_line_is_ignored_on_an_adapter_that_cannot_run_it() {
     let err = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect_err("no int64");
     assert!(err.contains("int64"), "{err}");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn symmetric_cache_values_round_trip_and_older_readers_see_a_miss() {
+    let fused = KernelConfig::for_bits_scheme(Limb32, 2029, 4, 128, Variant::Unrolled);
+    let sym = fused.with_squaring(Squaring::Symmetric);
+    assert_eq!(tune::cache_value(&fused, 9.5), "unrolled32 4 128|9.5");
+    assert_eq!(tune::cache_value(&sym, 9.5), "unrolled32sym 4 128|9.5");
+    assert_eq!(
+        tune::parse_value_squaring("unrolled32sym 4 128|9.5"),
+        Some((Limb32, Squaring::Symmetric, 4, 128, 9.5))
+    );
+    assert_eq!(
+        tune::parse_value_squaring("unrolled32 4 128|9.5"),
+        Some((Limb32, Squaring::Fused, 4, 128, 9.5))
+    );
+    // Readers that predate the symmetric kernel treat the new word as a miss, never as a fused kernel.
+    assert_eq!(tune::parse_value("unrolled32sym 4 128|9.5"), None);
+    assert_eq!(tune::parse_value_squaring("unrolled32sym 4 128|nan"), None);
+    assert_eq!(tune::parse_value_squaring("unrolled13sym 4 128|9.5"), None);
+}
+
+#[test]
+fn a_cached_fused_or_symmetric_winner_resolves_to_its_own_candidate() {
+    let fused = KernelConfig::for_bits_scheme(Limb32, 2029, 4, 128, Variant::Unrolled);
+    let sym = fused.with_squaring(Squaring::Symmetric);
+    let cands = [fused, sym];
+    let key = "adapter|class";
+    let line = |v: &str| vec![format!("{key}|{v}")];
+    assert_eq!(
+        tune::cache_lookup(&line("unrolled32 4 128|5"), key, &cands),
+        Some((fused, 5.0))
+    );
+    assert_eq!(
+        tune::cache_lookup(&line("unrolled32sym 4 128|6"), key, &cands),
+        Some((sym, 6.0))
+    );
+    // A symmetric line for a shape that is not offered (here: only the fused candidate) is a miss.
+    assert_eq!(
+        tune::cache_lookup(&line("unrolled32sym 4 128|6"), key, &[fused]),
+        None
+    );
+}
+
+#[test]
+fn symmetric_candidates_are_extra_32_bit_shapes_never_replacements() {
+    let Some(gpu) = gpu() else { return };
+    let cands = tune::candidates(&gpu, 2029, Auto);
+    if skip_unless(!cands.is_empty(), "no subgroup candidates on this adapter") {
+        return;
+    }
+    for c in cands.iter().filter(|c| c.squaring == Squaring::Symmetric) {
+        assert_eq!(c.scheme, Limb32, "{c:?}");
+        assert!(matches!(c.tpi, 4 | 8), "{c:?}");
+        let twin = c.with_squaring(Squaring::Fused);
+        assert!(
+            cands.contains(&twin),
+            "a symmetric candidate without its fused twin: {c:?}"
+        );
+    }
 }

@@ -437,10 +437,11 @@ fn run_with_scheme(
             .unwrap_or_else(|| panic!("no cache line for class {class}: {text}"));
         let mut f = line.rsplitn(3, '|');
         let (rate, shape) = (f.next().unwrap(), f.next().unwrap());
-        let (s, tpi, wg, _) =
-            tune::parse_value(&format!("{shape}|{rate}")).expect("a parsable cache value");
+        let (s, squaring, tpi, wg, _) =
+            tune::parse_value_squaring(&format!("{shape}|{rate}")).expect("a parsable cache value");
         let tuned =
-            KernelConfig::for_bits_scheme(s, tune::class_bits(class), tpi, wg, Variant::Unrolled);
+            KernelConfig::for_bits_scheme(s, tune::class_bits(class), tpi, wg, Variant::Unrolled)
+                .with_squaring(squaring);
         let exact = tuned.retarget(bits);
         if exact.limbs != tuned.limbs {
             expected.insert((class, exact.limbs));

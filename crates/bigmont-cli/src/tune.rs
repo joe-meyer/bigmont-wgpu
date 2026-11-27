@@ -2,7 +2,7 @@
 //! CPU references before it is timed, and the fastest verified one is cached per adapter and size.
 
 use bigmont_core::gpu::{Batch, Gpu, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Squaring, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::{LIMB_BITS, XorShift64, limbs_for_bits, random_odd_modulus};
@@ -20,6 +20,11 @@ const MEASURE_GROUPS: u32 = 256;
 const CPU_MEASURE_GROUPS: u32 = 4;
 /// Grow the timed dispatch until it takes at least this long.
 const MEASURE_TARGET_SECS: f64 = 0.05;
+
+/// Cooperative widths for which the symmetric squaring is offered as a candidate (32-bit scheme). It
+/// won at TPI 4 and 8 at 2,029 bits on an RTX 4070 Laptop and an RX 6700 XT; at TPI 16 it lost on the
+/// NVIDIA card and never beat the TPI 4 and 8 candidates on the AMD one, so only these are timed.
+const SYMMETRIC_TPIS: [u32; 2] = [4, 8];
 
 /// The smallest limb class: the unrolled kernels need at least `tpi` limbs and the narrowest width
 /// is 4, so every bit length that needs four limbs or fewer (up to 48 bits, down to the 2-bit number
@@ -95,6 +100,14 @@ pub fn candidates(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> Vec<KernelConfi
                 let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled);
                 if cfg.validate().is_ok() && have.satisfies(cfg.requires()) {
                     out.push(cfg);
+                    // The symmetric squaring is an extra candidate (never a replacement): the tuner
+                    // times and verifies both, so an adapter where it is slower never selects it.
+                    if scheme == LimbScheme::Limb32 && SYMMETRIC_TPIS.contains(&tpi) {
+                        let sym = cfg.with_squaring(Squaring::Symmetric);
+                        if sym.validate().is_ok() {
+                            out.push(sym);
+                        }
+                    }
                 }
             }
         }
@@ -351,10 +364,11 @@ pub fn cache_key(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> String {
 /// `unrolled32 <tpi> <wg>|<rate>` for a 32-bit one.
 #[doc(hidden)]
 pub fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
-    let word = match (cfg.variant, cfg.scheme) {
-        (Variant::Unrolled, LimbScheme::Limb13) => "unrolled",
-        (Variant::Unrolled, LimbScheme::Limb32) => "unrolled32",
-        (Variant::Rolled, _) => "rolled",
+    let word = match (cfg.variant, cfg.scheme, cfg.squaring) {
+        (Variant::Unrolled, LimbScheme::Limb13, _) => "unrolled",
+        (Variant::Unrolled, LimbScheme::Limb32, Squaring::Fused) => "unrolled32",
+        (Variant::Unrolled, LimbScheme::Limb32, Squaring::Symmetric) => "unrolled32sym",
+        (Variant::Rolled, _, _) => "rolled",
     };
     format!("{word} {} {}|{}", cfg.tpi, cfg.wg, rate)
 }
@@ -363,16 +377,25 @@ pub fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
 /// shape up among the candidates, so corrupt cache text never reaches `KernelConfig` arithmetic.
 #[doc(hidden)]
 pub fn parse_value(v: &str) -> Option<(LimbScheme, u32, u32, f64)> {
+    let (scheme, squaring, tpi, wg, rate) = parse_value_squaring(v)?;
+    (squaring == Squaring::Fused).then_some((scheme, tpi, wg, rate))
+}
+
+/// [`parse_value`] that also accepts `unrolled32sym <tpi> <wg>|<rate>` (the symmetric squaring) and
+/// returns the squaring structure.
+#[doc(hidden)]
+pub fn parse_value_squaring(v: &str) -> Option<(LimbScheme, Squaring, u32, u32, f64)> {
     let (c, rate) = v.split_once('|')?;
     let mut f = c.split_whitespace();
-    let scheme = match f.next()? {
-        "unrolled" => LimbScheme::Limb13,
-        "unrolled32" => LimbScheme::Limb32,
+    let (scheme, squaring) = match f.next()? {
+        "unrolled" => (LimbScheme::Limb13, Squaring::Fused),
+        "unrolled32" => (LimbScheme::Limb32, Squaring::Fused),
+        "unrolled32sym" => (LimbScheme::Limb32, Squaring::Symmetric),
         _ => return None,
     };
     let (tpi, wg) = (f.next()?.parse().ok()?, f.next()?.parse().ok()?);
     let rate: f64 = rate.trim().parse().ok()?;
-    (rate.is_finite() && rate > 0.0).then_some((scheme, tpi, wg, rate))
+    (rate.is_finite() && rate > 0.0).then_some((scheme, squaring, tpi, wg, rate))
 }
 
 /// The cached winner for `key` among `lines` (cache file lines) that is still one of `cands`: the
@@ -388,10 +411,11 @@ pub fn cache_lookup(
 ) -> Option<(KernelConfig, f64)> {
     let prefix = format!("{key}|");
     lines.iter().find_map(|l| {
-        let (scheme, tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
+        let (scheme, squaring, tpi, wg, rate) =
+            l.strip_prefix(&prefix).and_then(parse_value_squaring)?;
         cands
             .iter()
-            .find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg)
+            .find(|c| c.scheme == scheme && c.squaring == squaring && c.tpi == tpi && c.wg == wg)
             .map(|&cfg| (cfg, rate))
     })
 }

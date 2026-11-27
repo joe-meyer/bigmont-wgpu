@@ -1,4 +1,4 @@
-use bigmont_core::kernel::{KernelConfig, Target, Variant};
+use bigmont_core::kernel::{KernelConfig, Squaring, Target, Variant};
 use bigmont_core::scheme::{Caps, LimbScheme};
 
 const PRELUDE: &str = "enable subgroups;\ndiagnostic(off, subgroup_uniformity);\n";
@@ -198,4 +198,51 @@ fn limb32_geometry() {
         KernelConfig::for_bits_scheme(s, 254, 8, 64, Variant::Unrolled).limbs,
         16
     ); // 9 rounded up to a multiple of 8
+}
+
+#[test]
+fn symmetric_squaring_sources_validate_are_native_only_and_leave_multiply_mode_fused() {
+    let native = Caps {
+        subgroups: true,
+        int64: true,
+    };
+    for tpi in [4u32, 8, 16, 32] {
+        for bits in [64u32, 254, 1019, 2029] {
+            let cfg =
+                KernelConfig::for_bits_scheme(LimbScheme::Limb32, bits, tpi, 64, Variant::Unrolled)
+                    .with_squaring(Squaring::Symmetric);
+            assert!(cfg.validate().is_ok(), "{cfg:?}");
+            let squaring = cfg
+                .try_wgsl_for(Target::Native)
+                .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+            assert!(
+                squaring.contains("limb32sq.rs"),
+                "{cfg:?} used the fused generator"
+            );
+            validate(&squaring, native).unwrap_or_else(|e| panic!("{cfg:?} squaring: {e}"));
+            let fermat = cfg
+                .try_fermat_wgsl_for(Target::Native)
+                .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+            assert!(
+                fermat.contains("limb32sq.rs"),
+                "{cfg:?} used the fused generator"
+            );
+            validate(&fermat, native).unwrap_or_else(|e| panic!("{cfg:?} fermat: {e}"));
+            // Multiply mode (the Gerbicz check) always runs the fused code.
+            let mul = cfg
+                .try_mul_wgsl_for(Target::Native)
+                .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+            assert!(!mul.contains("limb32sq.rs"), "{cfg:?}");
+            // 32-bit kernels, symmetric or not, are never generated for the browser.
+            assert!(cfg.try_wgsl_for(Target::Browser).is_err(), "{cfg:?}");
+            assert!(cfg.try_fermat_wgsl_for(Target::Browser).is_err(), "{cfg:?}");
+        }
+    }
+}
+
+#[test]
+fn symmetric_squaring_is_rejected_for_the_13_bit_scheme() {
+    let cfg = KernelConfig::for_bits_scheme(LimbScheme::Limb13, 254, 8, 64, Variant::Unrolled)
+        .with_squaring(Squaring::Symmetric);
+    assert!(cfg.validate().is_err(), "{cfg:?}");
 }

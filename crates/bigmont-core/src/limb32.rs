@@ -148,17 +148,17 @@ pub(crate) fn wgsl(cfg: &KernelConfig, mode: Mode) -> Result<String, String> {
 }
 
 /// Line collector with indentation.
-struct Gen {
-    lines: Vec<String>,
-    depth: usize,
+pub(crate) struct Gen {
+    pub(crate) lines: Vec<String>,
+    pub(crate) depth: usize,
 }
 
 impl Gen {
-    fn line(&mut self, s: impl AsRef<str>) {
+    pub(crate) fn line(&mut self, s: impl AsRef<str>) {
         self.lines
             .push(format!("{}{}", "    ".repeat(self.depth), s.as_ref()));
     }
-    fn raw(&mut self, s: &str) {
+    pub(crate) fn raw(&mut self, s: &str) {
         self.lines.push(s.to_string());
     }
 }
@@ -169,7 +169,7 @@ impl Gen {
 /// its low bit from the previous lane's last limb (`up1`; 0 for lane 0). R > 16n gives `2x < 4n < R`,
 /// so nothing leaves the top limb of the top lane. Every lane runs the shuffle (uniform control
 /// flow); the bit only selects the result.
-fn conditional_double(g: &mut Gen, lpl: usize) {
+pub(crate) fn conditional_double(g: &mut Gen, lpl: usize) {
     g.line("let gi = fp.y - 2u - (fp.x + s);");
     g.line("let ebit = (e_words[ic * fp.z + (gi >> 5u)] >> (gi & 31u)) & 1u;");
     g.line(format!("var prev = up1(x{} >> 31u, lane);                 // bit shifted in from the lane below (0 for lane 0)", lpl - 1));
@@ -240,7 +240,7 @@ fn step(g: &mut Gen, lpl: usize, w: usize, mult: &str) {
 }
 
 /// Adds every lane's pending carry into the next lane's limb 0 and ripples until none is left.
-fn resolve(g: &mut Gen, lpl: usize) {
+pub(crate) fn resolve(g: &mut Gen, lpl: usize) {
     g.line("for (var round = 0u; round < L + 2u; round++) {");
     g.depth += 1;
     g.line("let plo = u32(pend);");
