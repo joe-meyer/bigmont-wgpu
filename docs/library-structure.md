@@ -18,7 +18,7 @@ driver.
 ```
 crates/bigmont-core/src/        the library
   reference/      exact big-int arithmetic: the oracle every test is checked against (today's bigmont-oracle)
-  montgomery/     shared arithmetic: limb schemes, the 64-bit CPU arithmetic (today's bigmont-cpu core),
+  arith/montgomery/  shared arithmetic: limb schemes, the 64-bit CPU arithmetic (today's bigmont-cpu core),
                   KernelConfig, Squaring, the WGSL generators (private), Gpu and device handling
   tune/           kernel configuration choice, shared by every algorithm: candidates, measure, self_test, autotune, Cache
   algorithm/
@@ -132,7 +132,7 @@ today's `run_waves`, separated:
   the stateless boundaries from `schedule(chunk, growth, s_max)` and is the default, so output stays byte-identical with the
   CUDA driver's. The plan is a small trait (`next_end(state) -> position`) so an adaptive plan that targets a batch size can be
   added without touching the driver.
-- **Marker byte**: encoding skipped positions (3 to 255) belongs to the output side (`formats`), not the driver.
+- **Marker byte**: encoding skipped positions (3 to 255) belongs to the output side (`formats`), not the driver. Beacon also reads `0xFF` as FATAL (its fold aborts); bigmont never writes it today. `formats` should own that encoding too, so a failed run can be written as an explicit FATAL file instead of no file.
 
 `Search::first_hit(groups, plan)` is a preset that builds the above; the name follows the rule, not the domain, because a hit is
 only a *probable* prime.
@@ -164,6 +164,8 @@ The split must not cost throughput or control. Each is a requirement with a test
 | Dispatch | no virtual calls in the hot path (enum dispatch; concrete types inside) |
 | Measurement | `RunStats` per dispatch stays public |
 | Multi-GPU | no process-wide mutable state; one value per device |
+| Device-resident waves | a search uploads its candidates to the device once and each wave selects positions by index, as Beacon's CUDA driver does ("loads bins -> device once; waves in-kernel by index"). **New: today `run_waves` clones and re-uploads every wave's candidates** |
+| Phases | preparing a batch (host conversion, upload) is separable from running it on the GPU, so a shell can hold a per-card lock only around the GPU phase and let siblings prepare meanwhile (Beacon runs 4 processes per card this way) |
 
 ## 8. Migration, in order
 
@@ -183,7 +185,27 @@ Each step is its own PR, keeps `cargo test --workspace` green, and keeps every o
 Every step touching `bigmont-core` also needs the wasm32 compile check and, per AGENTS.md, the browser pages run in a WebGPU
 browser.
 
-## 9. Open questions
+## 9. Checked against Beacon
+
+Beacon (the prime-gap pipeline this library serves) was read for what it needs from us. Its pipeline is residue cache, sieve
+(C and CUDA), Fermat driver, early-exit fold, harvest, gap walk, notary, and ECPP certification of endpoints.
+
+| Beacon needs | Covered by | Gap |
+|---|---|---|
+| batched base-2 Fermat at the 2,048-bit class, the drop-in driver CLI and byte formats | `Fermat`, `formats`, the CLI shell | none |
+| early exit with byte-identical prefixes, schedule chunk 8, growth 1.5, round-half-even | `Search` with the default `WavePlan` | none (pinned by tests) |
+| mega-rings: many candidate files in one process (`--bins list`) | `formats` concatenation | none |
+| device-resident waves | performance rules (section 7) | **new work** |
+| lock held only around the GPU phase | performance rules (phases) | **new work** |
+| `0xFF` FATAL verdict files | `formats` | **new work** |
+| optional Gerbicz check (Beacon's v8.55 driver dropped it for an hourly canary) | checked mode, `canary` | none |
+| the sieve, queue, claims, ledger, venue tuples, candidate order within a group | the application (section 6) | none: Beacon's |
+| strong probable-prime tests for the notary and walk (it uses gmpy2 today) | `MillerRabin`, `Bpsw` later | later algorithms, the structure takes them |
+| ECPP certificates for gap endpoints (it uses PARI today) | deferred `PrimalityProof` | later |
+| venues beyond 16,000 bits (PFGW past 32,768 bits) | `KernelConfig` allows up to 1,024 limbs (32,768 bits with 32-bit limbs) | beyond that needs different arithmetic (FFT multiplication); the layout should therefore name the arithmetic module `arith/` with `montgomery/` inside it, so an FFT arithmetic can sit beside it |
+| a GPU sieve in the library one day (issue #42) | not an algorithm in the `ProbablePrimeTest` sense | would be a second family of nouns (a `CandidateSource` implementation), not a test |
+
+## 10. Open questions
 
 - Crate name: keep `bigmont-core` (it is now the whole library) or rename to `bigmont`.
 - `RetireRule` as a trait now, or a plain `FirstHit` function until a second rule exists. Default: the function.
