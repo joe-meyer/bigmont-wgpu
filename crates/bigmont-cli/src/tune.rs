@@ -14,9 +14,12 @@ use std::sync::{Arc, Mutex};
 
 const TPIS: [u32; 4] = [4, 8, 16, 32];
 const WGS: [u32; 3] = [64, 128, 256];
-/// Workgroups in the timing dispatch on a GPU: enough to saturate it (4 groups measured only latency
-/// and ranked configurations by workgroup size). A CPU adapter gets `CPU_MEASURE_GROUPS`.
-const MEASURE_GROUPS: u32 = 256;
+/// Instances in the timing dispatch on a GPU: the engine's default capacity (`Options::capacity`), so
+/// every configuration is timed on the batch size the runner will really use. (A fixed number of
+/// workgroups gave small workgroups fewer instances, 4,096 at TPI 4 and workgroup 64 against 16,384 at
+/// 256, which under-filled the GPU and made them look slower than they are in the engine.) It is
+/// rounded up to whole workgroups. A CPU adapter gets `CPU_MEASURE_GROUPS` workgroups.
+const MEASURE_INSTANCES: u32 = 16384;
 const CPU_MEASURE_GROUPS: u32 = 4;
 /// Grow the timed dispatch until it takes at least this long.
 const MEASURE_TARGET_SECS: f64 = 0.05;
@@ -256,12 +259,12 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     gpu.check_health()?;
     let limbs = cfg.limbs as usize;
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;
-    let count = cfg.instances_per_workgroup()
-        * if on_cpu {
-            CPU_MEASURE_GROUPS
-        } else {
-            MEASURE_GROUPS
-        };
+    let per_group = cfg.instances_per_workgroup();
+    let count = if on_cpu {
+        per_group * CPU_MEASURE_GROUPS
+    } else {
+        MEASURE_INSTANCES.div_ceil(per_group) * per_group
+    };
     let max_work: u64 = if on_cpu { 1 << 18 } else { 1 << 26 };
     let values = Batch::random_values(count, cfg.r_bits() - 3, 0x5EED_0002);
     let batch = Batch::from_values_cfg(&values, &cfg);
