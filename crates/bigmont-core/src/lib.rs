@@ -13,6 +13,10 @@
 pub mod gpu;
 pub mod kernel;
 mod limb32;
+/// EXPERIMENTAL one-thread-per-number kernels for the squaring-symmetry spike (issue #2); not used
+/// by the runner or the CLI.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod onethread;
 pub mod runner;
 /// Limb schemes (radix-dependent host helpers) and device capabilities.
 pub mod scheme;
