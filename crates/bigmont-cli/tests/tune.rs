@@ -614,7 +614,8 @@ fn a_forced_32_bit_autotune_returns_a_verified_32_bit_kernel() {
     tune::self_test(&gpu, t.cfg, bits).expect("the winner passes its self-test again");
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.contains("|only-32|") && text.contains("|unrolled32 "),
+        text.contains("|only-32|")
+            && (text.contains("|unrolled32 ") || text.contains("|unrolled32sym ")),
         "{text}"
     );
     let again = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect("from cache");
@@ -663,8 +664,13 @@ fn auto_caches_its_winner_with_the_scheme_and_a_forced_run_leaves_that_entry_alo
         .strip_prefix(&format!("{}|", tune::cache_key(&gpu, 1019, Auto)))
         .expect("the Auto key is unchanged");
     assert_eq!(
-        tune::parse_value(value).map(|(s, t, w, _)| (s, t, w)),
-        Some((first.cfg.scheme, first.cfg.tpi, first.cfg.wg))
+        tune::parse_value_squaring(value).map(|(s, q, t, w, _)| (s, q, t, w)),
+        Some((
+            first.cfg.scheme,
+            first.cfg.squaring,
+            first.cfg.tpi,
+            first.cfg.wg
+        ))
     );
     assert!(!line.contains("only-"));
 

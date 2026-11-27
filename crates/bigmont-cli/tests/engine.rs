@@ -494,8 +494,8 @@ fn the_engine_matches_the_oracle_with_the_32_bit_scheme_forced() {
     };
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.lines()
-            .all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")),
+        text.lines().all(|l| l.contains("|only-32|")
+            && (l.contains("|unrolled32 ") || l.contains("|unrolled32sym "))),
         "{text}"
     );
 }
