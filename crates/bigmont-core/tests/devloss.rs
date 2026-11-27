@@ -8,7 +8,7 @@
 #![allow(clippy::err_expect)] // Run and Runner are not Debug
 
 mod common;
-use bigmont_core::gpu::{Batch, Gpu, run_async};
+use bigmont_core::gpu::{Batch, Gpu, SquaringKernel, run_async};
 use bigmont_core::kernel::{KernelConfig, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_oracle::{XorShift64, fermat_base2, random_odd_modulus};
@@ -60,8 +60,11 @@ fn a_destroyed_device_gives_device_lost_errors_not_panics() {
     let ns = candidates(40, 2);
     let want: Vec<bool> = ns.iter().map(fermat_base2).collect();
 
-    // Healthy first: both entry points work and the device reports no problem.
+    // Healthy first: every entry point works and the device reports no problem. The compiled
+    // kernel is built now and run again after the loss.
     pollster::block_on(run_async(&gpu, cfg, &batch, 3, 1)).expect("healthy run");
+    let kernel = pollster::block_on(SquaringKernel::new_async(&gpu, cfg)).expect("healthy compile");
+    pollster::block_on(kernel.run_async(&gpu, &batch, 3, 1)).expect("healthy compiled run");
     let mut runner =
         pollster::block_on(Runner::new_async(&gpu, cfg, BITS, 16)).expect("healthy runner");
     assert_eq!(
@@ -78,6 +81,18 @@ fn a_destroyed_device_gives_device_lost_errors_not_panics() {
     })
     .err()
     .expect("run on a destroyed device must fail");
+    assert!(e.contains("device lost"), "{e}");
+    let e = no_panic("a kernel compiled before the loss, run after it", || {
+        pollster::block_on(kernel.run_async(&gpu, &batch, 3, 1))
+    })
+    .err()
+    .expect("a compiled kernel on a destroyed device must fail");
+    assert!(e.contains("device lost"), "{e}");
+    let e = no_panic("SquaringKernel::new on a destroyed device", || {
+        pollster::block_on(SquaringKernel::new_async(&gpu, cfg))
+    })
+    .err()
+    .expect("compiling on a destroyed device must fail");
     assert!(e.contains("device lost"), "{e}");
     let e = no_panic("Runner::fermat on a destroyed device", || {
         pollster::block_on(runner.fermat_async(&gpu, &ns))

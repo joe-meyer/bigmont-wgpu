@@ -280,8 +280,7 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
 /// watchdog. The kernel is compiled once and every timed dispatch reuses it (compiling used to be
 /// repeated for each of the ten or so dispatches, which dominated tuning on a software rasteriser).
 pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
-    cfg.validate()?;
-    gpu.check_health()?;
+    // Validates `cfg` and checks the device's health before compiling.
     let kernel = pollster::block_on(SquaringKernel::new_async(gpu, cfg))?;
     let limbs = cfg.limbs as usize;
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;

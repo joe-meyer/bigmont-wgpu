@@ -176,7 +176,7 @@ fn a_compiled_kernel_runs_many_times_like_run_async() {
             .with_packing(Packing::Pairs),
     ] {
         let Some(gpu) = common::open_gpu(cfg) else {
-            return;
+            continue;
         };
         let kernel = pollster::block_on(SquaringKernel::new_async(&gpu, cfg)).expect("compile");
         assert_eq!(kernel.config(), cfg);
@@ -212,7 +212,13 @@ fn a_compiled_kernel_refuses_another_device() {
         return;
     };
     let kernel = pollster::block_on(SquaringKernel::new_async(&gpu, cfg)).expect("compile");
-    let other = Gpu::new().expect("a second device on the same adapter");
+    let other = match Gpu::new() {
+        Ok(g) => g,
+        Err(e) => {
+            common::skip(format!("a second device on the adapter: {e}"));
+            return;
+        }
+    };
     let batch = Batch::from_values(&Batch::random_values(8, 2029, 12));
     let err = pollster::block_on(kernel.run_async(&other, &batch, 1, 1))
         .err()

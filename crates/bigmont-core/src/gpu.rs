@@ -855,6 +855,9 @@ pub(crate) async fn guarded<T>(
 ///
 /// This compiles the kernel on every call. To run one configuration many times (timing, tuning),
 /// compile it once with [`SquaringKernel::new_async`] and call [`SquaringKernel::run_async`].
+///
+/// Errors come in this order: the configuration, the adapter's capabilities, the batch, then the
+/// device (compiling, then buffers and the dispatch).
 pub async fn run_async(
     gpu: &Gpu,
     cfg: KernelConfig,
