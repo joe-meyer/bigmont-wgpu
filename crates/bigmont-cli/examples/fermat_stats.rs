@@ -1,16 +1,16 @@
 //! Measures the raw GPU runner on a candidate file and prints `RunStats` (host-side Montgomery
 //! preparation against GPU dispatch time), without the engine's CPU re-checks.
 //!
-//!   BIGMONT_ADAPTER=... cargo run --release -p bigmont-cli --example fermat_stats -- [--limbs auto|13|32] [--squaring tuned|fused|symmetric] CAND [CAPACITY]
+//!   BIGMONT_ADAPTER=... cargo run --release -p bigmont-cli --example fermat_stats -- [--limbs auto|13|32] [--squaring tuned|fused|symmetric|symmetric-pairs] CAND [CAPACITY]
 //!
 //! `--limbs` restricts the autotuner to a scheme; `--squaring fused|symmetric` then overrides the tuned
-//! squaring structure (symmetric needs `--limbs 32`), to compare the two on the same candidates.
+//! squaring structure, to compare the two on the same candidates.
 //! `--tpi N` and `--wg N` override the tuned lane count and workgroup size the same way.
 
 use bigmont_cli::tune::SchemeChoice;
 use bigmont_cli::{formats, tune};
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::{KernelConfig, Squaring};
+use bigmont_core::kernel::{KernelConfig, parse_squaring};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use std::path::Path;
@@ -43,7 +43,7 @@ fn main() {
     };
     let Some(cand) = args.first() else {
         eprintln!(
-            "usage: fermat_stats [--limbs auto|13|32] [--squaring tuned|fused|symmetric] CAND [CAPACITY]"
+            "usage: fermat_stats [--limbs auto|13|32] [--squaring tuned|fused|symmetric|symmetric-pairs] CAND [CAPACITY]"
         );
         std::process::exit(2);
     };
@@ -74,19 +74,20 @@ fn main() {
             wg_override.unwrap_or(cfg.wg),
             cfg.variant,
         )
-        .with_squaring(cfg.squaring);
+        .with_squaring(cfg.squaring)
+        .with_packing(cfg.packing);
     }
-    match squaring.as_str() {
-        "tuned" => {}
-        "fused" => cfg = cfg.with_squaring(Squaring::Fused),
-        "symmetric" => cfg = cfg.with_squaring(Squaring::Symmetric),
-        other => {
-            eprintln!("--squaring must be tuned, fused or symmetric, got {other}");
+    if squaring != "tuned" {
+        let Some((sq, packing)) = parse_squaring(&squaring) else {
+            eprintln!(
+                "--squaring must be tuned, fused, symmetric or symmetric-pairs, got {squaring}"
+            );
             std::process::exit(2);
-        }
+        };
+        cfg = cfg.with_squaring(sq).with_packing(packing);
     }
     if let Err(e) = cfg.validate() {
-        eprintln!("this configuration is not valid ({e}); symmetric squaring needs --limbs 32");
+        eprintln!("this configuration is not valid ({e})");
         std::process::exit(2);
     }
     println!("running: {cfg:?}");

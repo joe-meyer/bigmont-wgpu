@@ -19,3 +19,4 @@ pub mod runner;
 pub mod scheme;
 mod signal;
 mod unrolled;
+mod unrolledsq;

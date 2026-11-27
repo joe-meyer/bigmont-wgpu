@@ -11,12 +11,14 @@
 //!   --bits N      operand size in bits for the `*-browser|native` forms (default 2029)
 //!   --scheme 13|32  limb scheme (default 13). The 32-bit scheme needs `unrolled` and is native-only: asking for
 //!                 a browser form of it prints the refusal to stderr and exits 1.
-use bigmont_core::kernel::{KernelConfig, Target, Variant};
+//!   --squaring fused|symmetric|symmetric-pairs  squaring structure (default fused); symmetric needs
+//!                 `unrolled`, symmetric-pairs (packed operands) also the 13-bit scheme.
+use bigmont_core::kernel::{KernelConfig, Target, Variant, parse_squaring};
 use bigmont_core::scheme::LimbScheme;
 
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
-    let usage = "usage: dump_wgsl TPI WG rolled|unrolled [fermat-browser|fermat-native|squarings-browser|squarings-native] [--bits N] [--scheme 13|32]";
+    let usage = "usage: dump_wgsl TPI WG rolled|unrolled [fermat-browser|fermat-native|squarings-browser|squarings-native] [--bits N] [--scheme 13|32] [--squaring fused|symmetric|symmetric-pairs]";
     let tpi: u32 = a.first().and_then(|v| v.parse().ok()).expect(usage);
     let wg: u32 = a.get(1).and_then(|v| v.parse().ok()).expect(usage);
     let variant = match a.get(2).map(String::as_str) {
@@ -35,13 +37,17 @@ fn main() {
     let scheme = flag("--scheme").map_or(LimbScheme::Limb13, |v| {
         LimbScheme::parse(&v).unwrap_or_else(|| panic!("--scheme must be 13 or 32, got {v}"))
     });
+    let (squaring, packing) = parse_squaring(flag("--squaring").as_deref().unwrap_or("fused"))
+        .unwrap_or_else(|| panic!("--squaring must be fused, symmetric or symmetric-pairs"));
     let form = a
         .get(3)
         .map(String::as_str)
         .filter(|s| !s.starts_with("--"));
     let result = match form {
         None => {
-            let cfg = KernelConfig::new(tpi, wg, variant);
+            let cfg = KernelConfig::new(tpi, wg, variant)
+                .with_squaring(squaring)
+                .with_packing(packing);
             cfg.validate().expect("invalid configuration");
             Ok(cfg.wgsl())
         }
@@ -53,7 +59,9 @@ fn main() {
                 "squarings-native" => ("squarings", Target::Native),
                 other => panic!("unknown form {other}; {usage}"),
             };
-            let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, variant);
+            let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, variant)
+                .with_squaring(squaring)
+                .with_packing(packing);
             cfg.validate().expect("invalid configuration");
             if kernel == "fermat" {
                 cfg.try_fermat_wgsl_for(target)

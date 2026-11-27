@@ -1,0 +1,38 @@
+running: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Fused, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.285 s (39898.7 tests/s) | gpu 3.056 s (42887.3 tests/s) | host prep 0.062 s (1.9% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.109 s (42153.3 tests/s) | gpu 2.869 s (45678.8 tests/s) | host prep 0.073 s (2.3% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Pairs }
+131075 tests, 2029 bits, capacity 16384: wall 3.081 s (42537.2 tests/s) | gpu 2.839 s (46175.1 tests/s) | host prep 0.071 s (2.3% of wall) | PRP 184
+running: KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.051 s (42958.7 tests/s) | gpu 2.807 s (46699.1 tests/s) | host prep 0.074 s (2.4% of wall) | PRP 184
+running: KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Fused, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.287 s (39882.7 tests/s) | gpu 3.045 s (43047.2 tests/s) | host prep 0.073 s (2.2% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Fused, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.291 s (39829.4 tests/s) | gpu 3.053 s (42939.4 tests/s) | host prep 0.071 s (2.1% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.111 s (42131.2 tests/s) | gpu 2.867 s (45720.1 tests/s) | host prep 0.076 s (2.4% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Pairs }
+131075 tests, 2029 bits, capacity 16384: wall 3.076 s (42610.9 tests/s) | gpu 2.829 s (46334.7 tests/s) | host prep 0.077 s (2.5% of wall) | PRP 184
+running: KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.053 s (42928.0 tests/s) | gpu 2.809 s (46660.9 tests/s) | host prep 0.076 s (2.5% of wall) | PRP 184
+running: KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Fused, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.270 s (40088.3 tests/s) | gpu 3.034 s (43197.3 tests/s) | host prep 0.070 s (2.1% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Fused, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.300 s (39724.9 tests/s) | gpu 3.057 s (42880.4 tests/s) | host prep 0.072 s (2.2% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.104 s (42223.2 tests/s) | gpu 2.868 s (45699.4 tests/s) | host prep 0.075 s (2.4% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Pairs }
+131075 tests, 2029 bits, capacity 16384: wall 3.080 s (42550.4 tests/s) | gpu 2.840 s (46150.0 tests/s) | host prep 0.074 s (2.4% of wall) | PRP 184
+running: KernelConfig { tpi: 8, wg: 256, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.050 s (42971.6 tests/s) | gpu 2.808 s (46686.7 tests/s) | host prep 0.073 s (2.4% of wall) | PRP 184
+running: KernelConfig { tpi: 8, wg: 128, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Fused, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 3.261 s (40198.7 tests/s) | gpu 3.025 s (43325.4 tests/s) | host prep 0.069 s (2.1% of wall) | PRP 184
+== tuned (auto, all schemes)
+config: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32, squaring: Symmetric, packing: Limbs } (169495783 squarings/s measured by autotune)
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32, squaring: Symmetric, packing: Limbs }
+131075 tests, 2029 bits, capacity 16384: wall 1.787 s (73353.5 tests/s) | gpu 1.679 s (78048.1 tests/s) | host prep 0.039 s (2.2% of wall) | PRP 184
+== tuned (13-bit only)
+config: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Pairs } (104654086 squarings/s measured by autotune)
+running: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 160, scheme: Limb13, squaring: Symmetric, packing: Pairs }
+131075 tests, 2029 bits, capacity 16384: wall 3.073 s (42656.6 tests/s) | gpu 2.832 s (46278.3 tests/s) | host prep 0.071 s (2.3% of wall) | PRP 184

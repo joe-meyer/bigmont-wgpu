@@ -1,10 +1,10 @@
 //! Base-2 Fermat verdicts through the `Runner`, for every kernel shape: each limb scheme with its fused
-//! squaring, plus the 32-bit scheme with the symmetric squaring. Each test opens one device and runs
+//! and with its symmetric squaring, and the 13-bit symmetric squaring with packed operands. Each test opens one device and runs
 //! its checks for each shape the device supports (strict: an unsupported shape fails unless
 //! BIGMONT_ALLOW_SKIP=1).
 mod common;
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::{KernelConfig, Squaring, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
@@ -17,19 +17,25 @@ use std::collections::BTreeMap;
 struct Shape {
     scheme: LimbScheme,
     squaring: Squaring,
+    packing: Packing,
 }
 
-/// Every scheme with its fused squaring, then the 32-bit scheme with the symmetric squaring.
+/// Every scheme with its fused squaring, then every scheme with the symmetric squaring, then the
+/// 13-bit symmetric squaring with packed operands.
 fn shapes() -> Vec<Shape> {
-    LimbScheme::ALL
-        .iter()
-        .map(|&scheme| Shape {
-            scheme,
-            squaring: Squaring::Fused,
+    [Squaring::Fused, Squaring::Symmetric]
+        .into_iter()
+        .flat_map(|squaring| {
+            LimbScheme::ALL.iter().map(move |&scheme| Shape {
+                scheme,
+                squaring,
+                packing: Packing::Limbs,
+            })
         })
         .chain([Shape {
-            scheme: LimbScheme::Limb32,
+            scheme: LimbScheme::Limb13,
             squaring: Squaring::Symmetric,
+            packing: Packing::Pairs,
         }])
         .collect()
 }
@@ -37,6 +43,7 @@ fn shapes() -> Vec<Shape> {
 fn shape_cfg(shape: Shape, bits: u32, tpi: u32, wg: u32, variant: Variant) -> KernelConfig {
     KernelConfig::for_bits_scheme(shape.scheme, bits, tpi, wg, variant)
         .with_squaring(shape.squaring)
+        .with_packing(shape.packing)
 }
 
 fn mersenne(p: u32) -> BigUint {

@@ -21,10 +21,12 @@ The Fermat-ladder kernel (`Runner`'s shader) can be emitted in browser form too:
     ...&compile=1      compile and create the pipeline only
     ...&count=32768    throughput batch size (0 skips it)
 
-Names are `fermat_b<bits>_tpi<T>_wg<W>`. Names starting `limb32_` are the native-only 32-bit kernels: the page expects the browser to REJECT them (negative control, they use `u64`). Regenerate the matrix:
+Names are `fermat_b<bits>_tpi<T>_wg<W>`; a `sym_` prefix marks the 13-bit symmetric squaring kernel and `sympairs_` the same with packed operands. Names starting `limb32_` are the native-only 32-bit kernels: the page expects the browser to REJECT them (negative control, they use `u64`). Regenerate the matrix:
 
     for bits in 64 254 1019 2029; do for tpi in 4 8 16 32; do
-      cargo run --release -p bigmont-core --example dump_wgsl -- $tpi 64 unrolled fermat-browser --bits $bits > web/kernels/matrix/fermat_b${bits}_tpi${tpi}_wg64.wgsl; done; done
+      cargo run --release -p bigmont-core --example dump_wgsl -- $tpi 64 unrolled fermat-browser --bits $bits > web/kernels/matrix/fermat_b${bits}_tpi${tpi}_wg64.wgsl
+      cargo run --release -p bigmont-core --example dump_wgsl -- $tpi 64 unrolled fermat-browser --bits $bits --squaring symmetric > web/kernels/matrix/sym_fermat_b${bits}_tpi${tpi}_wg64.wgsl
+      cargo run --release -p bigmont-core --example dump_wgsl -- $tpi 64 unrolled fermat-browser --bits $bits --squaring symmetric-pairs > web/kernels/matrix/sympairs_fermat_b${bits}_tpi${tpi}_wg64.wgsl; done; done
     cargo run --release -p bigmont-core --example dump_wgsl -- 8 64 unrolled fermat-native --bits 2029 --scheme 32 > web/kernels/matrix/limb32_native_fermat_b2029_tpi8_wg64.wgsl
 
 `dump_wgsl ... --scheme 32` with a `-browser` form exits 1 with the refusal (the 32-bit scheme is native-only). Results: `docs/results/2026-11-25-browser-fermat-validation.md`.

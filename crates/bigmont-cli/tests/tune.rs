@@ -3,7 +3,7 @@ use bigmont_cli::tune::{
     SchemeChoice::{self, Auto, Only},
 };
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::{KernelConfig, Squaring, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::scheme::LimbScheme::{Limb13, Limb32};
 use std::path::{Path, PathBuf};
 
@@ -609,6 +609,7 @@ fn candidates_offer_a_scheme_only_when_the_adapter_caps_allow_it() {
             *cfg,
             KernelConfig::for_bits_scheme(cfg.scheme, bits, cfg.tpi, cfg.wg, Variant::Unrolled)
                 .with_squaring(cfg.squaring)
+                .with_packing(cfg.packing)
         );
     }
 }
@@ -651,7 +652,10 @@ fn a_forced_13_bit_autotune_returns_a_13_bit_kernel() {
     assert_eq!(t.cfg.scheme, Limb13);
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.contains("|only-13|") && text.contains("|unrolled "),
+        text.contains("|only-13|")
+            && (text.contains("|unrolled ")
+                || text.contains("|unrolledsym ")
+                || text.contains("|unrolledsympairs ")),
         "{text}"
     );
     let _ = std::fs::remove_dir_all(dir);
@@ -679,10 +683,11 @@ fn auto_caches_its_winner_with_the_scheme_and_a_forced_run_leaves_that_entry_alo
         .strip_prefix(&format!("{}|", tune::cache_key(&gpu, 1019, Auto)))
         .expect("the Auto key is unchanged");
     assert_eq!(
-        tune::parse_value_squaring(value).map(|(s, q, t, w, _)| (s, q, t, w)),
+        tune::parse_value_shape(value).map(|(s, q, p, t, w, _)| (s, q, p, t, w)),
         Some((
             first.cfg.scheme,
             first.cfg.squaring,
+            first.cfg.packing,
             first.cfg.tpi,
             first.cfg.wg
         ))
@@ -884,17 +889,49 @@ fn symmetric_cache_values_round_trip_and_older_readers_see_a_miss() {
     assert_eq!(tune::cache_value(&fused, 9.5), "unrolled32 4 128|9.5");
     assert_eq!(tune::cache_value(&sym, 9.5), "unrolled32sym 4 128|9.5");
     assert_eq!(
-        tune::parse_value_squaring("unrolled32sym 4 128|9.5"),
-        Some((Limb32, Squaring::Symmetric, 4, 128, 9.5))
+        tune::parse_value_shape("unrolled32sym 4 128|9.5"),
+        Some((Limb32, Squaring::Symmetric, Packing::Limbs, 4, 128, 9.5))
     );
     assert_eq!(
-        tune::parse_value_squaring("unrolled32 4 128|9.5"),
-        Some((Limb32, Squaring::Fused, 4, 128, 9.5))
+        tune::parse_value_shape("unrolled32 4 128|9.5"),
+        Some((Limb32, Squaring::Fused, Packing::Limbs, 4, 128, 9.5))
     );
     // Readers that predate the symmetric kernel treat the new word as a miss, never as a fused kernel.
     assert_eq!(tune::parse_value("unrolled32sym 4 128|9.5"), None);
-    assert_eq!(tune::parse_value_squaring("unrolled32sym 4 128|nan"), None);
-    assert_eq!(tune::parse_value_squaring("unrolled13sym 4 128|9.5"), None);
+    assert_eq!(tune::parse_value_shape("unrolled32sym 4 128|nan"), None);
+    assert_eq!(tune::parse_value_shape("unrolled13sym 4 128|9.5"), None);
+    // The 13-bit symmetric word, likewise a miss for older readers.
+    let fused13 = KernelConfig::for_bits_scheme(Limb13, 2029, 8, 64, Variant::Unrolled);
+    let sym13 = fused13.with_squaring(Squaring::Symmetric);
+    assert_eq!(tune::cache_value(&fused13, 2.5), "unrolled 8 64|2.5");
+    assert_eq!(tune::cache_value(&sym13, 2.5), "unrolledsym 8 64|2.5");
+    assert_eq!(
+        tune::parse_value_shape("unrolledsym 8 64|2.5"),
+        Some((Limb13, Squaring::Symmetric, Packing::Limbs, 8, 64, 2.5))
+    );
+    assert_eq!(tune::parse_value("unrolledsym 8 64|2.5"), None);
+    let pairs13 = sym13.with_packing(Packing::Pairs);
+    assert_eq!(
+        tune::cache_value(&pairs13, 2.5),
+        "unrolledsympairs 8 64|2.5"
+    );
+    assert_eq!(
+        tune::parse_value_shape("unrolledsympairs 8 64|2.5"),
+        Some((Limb13, Squaring::Symmetric, Packing::Pairs, 8, 64, 2.5))
+    );
+    assert_eq!(tune::parse_value("unrolledsympairs 8 64|2.5"), None);
+    // The two packings are different candidates: a cached one never resolves to the other.
+    let key = "k";
+    let line = vec![format!("{key}|unrolledsympairs 8 64|3")];
+    assert_eq!(
+        tune::cache_lookup(&line, key, &[sym13]),
+        None,
+        "a pairs line must not resolve to the unpacked candidate"
+    );
+    assert_eq!(
+        tune::cache_lookup(&line, key, &[sym13, pairs13]).map(|(c, _)| c),
+        Some(pairs13)
+    );
 }
 
 #[test]
@@ -920,16 +957,34 @@ fn a_cached_fused_or_symmetric_winner_resolves_to_its_own_candidate() {
 }
 
 #[test]
-fn symmetric_candidates_are_extra_32_bit_shapes_never_replacements() {
+fn symmetric_candidates_are_extra_shapes_never_replacements() {
     let Some(gpu) = gpu() else { return };
     let cands = tune::candidates(&gpu, 2029, Auto);
     if skip_unless(!cands.is_empty(), "no subgroup candidates on this adapter") {
         return;
     }
+    for packing in [Packing::Limbs, Packing::Pairs] {
+        assert!(
+            cands.iter().any(|c| c.squaring == Squaring::Symmetric
+                && c.scheme == Limb13
+                && c.packing == packing),
+            "a subgroup adapter is offered the 13-bit symmetric squaring with {packing:?}"
+        );
+    }
+    for c in cands.iter().filter(|c| c.packing == Packing::Pairs) {
+        assert!(
+            c.scheme == Limb13 && c.squaring == Squaring::Symmetric,
+            "{c:?}"
+        );
+    }
     for c in cands.iter().filter(|c| c.squaring == Squaring::Symmetric) {
-        assert_eq!(c.scheme, Limb32, "{c:?}");
-        assert!(matches!(c.tpi, 4 | 8), "{c:?}");
-        let twin = c.with_squaring(Squaring::Fused);
+        match c.scheme {
+            Limb13 => assert!(matches!(c.tpi, 4 | 8 | 16), "{c:?}"),
+            Limb32 => assert!(matches!(c.tpi, 4 | 8), "{c:?}"),
+        }
+        let twin = c
+            .with_squaring(Squaring::Fused)
+            .with_packing(Packing::Limbs);
         assert!(
             cands.contains(&twin),
             "a symmetric candidate without its fused twin: {c:?}"

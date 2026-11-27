@@ -185,7 +185,7 @@ fn the_tune_subcommand_writes_the_cache() {
         fields.next().unwrap(),
     );
     assert!(
-        bigmont_cli::tune::parse_value_squaring(&format!("{shape}|{rate}")).is_some(),
+        bigmont_cli::tune::parse_value_shape(&format!("{shape}|{rate}")).is_some(),
         "{text}"
     );
     assert!(

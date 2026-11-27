@@ -1,6 +1,6 @@
 mod common;
 use bigmont_core::gpu::{Batch, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
@@ -125,6 +125,33 @@ fn unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths() {
                 "{cfg:?} should validate: {:?}",
                 cfg.validate()
             );
+        }
+    }
+}
+
+/// `cfg` with the 13-bit symmetric squaring and each operand packing.
+fn symmetric(cfg: KernelConfig) -> [KernelConfig; 2] {
+    [Packing::Limbs, Packing::Pairs].map(|p| cfg.with_squaring(Squaring::Symmetric).with_packing(p))
+}
+
+/// The 13-bit symmetric squaring (`unrolledsq.rs`), both operand packings, at every width and
+/// workgroup size.
+#[test]
+fn symmetric_unrolled_matches_oracle() {
+    for tpi in [4, 8, 16, 32] {
+        for wg in [64, 128, 256] {
+            for cfg in symmetric(KernelConfig::new(tpi, wg, Variant::Unrolled)) {
+                check(cfg);
+            }
+        }
+    }
+}
+
+#[test]
+fn symmetric_unrolled_long_chain_matches_oracle() {
+    for tpi in [4, 8, 16, 32] {
+        for cfg in symmetric(KernelConfig::new(tpi, 64, Variant::Unrolled)) {
+            check_chain(cfg, 70, 128);
         }
     }
 }

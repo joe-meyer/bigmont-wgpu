@@ -143,17 +143,23 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target, mode: Mode) -> String {
 }
 
 /// Line collector with indentation.
-struct Gen {
-    lines: Vec<String>,
-    depth: usize,
+pub(crate) struct Gen {
+    pub(crate) lines: Vec<String>,
+    pub(crate) depth: usize,
 }
 
 impl Gen {
-    fn line(&mut self, s: impl AsRef<str>) {
+    pub(crate) fn new() -> Gen {
+        Gen {
+            lines: Vec::new(),
+            depth: 0,
+        }
+    }
+    pub(crate) fn line(&mut self, s: impl AsRef<str>) {
         self.lines
             .push(format!("{}{}", "    ".repeat(self.depth), s.as_ref()));
     }
-    fn raw(&mut self, s: &str) {
+    pub(crate) fn raw(&mut self, s: &str) {
         self.lines.push(s.to_string());
     }
 }
@@ -217,7 +223,7 @@ fn header(
     }
 }
 
-fn prologue(g: &mut Gen) {
+pub(crate) fn prologue(g: &mut Gen) {
     g.line("let sg = sg_in;");
     g.line("let lane = sg % TPI;");
     g.line("let base = sg - lane;");
@@ -245,7 +251,7 @@ fn load(g: &mut Gen, lpl: u32, mode: Mode) {
 }
 
 /// Values that do not change across squarings.
-fn hoists(g: &mut Gen) {
+pub(crate) fn hoists(g: &mut Gen) {
     g.line("let ninv = ninv_buf[ic] & MASK;                   // already below 2^13; the explicit mask lets the compiler see the m product fits 24 bits");
     g.line("let is0 = select(0u, 0xffffffffu, lane == 0u);   // all ones on lane 0 only");
     g.line("let N0 = bcast(n0, 0u, base);                     // lane 0's limb 0 of n");
@@ -296,7 +302,7 @@ fn iteration(g: &mut Gen, lpl: u32, w: u32, mult: &str) {
 }
 
 /// Each limb keeps its low 13 bits; the carry moves one limb up (across lanes for the top limb).
-fn light_pass(g: &mut Gen, lpl: u32) {
+pub(crate) fn light_pass(g: &mut Gen, lpl: u32) {
     g.line("{");
     g.depth += 1;
     g.line(format!(
@@ -313,7 +319,7 @@ fn light_pass(g: &mut Gen, lpl: u32) {
 }
 
 /// Light passes until every limb of every instance in the subgroup is below 2^13.
-fn full_normalize(g: &mut Gen, lpl: u32) {
+pub(crate) fn full_normalize(g: &mut Gen, lpl: u32) {
     g.line("for (var round = 0u; round < L + 2u; round++) {");
     g.depth += 1;
     let big: Vec<String> = (0..lpl).map(|c| format!("(t{c} >> B)")).collect();
@@ -327,7 +333,7 @@ fn full_normalize(g: &mut Gen, lpl: u32) {
 /// Fermat mode: `x <- 2x` (fully normalised) when exponent bit `fp.y - 2 - (fp.x + s)` is set.
 /// Every lane computes the doubling and the bit only selects the result, so the shuffles and
 /// `subgroupAny` in `full_normalize` stay in uniform control flow.
-fn conditional_double(g: &mut Gen, lpl: u32) {
+pub(crate) fn conditional_double(g: &mut Gen, lpl: u32) {
     g.line("let gi = fp.y - 2u - (fp.x + s);");
     g.line("let ebit = (e_words[ic * fp.z + (gi >> 5u)] >> (gi & 31u)) & 1u;");
     for c in 0..lpl {
@@ -339,7 +345,7 @@ fn conditional_double(g: &mut Gen, lpl: u32) {
     }
 }
 
-fn store(g: &mut Gen, lpl: u32) {
+pub(crate) fn store(g: &mut Gen, lpl: u32) {
     g.line("if (live) {");
     g.depth += 1;
     for c in 0..lpl {

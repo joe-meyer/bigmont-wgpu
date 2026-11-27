@@ -4,7 +4,7 @@
 //!
 //!   BIGMONT_ADAPTER=4070 cargo run --release -p bigmont-core --example scheme_compare
 //!   ... -- --bits 2029 --count 65536 --runs 3 --tpis 4,8,16 --wgs 64,128,256 --schemes 13,32
-//!   ... -- --schemes 32 --squarings fused,symmetric   (the symmetric squaring exists for the 32-bit scheme)
+//!   ... -- --schemes 13,32 --squarings fused,symmetric,symmetric-pairs   (pairs: 13-bit only)
 //!
 //! Slope method: a dispatch of 2 squarings is timed (best of 5), the squarings per dispatch are
 //! doubled while the predicted time stays within 0.4 s and the last one is under 0.2 s, and the rate
@@ -14,7 +14,7 @@
 //! with a note.
 
 use bigmont_core::gpu::{Batch, Gpu, run_async};
-use bigmont_core::kernel::{KernelConfig, Squaring, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant, parse_squaring};
 use bigmont_core::scheme::LimbScheme;
 use num_bigint::BigUint;
 
@@ -139,6 +139,9 @@ fn verify(
     }
 }
 
+/// A limb scheme with a squaring structure and operand packing.
+type Shape = (LimbScheme, (Squaring, Packing));
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let bits: u32 = arg(&args, "--bits").unwrap_or(2029);
@@ -152,27 +155,24 @@ fn main() {
             LimbScheme::parse(s).unwrap_or_else(|| panic!("unknown scheme '{s}' (use 13 or 32)"))
         })
         .collect();
-    let squarings: Vec<Squaring> = list::<String>(&args, "--squarings", "fused")
+    let squarings: Vec<(Squaring, Packing)> = list::<String>(&args, "--squarings", "fused")
         .iter()
-        .map(|s| match s.as_str() {
-            "fused" => Squaring::Fused,
-            "symmetric" | "sym" => Squaring::Symmetric,
-            other => panic!("unknown squaring '{other}' (use fused or symmetric)"),
+        .map(|s| {
+            parse_squaring(s).unwrap_or_else(|| {
+                panic!("unknown squaring '{s}' (use fused, symmetric or symmetric-pairs)")
+            })
         })
         .collect();
-    // The symmetric squaring exists for the 32-bit scheme only.
-    let shapes: Vec<(LimbScheme, Squaring)> = schemes
+    // Packed operands exist for the 13-bit symmetric squaring only.
+    let shapes: Vec<Shape> = schemes
         .iter()
-        .flat_map(|&scheme| {
-            squarings
-                .iter()
-                .filter(move |&&sq| sq == Squaring::Fused || scheme == LimbScheme::Limb32)
-                .map(move |&sq| (scheme, sq))
-        })
+        .flat_map(|&scheme| squarings.iter().map(move |&sq| (scheme, sq)))
+        .filter(|&(scheme, (_, packing))| packing == Packing::Limbs || scheme == LimbScheme::Limb13)
         .collect();
-    let label = |(scheme, squaring): (LimbScheme, Squaring)| match squaring {
-        Squaring::Fused => format!("{}-bit", scheme.name()),
-        Squaring::Symmetric => format!("{}-bit sym", scheme.name()),
+    let label = |(scheme, squaring): Shape| match squaring {
+        (Squaring::Fused, _) => format!("{}-bit", scheme.name()),
+        (Squaring::Symmetric, Packing::Limbs) => format!("{}-bit sym", scheme.name()),
+        (Squaring::Symmetric, Packing::Pairs) => format!("{}-bit sym pairs", scheme.name()),
     };
     let gpu = Gpu::new().expect("no usable adapter");
     println!("adapter: {}", gpu.describe());
@@ -186,7 +186,7 @@ fn main() {
     let values = Batch::random_values(count, bits, 0xc00b_0000 + u64::from(bits));
     let mut failures = 0u32;
     // (shape, tpi, best wg, median slope)
-    let mut best: Vec<((LimbScheme, Squaring), u32, u32, f64)> = Vec::new();
+    let mut best: Vec<(Shape, u32, u32, f64)> = Vec::new();
 
     println!("| scheme | limbs | tpi | wg | run | slope sq/s | long sq | long ms | verified |");
     println!("|---|---|---|---|---|---|---|---|---|");
@@ -197,7 +197,8 @@ fn main() {
             let mut top: Option<(u32, Vec<f64>)> = None;
             for &wg in &wgs {
                 let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled)
-                    .with_squaring(squaring);
+                    .with_squaring(squaring.0)
+                    .with_packing(squaring.1);
                 if let Err(e) = gpu
                     .check_subgroups(tpi)
                     .and_then(|_| cfg.validate())
@@ -270,7 +271,7 @@ fn main() {
         };
         println!("| {} | {tpi} | {wg} | {med:.4e} | {ratio} |", label(*shape));
     }
-    let top = |shape: (LimbScheme, Squaring)| {
+    let top = |shape: Shape| {
         best.iter()
             .filter(|r| r.0 == shape)
             .map(|r| r.3)

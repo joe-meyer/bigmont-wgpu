@@ -437,11 +437,12 @@ fn run_with_scheme(
             .unwrap_or_else(|| panic!("no cache line for class {class}: {text}"));
         let mut f = line.rsplitn(3, '|');
         let (rate, shape) = (f.next().unwrap(), f.next().unwrap());
-        let (s, squaring, tpi, wg, _) =
-            tune::parse_value_squaring(&format!("{shape}|{rate}")).expect("a parsable cache value");
+        let (s, squaring, packing, tpi, wg, _) =
+            tune::parse_value_shape(&format!("{shape}|{rate}")).expect("a parsable cache value");
         let tuned =
             KernelConfig::for_bits_scheme(s, tune::class_bits(class), tpi, wg, Variant::Unrolled)
-                .with_squaring(squaring);
+                .with_squaring(squaring)
+                .with_packing(packing);
         let exact = tuned.retarget(bits);
         if exact.limbs != tuned.limbs {
             expected.insert((class, exact.limbs));
@@ -478,8 +479,10 @@ fn the_engine_matches_the_oracle_with_the_13_bit_scheme_forced() {
     };
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.lines()
-            .all(|l| l.contains("|only-13|") && l.contains("|unrolled ")),
+        text.lines().all(|l| l.contains("|only-13|")
+            && (l.contains("|unrolled ")
+                || l.contains("|unrolledsym ")
+                || l.contains("|unrolledsympairs "))),
         "{text}"
     );
 }
