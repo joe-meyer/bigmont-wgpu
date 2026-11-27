@@ -8,68 +8,90 @@ All of the project's logic lives in one library, `bigmont-core`, usable natively
 wasm shim and the web pages become thin shells over it. They own only what a library should not: argument parsing, files and
 locks, printing, and browser storage. They double as the integration suite: they show how an application uses the library.
 
+The structure must take further probable-prime tests (Miller-Rabin, Lucas, BPSW) without reshaping, although none is built here.
+
 Non-goals: new algorithms, a new GPU backend, changing any result byte, or changing what `bigmont` does as a drop-in for the CUDA
 driver.
 
-## 2. Layout
+## 2. Layout: organised by algorithm
 
 ```
 crates/bigmont-core/src/        the library
-  reference/   exact big-int arithmetic oracle (today's bigmont-oracle)
-  cpu/         64-bit-limb Montgomery backend (today's bigmont-cpu)
-  kernel/      KernelConfig, Squaring, LimbScheme (public); WGSL generators (private)
-  gpu/         Gpu, AdapterSelector, device health
-  runner/      Runner: the Fermat ladder and the Gerbicz check on a device
-  tune/        candidates, measure, self_test, autotune, the Cache trait
-  engine/      the hybrid: tuned GPU + CPU re-check + device-loss recovery
-  search/      Groups, WavePlan, RetireRule, Search (step API)
-  formats/     G2C1 / G2V1 / G2S1 as bytes <-> types, no filesystem
-  canary/      expected-verdict checks
+  reference/      exact big-int arithmetic: the oracle every test is checked against (today's bigmont-oracle)
+  montgomery/     shared arithmetic: limb schemes, the 64-bit CPU arithmetic (today's bigmont-cpu core),
+                  KernelConfig, Squaring, the WGSL generators (private), Gpu and device handling
+  tune/           kernel configuration choice, shared by every algorithm: candidates, measure, self_test, autotune, Cache
+  algorithm/
+    fermat/       verdict logic, the CPU ladder, the GPU kernel mode and runner, the Gerbicz-checked mode, tests
+    miller_rabin/ (later) same shape
+  executor/       Executor (where a batch runs) and Hybrid (a policy over two executors)
+  search/         Groups, WavePlan, RetireRule, Search (step API): runs any test over groups
+  formats/        G2C1 / G2V1 / G2S1 as bytes <-> types, no filesystem
+  canary/         expected-verdict checks
 crates/bigmont-cli/             bin only: args, files, lock, printing
 crates/bigmont-wasm/            wasm-bindgen glue, browser storage
 web/                            pages over bigmont-wasm
 integration tests               run the real binary and the web pages
 ```
 
-Dependencies point down only (`engine` over `tune` and `cpu` over `runner` over `kernel` and `gpu` over `reference`). No module
-knows a shell exists. `bigmont-oracle` and `bigmont-cpu` stop being crates; they become the `reference` and `cpu` modules.
+Dependencies point down only: `search` over `executor` over `algorithm` over `tune` over `montgomery` over `reference`. No module
+knows a shell exists. `bigmont-oracle` and `bigmont-cpu` stop being crates.
 
-**Rule: the convenience layer uses only public pieces.** `Engine` and the tuned factory are built entirely from the public tier-2
-parts. There is no private back door, so anything the facade does, an application can do (section 7).
+`reference` and the CPU path in `montgomery` are both CPU code and both stay: one is ground truth (exact `BigUint` arithmetic), the
+other the production CPU path (Montgomery limbs). The tuner's self-test and the re-check of GPU verdicts use the second; tests
+check both against the first.
 
-## 3. Algorithms are the top-level nouns
+**Rule: the convenience layer uses only public pieces.** The tuned factories and `Hybrid` are built entirely from public parts.
+There is no private back door, so anything they do, an application can do (section 7).
 
-Each is a trait that says what it computes, not how.
+## 3. Algorithms, executors and policies
 
-| Algorithm | Meaning | Today's code |
+**Algorithms are the top-level nouns.** Each is a probable-prime test with its own verdict logic, a CPU implementation and a GPU
+kernel mode. They share the trait
+
+```
+trait ProbablePrimeTest { async fn verdicts(&mut self, ns: &[BigUint]) -> Result<Vec<Verdict>, Error>; }
+```
+
+| Algorithm | What it checks | Status |
 |---|---|---|
-| `FermatTest` | verdicts for a batch of odd numbers (base-2 probable prime) | `Runner`, `Engine`, `fermat_base2` |
-| `Search` | iterates a `FermatTest` over groups (section 5) | `schedule::run_waves` |
+| `Fermat` | `2^(n-1) = 1 mod n` (today's base-2 test, with the optional Gerbicz-checked mode) | exists |
+| `MillerRabin` | `n - 1 = 2^s d`; `a^d`, then `s` squarings looking for `-1` or `1` | later |
+| `Lucas` / `Bpsw` | a Lucas recurrence; BPSW combines it with a base-2 strong test | later |
 
-Implementations are strategies: `CpuFermat`, `GpuFermat(KernelConfig)`, and `HybridFermat` (today's `Engine`).
+On the GPU a ladder is never run one operation at a time from the host (that would be one dispatch per squaring): each algorithm
+is a kernel mode of the generator, as `Fermat` and `Mul` are today, with its host-side verdict logic. Miller-Rabin's mode adds a
+comparison after every squaring. So adding an algorithm costs one CPU implementation plus one kernel mode; the arithmetic, the
+tuner, the executors and the search are shared.
 
-**Decorator or mode?** A feature is a decorator only if it can be written knowing nothing but the inputs and the returned
-verdicts. `HybridFermat` (GPU first, CPU re-check of probable primes and disagreements), device-loss retry and verification
-sampling qualify. The Gerbicz-Li check does not: it needs the ladder's state at every 40-iteration block boundary (the running
-products `A` and `B`, the previous block's `y_prev`, the Montgomery multiply kernel, and a doubled recomputation of the tail
-iterations), none of which leave the runner. So "checked" is an option on `CpuFermat` and `GpuFermat`, and its only visible effect
-is that a mismatch yields the `Retest` verdict.
+**An `Executor` says where a batch runs:** `Executor::Cpu { threads }` or `Executor::Gpu(KernelConfig)`. It is a value, not a type,
+which is what the tuner chooses. An algorithm is constructed on an executor:
 
-**Two ways in.** A concrete factory returns a specific implementation (`Fermat::cpu()`, `Fermat::gpu(&gpu, config)`). An abstract
-factory returns the best implementation for this adapter and size, using the tuner and a `Cache` (`Fermat::tuned(&gpu, bits, &cache)`).
-The CLI and the web client call the abstract one. The kernel choices made by the tuner (scheme, TPI, workgroup, squaring
-structure) are the reason it picks one `GpuFermat` over another; they are not part of the algorithm's name.
+- **Concrete factory:** `Fermat::on(Executor::Cpu { threads: 0 })`, `Fermat::on(Executor::Gpu(config))`.
+- **Tuned factory:** `Fermat::tuned(&gpu, bits, &cache)` picks the executor and kernel configuration for this adapter and size,
+  using the tuner. The CLI and the web client call this. The tuner's choices (scheme, TPI, workgroup, squaring structure) are
+  shared by every algorithm that uses the same arithmetic.
 
-`async fn` in traits is not object-safe, so "return whichever implementation" is an enum, `AnyFermat`, not a boxed trait object.
-The set of backends is closed, the enum is zero-cost, and it works on wasm.
+**`Hybrid` is a policy, not an executor.** It is today's `Engine`: use the GPU when the batch is big enough (`min_gpu_batch`),
+re-check probable primes and disagreements on the CPU, fall back to the CPU on device loss. It holds two instances of an algorithm
+and decides between them, so it works for any algorithm.
 
-**Verdicts.** One `Verdict` enum for the whole library, replacing today's three overlapping sets (the engine's `Verdict`, the
-CPU backend's `Checked`, and raw `u8`): `Composite` (0, certain: a failed Fermat test is a proof), `ProbablePrime` (1, passed, not
-proven), `Retest` (2, a Gerbicz alarm). It is `#[non_exhaustive]`. The reference arithmetic returns the same enum, and differential
-tests compare `passes_fermat()`, not full equality. A skipped candidate is not a verdict; it carries the output marker byte
+**Decorator or mode?** A feature is a decorator (a wrapper over `ProbablePrimeTest`) only if it can be written knowing nothing but
+the inputs and the returned verdicts. `Hybrid`, device-loss retry and verification sampling qualify. The Gerbicz-Li check does not:
+it needs the ladder's state at every 40-iteration block boundary (the running products `A` and `B`, the previous block's `y_prev`,
+the Montgomery multiply kernel, and a doubled recomputation of the tail iterations), none of which leave the runner. So "checked"
+is an option of the `Fermat` algorithm on both executors, and its only visible effect is the `Retest` verdict.
+
+`async fn` in traits is not object-safe, so "whichever algorithm or executor" is an enum (`AnyTest`), not a boxed trait object.
+The set is closed, the enum is zero-cost, and it works on wasm.
+
+**Verdicts.** One `Verdict` enum for the whole library, replacing today's three overlapping sets (the engine's `Verdict`, the CPU
+backend's `Checked`, and raw `u8`): `Composite` (0, certain: a failed Fermat or Miller-Rabin test is a proof), `ProbablePrime` (1,
+passed, not proven), `Retest` (2, a Gerbicz alarm). It is `#[non_exhaustive]`. The reference arithmetic returns the same enum, and
+differential tests compare `passes()`, not full equality. A skipped candidate is not a verdict; it carries the output marker byte
 (section 5).
 
-**Deferred: a proven `Prime`.** No test we run proves primality, and at 2,029 bits that needs a different algorithm (ECPP or a
+**Deferred: a proven `Prime`.** No test here proves primality, and at 2,029 bits that needs a different algorithm (ECPP or a
 Pocklington-style certificate). When a `PrimalityProof` algorithm exists it takes a `ProbablePrime` and returns `Prime` with a
 certificate, or `Unproven`; the variant is added then. The verdict file bytes (0, 1, 2; 3 to 255 are skip markers) would need a
 format version bump for it.
@@ -82,7 +104,7 @@ format version bump for it.
 | Files | `formats` reads `&Path` | core parses `&[u8]` and writes to `impl Write`; the shell does the I/O |
 | Logging | `eprintln!` in engine and tune | an `Observer` trait with events (tuned, device lost, recheck, alarm...) |
 | Blocking | `pollster` inside the tuner | all `async`; shells block once at the top (`pollster::block_on`) |
-| Threads | `std::thread` inside the CPU batch; traps on wasm32 (issue #48) | the CPU module runs single-threaded on wasm32 and threaded elsewhere, gated by `cfg(target_arch)` as AGENTS.md requires, not by a feature |
+| Threads | `std::thread` inside the CPU batch; traps on wasm32 (issue #48) | the CPU path runs single-threaded on wasm32 and threaded elsewhere, gated by `cfg(target_arch)` as AGENTS.md requires, not by a feature |
 | Environment | `AdapterSelector::from_env` in core | the shell reads env vars and passes values |
 | Fault injection | `Options::inject_*` | a cargo feature, for tests |
 | Locking (`--lock`) | the CLI | stays in the CLI: it is process-level |
@@ -94,11 +116,12 @@ a per-item iterator or stream would starve the GPU.
 
 ```
 let mut search = Search::new(groups, WavePlan::default(), FirstHit);
-while let Some(wave) = search.step(&mut fermat).await? { /* progress, cancel, yield to the page */ }
+while let Some(wave) = search.step(&mut test).await? { /* progress, cancel, yield to the page */ }
 let outcome = search.finish();
 ```
 
-The algorithm is passed in (`&mut impl FermatTest`). The pieces of today's `run_waves`, separated:
+The test is passed in (`&mut impl ProbablePrimeTest`), so the same search runs Fermat now and Miller-Rabin later. The pieces of
+today's `run_waves`, separated:
 
 - **`Groups`**: candidates plus group boundaries (data only), built from a sizes file by `formats` or by hand. The public API says
   "group"; "k" stays in the CLI's help text.
@@ -116,13 +139,13 @@ only a *probable* prime.
 
 ## 6. Orchestration (gap hunting and similar)
 
-The library owns the search and the per-device tests. An application owns the pipeline around them:
+The library owns the search, the tests and the executors. An application owns the pipeline around them:
 
 ```
-CandidateSource (sieve) -> Groups -> Search::step over FermatTest -> Outcome -> Sink (gap logic, persistence)
+CandidateSource (sieve) -> Groups -> Search::step over a test -> Outcome -> Sink (gap logic, persistence)
 ```
 
-The sieve runs ahead of the GPU on the CPU. Multi-GPU is one `FermatTest` per device, each pulling batches from the
+The sieve runs ahead of the GPU on the CPU. Multi-GPU is one test instance per device, each pulling batches from the
 application's queue. `CandidateSource` and `Sink` are small traits in the library so the integration suite can show a worked
 pipeline; the sieve, gap arithmetic, queue and persistence live in the application (`gapsieve`). Whether the library should also
 ship a generic `Pipeline` is not decided; the default is no.
@@ -133,11 +156,11 @@ The split must not cost throughput or control. Each is a requirement with a test
 
 | Control | Requirement |
 |---|---|
-| Config override | `KernelConfig` (TPI, workgroup, squaring, scheme) is a public input to every constructor; the tuner is a default |
+| Config override | `KernelConfig` (TPI, workgroup, squaring, scheme) is a public input to `Executor::Gpu`; the tuner is a default |
 | Batch size | capacity is a parameter; `WavePlan` is pluggable; the tuner times candidates on the engine's batch size |
-| Overlap | the runner splits *submit* from *collect*, so several dispatches can be in flight. **Probably new: as far as I have read, `fermat_async` awaits each dispatch to completion; to be confirmed against `runner.rs` before the plan** |
+| Overlap | the GPU path splits *submit* from *collect*, so several dispatches can be in flight. **Probably new: as far as I have read, `fermat_async` awaits each dispatch to completion; to be confirmed against `runner.rs` before the plan** |
 | Host prep | accept packed limb words as input, not only `BigUint`, so a pipeline that already holds limbs skips the conversion (1% to 2.7% of wall today) |
-| Buffers | the runner keeps its buffers across calls |
+| Buffers | the GPU path keeps its buffers across calls |
 | Dispatch | no virtual calls in the hot path (enum dispatch; concrete types inside) |
 | Measurement | `RunStats` per dispatch stays public |
 | Multi-GPU | no process-wide mutable state; one value per device |
@@ -148,11 +171,14 @@ Each step is its own PR, keeps `cargo test --workspace` green, and keeps every o
 
 1. Tuner to core: async `candidates`, `measure`, `self_test`, `autotune`; a `Cache` trait; the cache value format. CLI keeps a file cache.
 2. `formats` to core as `&[u8]` parsing and `Write` output; the CLI does the I/O.
-3. Engine to core with `Observer`; fault injection behind a feature.
-4. `bigmont-oracle` and `bigmont-cpu` become modules (the old crates re-export for one release); CPU single-thread path on wasm32.
-5. `Search` split (`Groups`, `WavePlan`, `RetireRule`) with the step API; `schedule` and `run_waves` become thin wrappers.
-6. Public surface: `prelude`, named algorithms and factories, tiers documented; submit/collect split in the runner.
-7. Shells thin: CLI and wasm hold no logic; the integration suite runs the real binary and the web pages.
+3. One `Verdict` enum across the reference, the CPU path, the runner and the engine.
+4. `bigmont-oracle` becomes `reference`; `bigmont-cpu`'s arithmetic joins `montgomery` and its ladder joins `algorithm/fermat` (the
+   old crates re-export for one release); the CPU path gets its single-thread form on wasm32.
+5. `algorithm/fermat` gathers today's runner, Fermat kernel mode and the Gerbicz-checked mode; `Executor` replaces the scattered
+   backend choices; the engine to core as `Hybrid`, with `Observer` and fault injection behind a feature.
+6. `Search` split (`Groups`, `WavePlan`, `RetireRule`) with the step API; `schedule` and `run_waves` become thin wrappers.
+7. Public surface: `prelude`, the `ProbablePrimeTest` trait, factories, tiers documented; submit/collect split on the GPU path.
+8. Shells thin: CLI and wasm hold no logic; the integration suite runs the real binary and the web pages.
 
 Every step touching `bigmont-core` also needs the wasm32 compile check and, per AGENTS.md, the browser pages run in a WebGPU
 browser.
@@ -161,9 +187,11 @@ browser.
 
 - Crate name: keep `bigmont-core` (it is now the whole library) or rename to `bigmont`.
 - `RetireRule` as a trait now, or a plain `FirstHit` function until a second rule exists. Default: the function.
-- `AnyFermat` enum against boxed futures: the spec says enum; confirm when writing the checked-mode option on `GpuFermat`.
-- Whether `reference` and `cpu` get cargo features so a browser build can leave `cpu` out. Default: always compiled; the
-  wasm32 single-thread path makes it harmless.
+- `AnyTest` enum against boxed futures: the spec says enum; confirm when writing the checked-mode option on the GPU executor.
+- Whether the CPU path and `reference` get cargo features so a browser build can leave the CPU path out. Default: always compiled;
+  the wasm32 single-thread path makes it harmless.
 - A generic `Pipeline` in the library (section 6). Default: no.
+- Where `Gpu` and device handling live: inside `montgomery` as drawn, or a module of their own, since a future non-Montgomery
+  algorithm would still need a device.
 - Sequencing against the open performance work (the symmetric squaring branch and the tuner fix touch `tune` and `kernel`): step 1
   should start from `main` after that PR merges.
