@@ -384,3 +384,170 @@ fn every_single_fault_alarms_on_small_candidates_including_probable_primes() {
         }
     }
 }
+
+// ---- Montgomery multiply and square against their definition --------------------------------
+
+fn to_big(x: &[u64]) -> BigUint {
+    x.iter()
+        .rev()
+        .fold(BigUint::ZERO, |acc, &l| (acc << 64u32) + l)
+}
+
+fn to_limbs(x: &BigUint, w: usize) -> Vec<u64> {
+    let mut v = x.to_u64_digits();
+    v.resize(w, 0);
+    v
+}
+
+/// Odd moduli of exactly `w` limbs that stress the carry paths: random full-width ones, one whose
+/// top limb is 1, the all-ones modulus 2^(64 w) - 1, and 2^(64 w - 1) + 1.
+fn moduli(w: usize, rng: &mut XorShift64) -> Vec<BigUint> {
+    let full = BigUint::one() << (64 * w);
+    let mut v = vec![
+        random_odd_modulus(rng, 64 * w as u32),
+        random_odd_modulus(rng, 64 * w as u32),
+        random_odd_modulus(rng, 64 * w as u32 - 5),
+        &full - 1u32,
+        (BigUint::one() << (64 * w - 1)) + 1u32,
+    ];
+    if w >= 2 {
+        v.push((BigUint::one() << (64 * (w - 1))) + 1u32);
+    }
+    v
+}
+
+/// Operands below `n` that sit on limb boundaries or are all ones, plus random ones.
+fn operands(n: &BigUint, rng: &mut XorShift64) -> Vec<BigUint> {
+    let w = n.to_u64_digits().len();
+    let mut v = vec![
+        BigUint::ZERO,
+        BigUint::one(),
+        n - 1u32,
+        n - 2u32 + (n & BigUint::one()),
+    ];
+    for k in [1usize, 63, 64, 65, 64 * w - 1, 64 * w] {
+        let x = (BigUint::one() << k) - 1u32;
+        v.push(x % n);
+        v.push((BigUint::one() << k) % n);
+    }
+    for _ in 0..6 {
+        v.push(bigmont_oracle::random_below(rng, n));
+    }
+    v
+}
+
+/// `out` is the Montgomery product of `a` and `b`: below n and out * R = a * b (mod n).
+fn check_product(n: &BigUint, w: usize, a: &BigUint, b: &BigUint, out: &[u64], what: &str) {
+    let o = to_big(out);
+    assert!(
+        &o < n,
+        "{what}: result not reduced (w={w}, n={n:x}, a={a:x}, b={b:x})"
+    );
+    assert_eq!(
+        (&o << (64 * w)) % n,
+        (a * b) % n,
+        "{what} (w={w}, n={n:x}, a={a:x}, b={b:x})"
+    );
+}
+
+#[test]
+fn mul_and_sqr_match_the_definition_and_each_other() {
+    let mut rng = XorShift64::new(4040);
+    for w in [1usize, 2, 3, 4, 5, 8, 16, 31, 32, 33] {
+        for n in moduli(w, &mut rng) {
+            let m = Mont::new(&to_limbs(&n, w));
+            let mut t = vec![0u64; m.scratch_len()];
+            let ops = operands(&n, &mut rng);
+            for a in &ops {
+                let al = to_limbs(a, w);
+                let mut sq = vec![0u64; w];
+                m.sqr(&al, &mut sq, &mut t);
+                check_product(&n, w, a, a, &sq, "sqr");
+                let mut prod = vec![0u64; w];
+                m.mul(&al, &al, &mut prod, &mut t);
+                assert_eq!(sq, prod, "sqr != mul(a, a) (w={w}, n={n:x}, a={a:x})");
+                for b in ops.iter().take(8) {
+                    let mut out = vec![0u64; w];
+                    m.mul(&al, &to_limbs(b, w), &mut out, &mut t);
+                    check_product(&n, w, a, b, &out, "mul");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn mul_works_with_the_minimal_scratch_of_w_plus_2() {
+    let mut rng = XorShift64::new(4041);
+    for w in [1usize, 2, 7, 32] {
+        let n = random_odd_modulus(&mut rng, 64 * w as u32);
+        let m = Mont::new(&to_limbs(&n, w));
+        let mut t = vec![0u64; w + 2];
+        let (a, b) = (
+            bigmont_oracle::random_below(&mut rng, &n),
+            bigmont_oracle::random_below(&mut rng, &n),
+        );
+        let mut out = vec![0u64; w];
+        m.mul(&to_limbs(&a, w), &to_limbs(&b, w), &mut out, &mut t);
+        check_product(&n, w, &a, &b, &out, "mul with w + 2 scratch");
+    }
+}
+
+// ---- the portable and the hardware (mulx + adcx/adox) kernels ------------------------------
+
+/// Squarings of every operand under both kernels give the same limbs, which also equal the
+/// definition. On a CPU without BMI2 and ADX both contexts run the portable kernel, so the test
+/// only covers that one (it says so rather than claiming otherwise).
+#[test]
+fn the_portable_and_the_hardware_kernel_agree() {
+    let mut rng = XorShift64::new(5150);
+    let mut hardware_seen = false;
+    // Every width from 1 to 12 covers all remainders of the 4-limb unrolled loop and rows shorter
+    // than one iteration; 31 to 33 are the sizes the Fermat test actually uses.
+    for w in (1usize..=12).chain([31, 32, 33]) {
+        for n in moduli(w, &mut rng) {
+            let limbs = to_limbs(&n, w);
+            let auto = Mont::new(&limbs);
+            let portable = Mont::new(&limbs).portable();
+            assert!(!portable.uses_adx());
+            hardware_seen |= auto.uses_adx();
+            let mut t = vec![0u64; auto.scratch_len()];
+            for a in operands(&n, &mut rng) {
+                let al = to_limbs(&a, w);
+                let (mut x, mut y) = (vec![0u64; w], vec![0u64; w]);
+                auto.sqr(&al, &mut x, &mut t);
+                portable.sqr(&al, &mut y, &mut t);
+                assert_eq!(x, y, "kernels disagree (w={w}, n={n:x}, a={a:x})");
+                check_product(&n, w, &a, &a, &x, "sqr");
+            }
+        }
+    }
+    eprintln!(
+        "hardware kernel exercised: {hardware_seen} (false means this CPU has no BMI2 + ADX)"
+    );
+}
+
+/// The whole Fermat ladder gives the same verdicts and the same Gerbicz verdicts under both
+/// kernels (`fermat_base2` and the checked run use the auto-selected kernel; here they are compared
+/// with the oracle, which never uses either).
+#[test]
+fn verdicts_match_the_oracle_at_the_sizes_the_kernel_unrolls_over() {
+    let mut rng = XorShift64::new(5151);
+    for bits in [60u32, 64, 65, 128, 200, 255, 256, 257, 511, 513, 1019, 2029] {
+        for _ in 0..5 {
+            let n = random_odd_modulus(&mut rng, bits);
+            assert_eq!(
+                bigmont_cpu::fermat_base2(&n),
+                bigmont_oracle::fermat_base2(&n),
+                "{bits} bits"
+            );
+        }
+        let p = random_prp(&mut rng, bits.max(40));
+        assert!(bigmont_cpu::fermat_base2(&p), "random PRP at {bits} bits");
+        assert_eq!(
+            fermat_base2_gec(&p),
+            Checked::Prp,
+            "checked PRP at {bits} bits"
+        );
+    }
+}
