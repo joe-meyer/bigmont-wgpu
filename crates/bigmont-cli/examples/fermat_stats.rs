@@ -5,11 +5,12 @@
 //!
 //! `--limbs` restricts the autotuner to a scheme; `--squaring fused|symmetric` then overrides the tuned
 //! squaring structure (symmetric needs `--limbs 32`), to compare the two on the same candidates.
+//! `--tpi N` and `--wg N` override the tuned lane count and workgroup size the same way.
 
 use bigmont_cli::tune::SchemeChoice;
 use bigmont_cli::{formats, tune};
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::Squaring;
+use bigmont_core::kernel::{KernelConfig, Squaring};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use std::path::Path;
@@ -29,6 +30,8 @@ fn main() {
     };
     let limbs = take("--limbs").unwrap_or_else(|| "auto".to_string());
     let squaring = take("--squaring").unwrap_or_else(|| "tuned".to_string());
+    let tpi_override: Option<u32> = take("--tpi").map(|v| v.parse().expect("--tpi needs a number"));
+    let wg_override: Option<u32> = take("--wg").map(|v| v.parse().expect("--wg needs a number"));
     let choice = match limbs.as_str() {
         "auto" => SchemeChoice::Auto,
         "13" => SchemeChoice::Only(LimbScheme::Limb13),
@@ -63,6 +66,16 @@ fn main() {
     );
     // The tuned shape at this exact length (a 32-bit limb count can differ within a tuning class).
     let mut cfg = tuned.cfg.retarget(bits);
+    if tpi_override.is_some() || wg_override.is_some() {
+        cfg = KernelConfig::for_bits_scheme(
+            cfg.scheme,
+            bits,
+            tpi_override.unwrap_or(cfg.tpi),
+            wg_override.unwrap_or(cfg.wg),
+            cfg.variant,
+        )
+        .with_squaring(cfg.squaring);
+    }
     match squaring.as_str() {
         "tuned" => {}
         "fused" => cfg = cfg.with_squaring(Squaring::Fused),
