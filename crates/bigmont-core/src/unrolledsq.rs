@@ -11,6 +11,11 @@
 //! deferred to light passes, as in the fused kernel. Every bound below is also checked when the
 //! source is generated (`Bound` and the `assert!`s), for each lane count and limb count.
 //!
+//! **Host requirements.** As for the fused kernel, every input limb of `x` and `n` is fully normalised
+//! (below `2^13`; every bound below assumes it, and the packed operand form relies on it). In addition,
+//! `params.z` must be 0: it is the opaque zero that orders the phase-1 iterations (`ORDER` in
+//! `phase1`). Every host in this repository writes `params = [count, iterations, 0, 0]`.
+//!
 //! ## Phase 1: `S = x^2` in two accumulators per lane
 //!
 //! Let `W = TPI`, block `A_l` lane `l`'s `LPL` limbs and `B = 2^(13 LPL)`. Lane `j` owns two output
@@ -50,8 +55,9 @@
 //! `S`), with no injection into the window and no extra shuffle per step.
 //!
 //! Nothing is lost at the top: the window after step `k` has the value `(S_lo + M_k n) / 2^(13(k+1))`,
-//! below `S_lo / 2^13 + n < R` (every `lo` word is far below `2^26`, so `S_lo < 2^13 R`), and a window
-//! whose value is below `R` has a top limb below `2^13` (all limbs are non-negative), so the carry the
+//! at most `S_lo / 2^13 + n`. Every `lo` word is below `2^25` (asserted in `phase1`), so
+//! `S_lo < 2^25 R / (2^13 - 1)`, about `2^12 R`, and the window is below about `R / 2 + n < R` (n < R / 16).
+//! A window whose value is below `R` has a top limb below `2^13` (all limbs are non-negative), so the carry the
 //! light pass drops off the last lane's top limb is zero. The first light pass comes after at least one
 //! step. The result is `(x^2 + M n) / R < 16 n^2 / R + n < 2 n` for `x < 4 n` (R > 16n, as for the fused
 //! kernel), and the final full normalisation drops nothing either.
@@ -113,8 +119,16 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target, mode: Mode) -> Result<Str
     let in_body = lpl > period;
     let k = if in_body { 1 } else { period / lpl };
     if in_body {
+        let tail = if lpl.is_multiple_of(period) {
+            String::new()
+        } else {
+            format!(
+                ", plus an extra one at the end of each owner (LPL % {period} = {})",
+                lpl % period
+            )
+        };
         g.line(format!(
-            "// reduction: light carry passes inside the unrolled body every {period} steps (LPL {lpl} > {period})"
+            "// reduction: light carry passes inside the unrolled body every {period} steps (LPL {lpl} > {period}){tail}"
         ));
     } else {
         g.line(format!(
@@ -123,9 +137,9 @@ pub(crate) fn wgsl(cfg: &KernelConfig, target: Target, mode: Mode) -> Result<Str
     }
     g.line("");
     if mode == Mode::Fermat {
-        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch");
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch, z MUST be 0 (ordering, see unrolledsq.rs)");
     } else {
-        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings");
+        g.line("@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = squarings, z MUST be 0 (ordering, see unrolledsq.rs)");
     }
     g.line("@group(0) @binding(1) var<storage, read> n_limbs: array<u32>;");
     g.line("@group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;");
@@ -199,6 +213,7 @@ impl Bound {
 /// bound is tracked in `bound` like every other word's).
 fn product_pass(g: &mut Gen, lpl: usize, name: &dyn Fn(usize) -> String, bound: &mut Bound) {
     let top = 2 * lpl - 1;
+    g.line("// light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)");
     g.line("{");
     g.depth += 1;
     for c in 0..top {
@@ -272,8 +287,10 @@ fn fetch(g: &mut Gen, lpl: usize, pairs: bool, name: &str, packed: &str, lane: &
     }
 }
 
-/// Limb `k` of a block packed two limbs per word in `{prefix}0..` (`PACK`): the low or high 16 bits.
-/// Both are below 2^13, which the mask or shift lets the compiler see (24-bit multiplies).
+/// Limb `k` of a block packed two limbs per word in `{prefix}0..` (`PACK`): the low 13 bits or the high
+/// 16 bits. Inputs are fully normalised (see the module comment's host requirements), so both are the
+/// limb itself, below 2^13, and the same values as the unpacked form; the mask or the shift also lets the
+/// compiler see the operand fits the 24-bit multiply.
 fn unpack(prefix: &str, k: usize) -> String {
     if k.is_multiple_of(2) {
         format!("({prefix}{} & MASK)", k / 2)
@@ -284,6 +301,7 @@ fn unpack(prefix: &str, k: usize) -> String {
 
 /// Swaps `lo` and `hi` on the lanes where `cond` holds.
 fn swap(g: &mut Gen, lpl: usize, cond: &str) {
+    g.line("// exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half");
     g.line(format!("let sw = {cond};"));
     for c in 0..lpl {
         g.line(format!(
@@ -423,7 +441,9 @@ fn phase1(g: &mut Gen, w: usize, lpl: usize, pairs: bool) -> Phase1 {
             ));
         }
         acc = b_low.max(acc) + b_high;
-        // Below 2^25: the window argument of phase 2 needs S_lo < 2^13 R (see the module comment).
+        // Below 2^25: then S_lo / 2^13 + n < R, which the window argument of phase 2 needs (see the
+        // module comment). Do not relax this to 2^26: that would allow S_lo near 2^13 R and a window
+        // reaching R, whose top carry a light pass would drop.
         assert!(acc < 1 << 25, "output bound exceeded");
         g.depth -= 1;
         g.line("}");
@@ -514,6 +534,7 @@ fn phase2(g: &mut Gen, lpl: usize, in_body: bool, period: usize) {
     for w in 0..lpl {
         g.line("{");
         g.depth += 1;
+        g.line("// new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it");
         g.line("let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0");
         g.line("let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)");
         g.line("let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)");

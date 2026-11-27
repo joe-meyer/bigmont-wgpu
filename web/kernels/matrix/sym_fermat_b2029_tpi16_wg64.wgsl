@@ -9,7 +9,7 @@ const B: u32 = 13u;
 const MASK: u32 = 0x1fffu;
 const K: u32 = 6u;       // reduction owners between light carry passes (K * LPL <= 63 steps)
 
-@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch
+@group(0) @binding(0) var<uniform> params: vec4<u32>;          // x = instance count, y = ladder iterations in this dispatch, z MUST be 0 (ordering, see unrolledsq.rs)
 @group(0) @binding(1) var<storage, read> n_limbs: array<u32>;
 @group(0) @binding(2) var<storage, read> ninv_buf: array<u32>;
 @group(0) @binding(3) var<storage, read_write> x_limbs: array<u32>;
@@ -232,6 +232,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -293,6 +294,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(1u, role + 1u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 1u, 9u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 0u && lane < 2u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -464,6 +466,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -525,6 +528,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(2u, role + 2u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 2u, 10u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 2u && lane < 4u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -696,6 +700,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -757,6 +762,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(3u, role + 3u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 3u, 11u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 4u && lane < 6u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -928,6 +934,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -989,6 +996,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(4u, role + 4u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 4u, 12u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 6u && lane < 8u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -1160,6 +1168,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -1221,6 +1230,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(5u, role + 5u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 5u, 13u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 8u && lane < 10u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -1392,6 +1402,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -1453,6 +1464,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(6u, role + 6u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 6u, 14u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 10u && lane < 12u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -1624,6 +1636,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -1685,6 +1698,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             let pi = select(7u, role + 7u - 8u, wrap);       // block p of this lane's pair
             let qi = select(role + 7u, 15u, wrap);                  // block q; p + q = role + 2 i = lane (mod TPI)
             let single = role == 0u;                         // p == q only for role 0: that product must not be doubled
+            // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
             let sw = lane >= 12u && lane < 14u;
             { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
             { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -1856,6 +1870,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 ph7 += ap8 * dj;
                 ph8 += ap9 * dj;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = lo0;
                 let o1 = lo1;
@@ -1910,6 +1925,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             { let v = bcast(ph8, below, base); lo8 += select(v, 0u, to_hi); hi8 += select(0u, v, to_hi); }
             { let v = bcast(ph9, below, base); lo9 += select(v, 0u, to_hi); hi9 += select(0u, v, to_hi); }
         }
+        // exchange lo and hi on these lanes, so that lo names the block that receives this lane's low half
         let sw = lane < 14u;
         { let a = select(lo0, hi0, sw); hi0 = select(hi0, lo0, sw); lo0 = a; }
         { let a = select(lo1, hi1, sw); hi1 = select(hi1, lo1, sw); lo1 = a; }
@@ -2038,6 +2054,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
             {
                 pw18 += dg9 * dg9;
             }
+            // light pass over the block product: each word keeps its low 13 bits plus the carry of the word below; the top word keeps everything (bounds checked at generation)
             {
                 let o0 = pw0;
                 let o1 = pw1;
@@ -2112,6 +2129,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
         var t9 = lo9;
         for (var owner = 0u; owner < TPI; owner++) {
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2128,6 +2146,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2144,6 +2163,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2160,6 +2180,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2176,6 +2197,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2192,6 +2214,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2208,6 +2231,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2224,6 +2248,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2240,6 +2265,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
@@ -2256,6 +2282,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>, @builtin(local_invocation_index) 
                 t9 = TN + (NN0 & 0xffffffu) * m;
             }
             {
+                // new t = old t shifted down one limb plus n*m shifted the same way (no x*b: the square is formed already); each line reads the old value above it
                 let T0 = bcast(t0, 0u, base);               // window limb 0 of lane 0
                 let TN = down1(t0, lane);                   // next lane's window limb 0 (0 for the last lane)
                 let m = ((T0 & MASK) * ninv) & MASK;        // Montgomery factor: only the low 13 bits matter (24-bit multiply)
