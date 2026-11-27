@@ -174,8 +174,9 @@ fn phase1(g: &mut Gen, w: usize, lpl: usize) {
         }
         for k in 0..lpl {
             if i == 0 && w == 4 {
-                // No lane wraps in iteration 0, so every lane's second block is its own. (Measured:
-                // +1.3 points at TPI 4, -0.6 at TPI 8, where the compiler's schedule is better without it.)
+                // No lane wraps in iteration 0, so every lane's second block is its own. (Measured at
+                // 2,029 bits on an RTX 4070 Laptop, Vulkan: +1.3 points at TPI 4, -0.6 at TPI 8, where
+                // the compiler's schedule is better without it. Other vendors may differ.)
                 g.line(format!("let aq{k} = x{k};"));
             } else {
                 g.line(format!("let aq{k} = bcast(x{k}, qi, base);"));

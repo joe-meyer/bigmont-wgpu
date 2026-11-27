@@ -173,7 +173,7 @@ fn the_tune_subcommand_writes_the_cache() {
     let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
     // Auto may pick either scheme: the line must parse as a winner of one of them (the value is the
     // last two `|` fields, `<unrolled|unrolled32> <tpi> <wg>|<rate>`), under the Auto key
-    // (`name|backend|driver|any|class`).
+    // (`name|backend|driver|any|generation|class`).
     let line = text
         .lines()
         .find(|l| !l.is_empty())

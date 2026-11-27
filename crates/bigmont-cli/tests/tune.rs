@@ -496,12 +496,27 @@ fn a_forced_scheme_has_its_own_cache_key_and_never_touches_the_auto_entry() {
     let f13 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb13));
     let f32 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb32));
     // Auto has its own `any` choice field; a cache from before the limb schemes used no field at all
-    // (`name|backend|driver driver_info|class`) and must never match.
+    // (`name|backend|driver driver_info|class`), one from before the measurement generation had no
+    // generation field, and neither may match.
+    let m = tune::MEASURE_GENERATION;
     let legacy = format!("Some GPU|Vulkan|drv info|{class}");
-    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|any|{class}"));
-    assert_eq!(f13, format!("Some GPU|Vulkan|drv info|only-13|{class}"));
-    assert_eq!(f32, format!("Some GPU|Vulkan|drv info|only-32|{class}"));
-    let keys = [&legacy, &auto, &f13, &f32];
+    let ungenerated = [
+        format!("Some GPU|Vulkan|drv info|any|{class}"),
+        format!("Some GPU|Vulkan|drv info|only-13|{class}"),
+        format!("Some GPU|Vulkan|drv info|only-32|{class}"),
+    ];
+    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|any|{m}|{class}"));
+    assert_eq!(f13, format!("Some GPU|Vulkan|drv info|only-13|{m}|{class}"));
+    assert_eq!(f32, format!("Some GPU|Vulkan|drv info|only-32|{m}|{class}"));
+    let keys = [
+        &legacy,
+        &ungenerated[0],
+        &ungenerated[1],
+        &ungenerated[2],
+        &auto,
+        &f13,
+        &f32,
+    ];
     for (i, a) in keys.iter().enumerate() {
         for (j, b) in keys.iter().enumerate() {
             if i != j {
@@ -737,9 +752,10 @@ fn a_legacy_auto_cache_line_without_the_choice_field_is_a_miss_and_is_retuned() 
         return;
     }
     let (dir, cache) = temp_cache("legacy");
-    // A phase 1 line: key without the `any` field, a 13-bit shape that is a valid candidate here.
+    // A phase 1 line: key without the `any` field (nor the later generation field), a 13-bit shape
+    // that is a valid candidate here.
     let key = tune::cache_key(&gpu, 1019, Auto);
-    let legacy = key.replacen("|any|", "|", 1);
+    let legacy = key.replacen(&format!("|any|{}|", tune::MEASURE_GENERATION), "|", 1);
     assert_ne!(legacy, key);
     tune::write_cache(&cache, &legacy, "unrolled 4 64|1e9");
     let t =

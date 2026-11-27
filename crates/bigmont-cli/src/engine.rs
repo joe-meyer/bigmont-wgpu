@@ -52,7 +52,7 @@ pub struct Options {
     /// length itself does not matter, the GPU is used from 2-bit numbers (n = 3) up. (A failed
     /// autotune or runner `Err` also sends a bucket to the CPU; see `Backend::Gpu`.)
     pub min_gpu_batch: usize,
-    /// Most candidates per GPU dispatch.
+    /// Most candidates per GPU dispatch ([`DEFAULT_CAPACITY`] by default).
     pub capacity: u32,
     /// CPU worker threads, 0 = all cores.
     pub threads: usize,
@@ -82,6 +82,10 @@ pub struct Options {
     pub inject_loss_on_open: u32,
 }
 
+/// The default [`Options::capacity`]. The autotuner times every GPU candidate on this many instances,
+/// so it measures the batch size the runner will really use.
+pub const DEFAULT_CAPACITY: u32 = 16384;
+
 impl Default for Options {
     fn default() -> Options {
         Options {
@@ -92,7 +96,7 @@ impl Default for Options {
             scheme: tune::SchemeChoice::Auto,
             verify_rate: 4096,
             min_gpu_batch: 64,
-            capacity: 16384,
+            capacity: DEFAULT_CAPACITY,
             threads: 0,
             device_retries: 2,
             device_retries_total: 8,

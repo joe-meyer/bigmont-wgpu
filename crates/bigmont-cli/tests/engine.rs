@@ -202,7 +202,7 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
 // ---- small bit lengths run on the GPU; a bucket skips the GPU only for size (min_gpu_batch), besides a failed autotune or Runner Err ----
 
 /// The limb-class field of every line of a tuning cache file, sorted (the line format is
-/// `name|backend|driver|any|class|unrolled tpi wg|rate`; a forced scheme has `only-13`/`only-32` in
+/// `name|backend|driver|any|generation|class|unrolled tpi wg|rate`; a forced scheme has `only-13`/`only-32` in
 /// place of `any`, and a 32-bit winner `unrolled32`). Read from the file, independent of the engine's
 /// own counters.
 fn cache_classes(path: &std::path::Path) -> Vec<String> {

@@ -19,14 +19,23 @@ const WGS: [u32; 3] = [64, 128, 256];
 /// workgroups gave small workgroups fewer instances, 4,096 at TPI 4 and workgroup 64 against 16,384 at
 /// 256, which under-filled the GPU and made them look slower than they are in the engine.) It is
 /// rounded up to whole workgroups. A CPU adapter gets `CPU_MEASURE_GROUPS` workgroups.
-const MEASURE_INSTANCES: u32 = 16384;
+const MEASURE_INSTANCES: u32 = crate::engine::DEFAULT_CAPACITY;
 const CPU_MEASURE_GROUPS: u32 = 4;
+/// The measurement generation in the cache key. Bump it when the timing method changes so that rates
+/// measured the old way are never served instead of new ones: every older line becomes a miss and
+/// is re-measured once. `m2`: every candidate timed on `MEASURE_INSTANCES` instances, with the
+/// symmetric 32-bit squaring among the candidates (lines without the field were timed on a fixed
+/// number of workgroups, which favoured workgroup 256, and never saw it).
+pub const MEASURE_GENERATION: &str = "m2";
 /// Grow the timed dispatch until it takes at least this long.
 const MEASURE_TARGET_SECS: f64 = 0.05;
 
 /// Cooperative widths for which the symmetric squaring is offered as a candidate (32-bit scheme). It
 /// won at TPI 4 and 8 at 2,029 bits on an RTX 4070 Laptop and an RX 6700 XT; at TPI 16 it lost on the
 /// NVIDIA card and never beat the TPI 4 and 8 candidates on the AMD one, so only these are timed.
+/// The generator also makes TPI 16 and 32. They are not tuner candidates, but the core `limb32` and
+/// `fermat` tests still run them on the GPU against the CPU reference (and `source_matrix` validates
+/// their sources), so they stay correct if a later device makes them worth offering.
 const SYMMETRIC_TPIS: [u32; 2] = [4, 8];
 
 /// The smallest limb class: the unrolled kernels need at least `tpi` limbs and the narrowest width
@@ -318,16 +327,23 @@ fn clean(s: &str) -> String {
 }
 
 /// The cache key of the limb class of `bits`-bit numbers on an adapter described by these fields:
-/// `name|backend|driver driver_info|<choice>|class`, where `<choice>` is `any` for `Auto` and
-/// `only-<name>` (`only-13`, `only-32`) for a forced scheme. A forced run therefore has its own entry
-/// and never replaces or deletes the `Auto` one.
+/// `name|backend|driver driver_info|<choice>|<generation>|class`, where `<choice>` is `any` for
+/// `Auto` and `only-<name>` (`only-13`, `only-32`) for a forced scheme, and `<generation>` is
+/// [`MEASURE_GENERATION`]. A forced run therefore has its own entry and never replaces or deletes the
+/// `Auto` one. The class stays the last field.
 ///
-/// Caches written before the limb schemes existed use `name|backend|driver driver_info|class` (no
-/// choice field). Those lines never match a key built here, so they are re-measured once: they were
-/// tuned among 13-bit kernels only and would otherwise hide a faster 32-bit scheme forever. (Their
-/// value text, `unrolled <tpi> <wg>|<rate>`, is unchanged and still parses; only the key moved.) No
-/// key's lookup prefix (`key|`) is a prefix of another's: the fields are `|`-separated, field text
-/// never contains `|` (see `clean`), the choice field is `any` or `only-..` and the class is numeric.
+/// Two older key formats exist. Their lines never match a key built here, so they are re-measured
+/// once (their value text still parses; only the key moved):
+/// - `name|backend|driver driver_info|class` (before the limb schemes): tuned among 13-bit kernels
+///   only, it would otherwise hide a faster 32-bit scheme forever;
+/// - `name|backend|driver driver_info|<choice>|class` (before the generation field): timed on a
+///   fixed number of workgroups and without the symmetric squaring, it would otherwise keep a
+///   workgroup-256 fused winner forever.
+///
+/// No key's lookup prefix (`key|`) is a prefix of another's, old formats included: the fields are
+/// `|`-separated, field text never contains `|` (see `clean`), the choice field is `any` or
+/// `only-..`, the generation starts with `m` and the class is numeric. So an older version's cache
+/// writer, which drops the lines under its own prefix, never deletes a line written here.
 #[doc(hidden)]
 pub fn cache_key_text(
     name: &str,
@@ -342,7 +358,7 @@ pub fn cache_key_text(
         SchemeChoice::Only(s) => format!("only-{}", s.name()),
     };
     format!(
-        "{}|{backend}|{} {}|{which}|{}",
+        "{}|{backend}|{} {}|{which}|{MEASURE_GENERATION}|{}",
         clean(name),
         clean(driver),
         clean(driver_info),
