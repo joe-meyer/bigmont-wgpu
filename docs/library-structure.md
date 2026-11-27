@@ -11,7 +11,7 @@ factoring.
 
 **This spec's scope is phase 1: consolidation.** All of today's logic moves into one library, `meganum` (today's `bigmont-core`).
 The command-line binary becomes a thin shell over it; today's wasm shim and web pages become the browser integration suite. Phase 1
-builds nothing new beyond the work named in sections 9 and 11; it gives the later phases their structure.
+builds nothing new beyond the work named in sections 8, 9 and 11; it gives the later phases their structure.
 
 **One library.** Later phases add modules to the same crate, never new user-facing crates. Optional parts (an NTT arithmetic,
 megaprime checkpointing, serde support, anything with heavy dependencies) sit behind cargo features, so a small or browser build can
