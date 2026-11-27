@@ -1,6 +1,6 @@
 # One library, thin shells: structure and public API (draft spec, 2026-11-27)
 
-Status: **draft for review, nothing implemented.** Decisions below were made in conversation; section 9 lists what is still open.
+Status: **draft for review, nothing implemented.** Decisions below were made in conversation; section 10 lists what is still open.
 
 ## 1. Goal
 
@@ -34,7 +34,7 @@ web/                            pages over bigmont-wasm
 integration tests               run the real binary and the web pages
 ```
 
-Dependencies point down only: `search` over `executor` over `algorithm` over `tune` over `montgomery` over `reference`. No module
+Dependencies point down only: `search` over `executor` over `algorithm` over `tune` over `arith` over `reference`. No module
 knows a shell exists. `bigmont-oracle` and `bigmont-cpu` stop being crates.
 
 `reference` and the CPU path in `montgomery` are both CPU code and both stay: one is ground truth (exact `BigUint` arithmetic), the
@@ -127,7 +127,7 @@ today's `run_waves`, separated:
   "group"; "k" stays in the CLI's help text.
 - **`RetireRule`**: after each wave, per group still alive, retire or keep. `FirstHit` retires a group when any verdict in the
   wave is `ProbablePrime` or `Retest` (a Gerbicz alarm retires the group so the candidate is retested, as today), or when the group
-  has been tested to its end. Whether this is a trait or a plain function is open (section 9).
+  has been tested to its end. Whether this is a trait or a plain function is open (section 10).
 - **`WavePlan`**: which positions to test next. A wave is a range of positions applied to every group still alive. Today's plan is
   the stateless boundaries from `schedule(chunk, growth, s_max)` and is the default, so output stays byte-identical with the
   CUDA driver's. The plan is a small trait (`next_end(state) -> position`) so an adaptive plan that targets a batch size can be
@@ -172,14 +172,15 @@ The split must not cost throughput or control. Each is a requirement with a test
 Each step is its own PR, keeps `cargo test --workspace` green, and keeps every output byte identical.
 
 1. Tuner to core: async `candidates`, `measure`, `self_test`, `autotune`; a `Cache` trait; the cache value format. CLI keeps a file cache.
-2. `formats` to core as `&[u8]` parsing and `Write` output; the CLI does the I/O.
+2. `formats` to core as `&[u8]` parsing and `Write` output, including the `0xFF` FATAL file; the CLI does the I/O.
 3. One `Verdict` enum across the reference, the CPU path, the runner and the engine.
-4. `bigmont-oracle` becomes `reference`; `bigmont-cpu`'s arithmetic joins `montgomery` and its ladder joins `algorithm/fermat` (the
+4. `bigmont-oracle` becomes `reference`; `bigmont-cpu`'s arithmetic joins `arith/montgomery` and its ladder joins `algorithm/fermat` (the
    old crates re-export for one release); the CPU path gets its single-thread form on wasm32.
 5. `algorithm/fermat` gathers today's runner, Fermat kernel mode and the Gerbicz-checked mode; `Executor` replaces the scattered
    backend choices; the engine to core as `Hybrid`, with `Observer` and fault injection behind a feature.
-6. `Search` split (`Groups`, `WavePlan`, `RetireRule`) with the step API; `schedule` and `run_waves` become thin wrappers.
-7. Public surface: `prelude`, the `ProbablePrimeTest` trait, factories, tiers documented; submit/collect split on the GPU path.
+6. `Search` split (`Groups`, `WavePlan`, `RetireRule`) with the step API; candidates uploaded once and waves selected by index on
+   the device; `schedule` and `run_waves` become thin wrappers.
+7. Public surface: `prelude`, the `ProbablePrimeTest` trait, factories, tiers documented; submit/collect split on the GPU path, with a separate prepare phase so a shell can lock only the GPU phase.
 8. Shells thin: CLI and wasm hold no logic; the integration suite runs the real binary and the web pages.
 
 Every step touching `bigmont-core` also needs the wasm32 compile check and, per AGENTS.md, the browser pages run in a WebGPU
@@ -213,7 +214,7 @@ Beacon (the prime-gap pipeline this library serves) was read for what it needs f
 - Whether the CPU path and `reference` get cargo features so a browser build can leave the CPU path out. Default: always compiled;
   the wasm32 single-thread path makes it harmless.
 - A generic `Pipeline` in the library (section 6). Default: no.
-- Where `Gpu` and device handling live: inside `montgomery` as drawn, or a module of their own, since a future non-Montgomery
+- Where `Gpu` and device handling live: inside `arith/montgomery` as drawn, or a module of their own, since a future non-Montgomery
   algorithm would still need a device.
 - Sequencing against the open performance work (the symmetric squaring branch and the tuner fix touch `tune` and `kernel`): step 1
   should start from `main` after that PR merges.
