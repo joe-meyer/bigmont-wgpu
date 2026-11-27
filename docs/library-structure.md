@@ -50,7 +50,7 @@ meganum/src/
     factoring/      (later) the factoring problem: Pollard p-1, ECM
   runtime
     executor/       where work runs: cpu/ (threads; single-threaded on wasm32), gpu/ (the wgpu device, adapter selection,
-                    health and device loss, buffers, dispatch)
+                    health and device loss, compiled kernels, buffers, dispatch)
     tune/           which implementation to use: candidates, measure, autotune, the Cache trait
     validate/       checking an executor against known answers: self_test (used by the tuner), canary (run by applications)
     policy/         decisions over executors: Hybrid (GPU first, CPU re-check, fallback on device loss)
@@ -140,6 +140,23 @@ tuner chooses. `executor/gpu` owns the device; arithmetics only generate kernels
 - **Tuned factory:** `Fermat::tuned(&gpu, bits, &cache)` picks the executor, arithmetic and kernel shape for this adapter and size.
   The CLI and the browser suite call this.
 
+**Generating, compiling and running are three steps.** `arith`, `ntheory` and the problem *generate* a kernel's source for a
+configuration: pure code, no device. `executor/gpu` *compiles* it into a `Kernel` for one device (shader module and pipeline), and
+*runs* that kernel any number of times (upload, dispatches, read-back). Compiling is the expensive step on some devices: a software
+rasteriser compiles each pipeline with LLVM, and a browser compiles through its own shader translator on every page load. So:
+
+- A `Kernel` is compiled once per configuration, mode (squarings, the Fermat ladder, the multiply the Gerbicz check uses) and
+  device, and every caller that runs that configuration reuses it: the tuner's timing runs, `validate`'s self-test of the same
+  candidate, and the method that finally runs it.
+- A `Kernel` belongs to the device it was compiled on. Running it on another one (after a reopen on device loss) is an `Err` that
+  asks for a recompile, never undefined behaviour. Device-loss recovery therefore recompiles, which `policy` already accounts for.
+- Optional later: a per-device cache keyed by configuration and mode, so separate callers share one compilation without passing it
+  around, and wgpu's pipeline cache where the backend supports it, so a second process or page load skips the driver compile.
+
+Today: `gpu::SquaringKernel` (squaring mode only, added in PR #50, where the tuner recompiled every candidate for each of its ten
+or so timed dispatches; on llvmpipe that made tuning 2.5 times slower). The `Runner` already keeps its Fermat and multiply pipelines;
+phase 1 turns both into `executor/gpu::Kernel`.
+
 **Policies decide between executors.** `Hybrid` is today's `Engine`: use the GPU when the batch is big enough, re-check probable
 primes and disagreements on the CPU, fall back to the CPU on device loss. It holds two instances of a method and decides between
 them, so it works for any method of any problem whose answers can be re-checked.
@@ -181,6 +198,7 @@ The layers are compile-time structure. They must never become run-time calls per
 | Device-resident waves | a search uploads its numbers once and each wave selects positions by index. **New: today each wave's numbers are converted and uploaded again** |
 | Host preparation | batches accept numbers already in limb layout (section 11), so loading skips the conversion |
 | Buffers | the GPU executor keeps its buffers across calls |
+| Compilation | a kernel is compiled once per configuration, mode and device and reused by every run, including the tuner's timing runs and the self-test (section 7); no API compiles per dispatch |
 | Measurement | per-dispatch statistics (`RunStats`) stay public |
 | Multi-GPU | no process-wide mutable state; one value per device |
 
@@ -275,7 +293,8 @@ and the CLI may change, and each such change is listed in the changelog.
 3. **Primality outcome:** one `Verdict` across the CPU path, the GPU path and the engine, defined in `primality/`.
 4. **Reference split:** production helpers into `arith/montgomery`; ground truth into `tests/support`; `validate/` computes its
    trusted answers with `num-bigint`.
-5. **Executors and methods:** `executor/cpu` (with the wasm32 single-thread path) and `executor/gpu` (the device and today's runner);
+5. **Executors and methods:** `executor/cpu` (with the wasm32 single-thread path) and `executor/gpu` (the device, today's runner and
+   `gpu::SquaringKernel` generalised into one `Kernel` for every mode, shared by the tuner, `validate` and the methods);
    `ntheory::modexp` with the Gerbicz mode; `primality::Fermat` built on them; the engine becomes `policy::Hybrid` with `Observer`,
    and fault injection moves behind a feature.
 6. **Scheduling:** `schedule::Search` with the step API, `WavePlan`, `RetireRule` and `primality::FirstHit`; numbers uploaded once and
