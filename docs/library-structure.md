@@ -296,7 +296,8 @@ Every step touching the library also needs the wasm32 compile check and the brow
   until factoring exists.
 - **Outcome enums:** `AnyPrimalityTest` as an enum rather than boxed futures; confirm when building the Gerbicz mode on the GPU.
 - **CPU executor in browser builds:** a feature to leave it out, or always compiled (the wasm32 single-thread path makes it
-  harmless). Default: always compiled.
+  harmless). Default: always compiled. (The GPU executor is always part of browser builds wherever the browser offers WebGPU; only
+  arithmetics that need features a browser lacks, such as the 64-bit-integer limb scheme, are left out there.)
 - **A generic `Pipeline`** in the library (section 12). Default: no.
 - **Batch encoding details:** limb width per arithmetic in one container or one container per width; the hash function; whether
   results store only outcomes or also timing.
