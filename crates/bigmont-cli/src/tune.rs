@@ -1,8 +1,8 @@
 //! Autotuning and per-adapter self-validation: every kernel configuration is checked against the
 //! CPU references before it is timed, and the fastest verified one is cached per adapter and size.
 
-use bigmont_core::gpu::{Batch, Gpu, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::gpu::{Batch, Gpu, SquaringKernel, run_async};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::{LIMB_BITS, XorShift64, limbs_for_bits, random_odd_modulus};
@@ -14,12 +14,41 @@ use std::sync::{Arc, Mutex};
 
 const TPIS: [u32; 4] = [4, 8, 16, 32];
 const WGS: [u32; 3] = [64, 128, 256];
-/// Workgroups in the timing dispatch on a GPU: enough to saturate it (4 groups measured only latency
-/// and ranked configurations by workgroup size). A CPU adapter gets `CPU_MEASURE_GROUPS`.
-const MEASURE_GROUPS: u32 = 256;
+/// Instances in the timing dispatch on a GPU: the engine's default capacity (`Options::capacity`), so
+/// every configuration is timed on the batch size the runner will really use. (A fixed number of
+/// workgroups gave small workgroups fewer instances, 4,096 at TPI 4 and workgroup 64 against 16,384 at
+/// 256, which under-filled the GPU and made them look slower than they are in the engine.) It is
+/// rounded up to whole workgroups. A CPU adapter gets `CPU_MEASURE_GROUPS` workgroups.
+const MEASURE_INSTANCES: u32 = crate::engine::DEFAULT_CAPACITY;
 const CPU_MEASURE_GROUPS: u32 = 4;
+/// The measurement generation in the cache key. Bump it when the timing method changes so that rates
+/// measured the old way are never served instead of new ones: every older line becomes a miss and
+/// is re-measured once. `m2`: every candidate timed on `MEASURE_INSTANCES` instances, with the
+/// symmetric squaring (both schemes) among the candidates (lines without the field were timed on a
+/// fixed number of workgroups, which favoured workgroup 256, and never saw it).
+pub const MEASURE_GENERATION: &str = "m2";
 /// Grow the timed dispatch until it takes at least this long.
 const MEASURE_TARGET_SECS: f64 = 0.05;
+
+/// Cooperative widths for which the symmetric squaring is offered as a candidate, per scheme.
+///
+/// 32-bit: it won at TPI 4 and 8 at 2,029 bits on an RTX 4070 Laptop and an RX 6700 XT; at TPI 16 it
+/// lost on the NVIDIA card and never beat the TPI 4 and 8 candidates on the AMD one.
+///
+/// 13-bit: at 2,029 bits, kernel-only, the packed form won at TPI 4, 8 and 16 on an RTX 4070 Laptop
+/// (+16%, +11%, +6%) and lost at TPI 32; on an RX 6700 XT the unpacked form won at TPI 8 (+6% over the
+/// fused kernel at TPI 8, though still below the fused kernel at TPI 4) and lost at the other widths.
+///
+/// The generators also make the other widths. They are not tuner candidates, but the core `chain`,
+/// `sizes`, `limb32` and `fermat` tests still run them on the GPU against the CPU reference (and
+/// `source_matrix` validates their sources), so they stay correct if a later device makes them worth
+/// offering.
+fn symmetric_tpis(scheme: LimbScheme) -> &'static [u32] {
+    match scheme {
+        LimbScheme::Limb13 => &[4, 8, 16],
+        LimbScheme::Limb32 => &[4, 8],
+    }
+}
 
 /// The smallest limb class: the unrolled kernels need at least `tpi` limbs and the narrowest width
 /// is 4, so every bit length that needs four limbs or fewer (up to 48 bits, down to the 2-bit number
@@ -95,6 +124,17 @@ pub fn candidates(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> Vec<KernelConfi
                 let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled);
                 if cfg.validate().is_ok() && have.satisfies(cfg.requires()) {
                     out.push(cfg);
+                    // The symmetric squaring is an extra candidate (never a replacement): the tuner
+                    // times and verifies both, so an adapter where it is slower never selects it.
+                    // The 13-bit one comes in both operand packings (see `Packing`).
+                    if symmetric_tpis(scheme).contains(&tpi) {
+                        for packing in [Packing::Limbs, Packing::Pairs] {
+                            let sym = cfg.with_squaring(Squaring::Symmetric).with_packing(packing);
+                            if sym.validate().is_ok() {
+                                out.push(sym);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -237,25 +277,26 @@ fn self_test_inner(gpu: &Gpu, cfg: KernelConfig, bits: u32) -> Result<(), String
 
 /// Verified squarings per second for `cfg` (one squaring = one Montgomery squaring of one number).
 /// Work grows from a small dispatch, so no single submission runs long enough to trip a driver
-/// watchdog.
+/// watchdog. The kernel is compiled once and every timed dispatch reuses it (compiling used to be
+/// repeated for each of the ten or so dispatches, which dominated tuning on a software rasteriser).
 pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
-    cfg.validate()?;
-    gpu.check_health()?;
+    // Validates `cfg` and checks the device's health before compiling.
+    let kernel = pollster::block_on(SquaringKernel::new_async(gpu, cfg))?;
     let limbs = cfg.limbs as usize;
     let on_cpu = gpu.info.device_type == wgpu::DeviceType::Cpu;
-    let count = cfg.instances_per_workgroup()
-        * if on_cpu {
-            CPU_MEASURE_GROUPS
-        } else {
-            MEASURE_GROUPS
-        };
+    let per_group = cfg.instances_per_workgroup();
+    let count = if on_cpu {
+        per_group * CPU_MEASURE_GROUPS
+    } else {
+        MEASURE_INSTANCES.div_ceil(per_group) * per_group
+    };
     let max_work: u64 = if on_cpu { 1 << 18 } else { 1 << 26 };
     let values = Batch::random_values(count, cfg.r_bits() - 3, 0x5EED_0002);
     let batch = Batch::from_values_cfg(&values, &cfg);
 
     let mut squarings = 8u32;
     loop {
-        let t = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?.best_secs;
+        let t = pollster::block_on(kernel.run_async(gpu, &batch, squarings, 1))?.best_secs;
         if t >= MEASURE_TARGET_SECS || u64::from(count) * u64::from(squarings) >= max_work {
             break;
         }
@@ -264,7 +305,7 @@ pub fn measure(gpu: &Gpu, cfg: KernelConfig) -> Result<f64, String> {
     let mut best = f64::MAX;
     let mut last = None;
     for _ in 0..2 {
-        let r = pollster::block_on(run_async(gpu, cfg, &batch, squarings, 1))?;
+        let r = pollster::block_on(kernel.run_async(gpu, &batch, squarings, 1))?;
         best = best.min(r.best_secs);
         last = Some(r);
     }
@@ -302,16 +343,23 @@ fn clean(s: &str) -> String {
 }
 
 /// The cache key of the limb class of `bits`-bit numbers on an adapter described by these fields:
-/// `name|backend|driver driver_info|<choice>|class`, where `<choice>` is `any` for `Auto` and
-/// `only-<name>` (`only-13`, `only-32`) for a forced scheme. A forced run therefore has its own entry
-/// and never replaces or deletes the `Auto` one.
+/// `name|backend|driver driver_info|<choice>|<generation>|class`, where `<choice>` is `any` for
+/// `Auto` and `only-<name>` (`only-13`, `only-32`) for a forced scheme, and `<generation>` is
+/// [`MEASURE_GENERATION`]. A forced run therefore has its own entry and never replaces or deletes the
+/// `Auto` one. The class stays the last field.
 ///
-/// Caches written before the limb schemes existed use `name|backend|driver driver_info|class` (no
-/// choice field). Those lines never match a key built here, so they are re-measured once: they were
-/// tuned among 13-bit kernels only and would otherwise hide a faster 32-bit scheme forever. (Their
-/// value text, `unrolled <tpi> <wg>|<rate>`, is unchanged and still parses; only the key moved.) No
-/// key's lookup prefix (`key|`) is a prefix of another's: the fields are `|`-separated, field text
-/// never contains `|` (see `clean`), the choice field is `any` or `only-..` and the class is numeric.
+/// Two older key formats exist. Their lines never match a key built here, so they are re-measured
+/// once (their value text still parses; only the key moved):
+/// - `name|backend|driver driver_info|class` (before the limb schemes): tuned among 13-bit kernels
+///   only, it would otherwise hide a faster 32-bit scheme forever;
+/// - `name|backend|driver driver_info|<choice>|class` (before the generation field): timed on a
+///   fixed number of workgroups and without the symmetric squaring, it would otherwise keep a
+///   workgroup-256 fused winner forever.
+///
+/// No key's lookup prefix (`key|`) is a prefix of another's, old formats included: the fields are
+/// `|`-separated, field text never contains `|` (see `clean`), the choice field is `any` or
+/// `only-..`, the generation starts with `m` and the class is numeric. So an older version's cache
+/// writer, which drops the lines under its own prefix, never deletes a line written here.
 #[doc(hidden)]
 pub fn cache_key_text(
     name: &str,
@@ -326,7 +374,7 @@ pub fn cache_key_text(
         SchemeChoice::Only(s) => format!("only-{}", s.name()),
     };
     format!(
-        "{}|{backend}|{} {}|{which}|{}",
+        "{}|{backend}|{} {}|{which}|{MEASURE_GENERATION}|{}",
         clean(name),
         clean(driver),
         clean(driver_info),
@@ -348,13 +396,21 @@ pub fn cache_key(gpu: &Gpu, bits: u32, choice: SchemeChoice) -> String {
 }
 
 /// `unrolled <tpi> <wg>|<rate>` for a 13-bit winner (the text older versions wrote and read) and
-/// `unrolled32 <tpi> <wg>|<rate>` for a 32-bit one.
+/// `unrolled32 <tpi> <wg>|<rate>` for a 32-bit one; `unrolledsym`, `unrolledsympairs` (packed
+/// operands) and `unrolled32sym` for the symmetric squaring.
 #[doc(hidden)]
 pub fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
-    let word = match (cfg.variant, cfg.scheme) {
-        (Variant::Unrolled, LimbScheme::Limb13) => "unrolled",
-        (Variant::Unrolled, LimbScheme::Limb32) => "unrolled32",
-        (Variant::Rolled, _) => "rolled",
+    let word = match (cfg.variant, cfg.scheme, cfg.squaring, cfg.packing) {
+        (Variant::Unrolled, LimbScheme::Limb13, Squaring::Fused, _) => "unrolled",
+        (Variant::Unrolled, LimbScheme::Limb13, Squaring::Symmetric, Packing::Limbs) => {
+            "unrolledsym"
+        }
+        (Variant::Unrolled, LimbScheme::Limb13, Squaring::Symmetric, Packing::Pairs) => {
+            "unrolledsympairs"
+        }
+        (Variant::Unrolled, LimbScheme::Limb32, Squaring::Fused, _) => "unrolled32",
+        (Variant::Unrolled, LimbScheme::Limb32, Squaring::Symmetric, _) => "unrolled32sym",
+        (Variant::Rolled, _, _, _) => "rolled",
     };
     format!("{word} {} {}|{}", cfg.tpi, cfg.wg, rate)
 }
@@ -363,16 +419,31 @@ pub fn cache_value(cfg: &KernelConfig, rate: f64) -> String {
 /// shape up among the candidates, so corrupt cache text never reaches `KernelConfig` arithmetic.
 #[doc(hidden)]
 pub fn parse_value(v: &str) -> Option<(LimbScheme, u32, u32, f64)> {
+    let (scheme, squaring, _, tpi, wg, rate) = parse_value_shape(v)?;
+    (squaring == Squaring::Fused).then_some((scheme, tpi, wg, rate))
+}
+
+/// A parsed cache value: scheme, squaring, operand packing, tpi, workgroup size and rate.
+#[doc(hidden)]
+pub type CachedShape = (LimbScheme, Squaring, Packing, u32, u32, f64);
+
+/// [`parse_value`] that also accepts the symmetric squaring's words (`unrolledsym`,
+/// `unrolledsympairs`, `unrolled32sym`) and returns the squaring structure and operand packing.
+#[doc(hidden)]
+pub fn parse_value_shape(v: &str) -> Option<CachedShape> {
     let (c, rate) = v.split_once('|')?;
     let mut f = c.split_whitespace();
-    let scheme = match f.next()? {
-        "unrolled" => LimbScheme::Limb13,
-        "unrolled32" => LimbScheme::Limb32,
+    let (scheme, squaring, packing) = match f.next()? {
+        "unrolled" => (LimbScheme::Limb13, Squaring::Fused, Packing::Limbs),
+        "unrolled32" => (LimbScheme::Limb32, Squaring::Fused, Packing::Limbs),
+        "unrolledsym" => (LimbScheme::Limb13, Squaring::Symmetric, Packing::Limbs),
+        "unrolledsympairs" => (LimbScheme::Limb13, Squaring::Symmetric, Packing::Pairs),
+        "unrolled32sym" => (LimbScheme::Limb32, Squaring::Symmetric, Packing::Limbs),
         _ => return None,
     };
     let (tpi, wg) = (f.next()?.parse().ok()?, f.next()?.parse().ok()?);
     let rate: f64 = rate.trim().parse().ok()?;
-    (rate.is_finite() && rate > 0.0).then_some((scheme, tpi, wg, rate))
+    (rate.is_finite() && rate > 0.0).then_some((scheme, squaring, packing, tpi, wg, rate))
 }
 
 /// The cached winner for `key` among `lines` (cache file lines) that is still one of `cands`: the
@@ -388,10 +459,17 @@ pub fn cache_lookup(
 ) -> Option<(KernelConfig, f64)> {
     let prefix = format!("{key}|");
     lines.iter().find_map(|l| {
-        let (scheme, tpi, wg, rate) = l.strip_prefix(&prefix).and_then(parse_value)?;
+        let (scheme, squaring, packing, tpi, wg, rate) =
+            l.strip_prefix(&prefix).and_then(parse_value_shape)?;
         cands
             .iter()
-            .find(|c| c.scheme == scheme && c.tpi == tpi && c.wg == wg)
+            .find(|c| {
+                c.scheme == scheme
+                    && c.squaring == squaring
+                    && c.packing == packing
+                    && c.tpi == tpi
+                    && c.wg == wg
+            })
             .map(|&cfg| (cfg, rate))
     })
 }
@@ -503,8 +581,47 @@ pub fn resolve_cache(
     }
 }
 
+/// The fastest of `timed` (configurations with their measured rates) that passes `check`, trying
+/// them fastest first; an exact tie keeps the order of `timed` (the sort is stable). `check` returns
+/// `Err((device_failed, message))`: a device failure stops at once and is returned as `Err`; any other
+/// failure is pushed onto `reasons` and the next candidate is tried. `Ok(None)` when none passes.
+#[doc(hidden)]
+pub fn first_verified(
+    mut timed: Vec<(KernelConfig, f64)>,
+    reasons: &mut Vec<String>,
+    mut check: impl FnMut(KernelConfig) -> Result<(), (bool, String)>,
+) -> Result<Option<Tuned>, String> {
+    timed.sort_by(|a, b| b.1.total_cmp(&a.1));
+    for (cfg, rate) in timed {
+        match check(cfg) {
+            Ok(()) => {
+                return Ok(Some(Tuned {
+                    cfg,
+                    squarings_per_sec: rate,
+                    from_cache: false,
+                }));
+            }
+            Err((true, e)) => return Err(e),
+            Err((false, e)) => {
+                eprintln!("skip {e}");
+                reasons.push(e);
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// Picks the fastest configuration that passes the self-test, reusing `cache` unless `retune`.
 /// `Err` when none passes (the engine then falls back to the CPU).
+///
+/// Every candidate is timed first ([`measure`], which also checks a sample of its timed instances
+/// against the oracle, so a kernel giving wrong answers is rejected there), then the full
+/// [`self_test`] runs on the candidates from the fastest down until one passes, and that one wins.
+/// So the kernel the engine uses always passed the full self-test, while the slower candidates,
+/// which are never used, skip it: on a software rasteriser the self-test's Fermat ladder dominated
+/// tuning. A cache hit is self-tested again before it is trusted (a new build can generate different
+/// code for the same cached shape), but not timed again. (`bigmont tune` self-tests every row, to
+/// print each one's status.)
 ///
 /// Tuning is per limb class (`limb_class(bits)`), not per exact bit length: the self-test and the
 /// timing run at the class's representative length `class_bits`, and the cache entry is keyed by the
@@ -553,21 +670,13 @@ pub fn autotune(
             Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
         }
     }
-    let mut best: Option<Tuned> = None;
     let mut reasons = Vec::new();
+    let mut timed: Vec<(KernelConfig, f64)> = Vec::new();
     for cfg in cands {
-        match self_test(gpu, cfg, bits)
-            .and_then(|()| measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}")))
-        {
+        match measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}")) {
             Ok(rate) => {
                 eprintln!("tune {cfg:?}: {rate:.0} squarings/s");
-                if best.is_none_or(|b| rate > b.squarings_per_sec) {
-                    best = Some(Tuned {
-                        cfg,
-                        squarings_per_sec: rate,
-                        from_cache: false,
-                    });
-                }
+                timed.push((cfg, rate));
             }
             Err(e) if gpu.check_health().is_err() => return Err(e),
             Err(e) => {
@@ -576,6 +685,9 @@ pub fn autotune(
             }
         }
     }
+    let best = first_verified(timed, &mut reasons, |cfg| {
+        self_test(gpu, cfg, bits).map_err(|e| (gpu.check_health().is_err(), e))
+    })?;
     let best = best.ok_or_else(|| {
         format!(
             "no kernel configuration passed the self-test on {}: {}",

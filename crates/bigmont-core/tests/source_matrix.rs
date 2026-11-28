@@ -1,4 +1,4 @@
-use bigmont_core::kernel::{KernelConfig, Target, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Target, Variant};
 use bigmont_core::scheme::{Caps, LimbScheme};
 
 const PRELUDE: &str = "enable subgroups;\ndiagnostic(off, subgroup_uniformity);\n";
@@ -198,4 +198,106 @@ fn limb32_geometry() {
         KernelConfig::for_bits_scheme(s, 254, 8, 64, Variant::Unrolled).limbs,
         16
     ); // 9 rounded up to a multiple of 8
+}
+
+#[test]
+fn symmetric_squaring_sources_validate_are_native_only_and_leave_multiply_mode_fused() {
+    let native = Caps {
+        subgroups: true,
+        int64: true,
+    };
+    for tpi in [4u32, 8, 16, 32] {
+        for bits in [64u32, 254, 1019, 2029] {
+            let cfg =
+                KernelConfig::for_bits_scheme(LimbScheme::Limb32, bits, tpi, 64, Variant::Unrolled)
+                    .with_squaring(Squaring::Symmetric);
+            assert!(cfg.validate().is_ok(), "{cfg:?}");
+            let squaring = cfg
+                .try_wgsl_for(Target::Native)
+                .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+            assert!(
+                squaring.contains("limb32sq.rs"),
+                "{cfg:?} used the fused generator"
+            );
+            validate(&squaring, native).unwrap_or_else(|e| panic!("{cfg:?} squaring: {e}"));
+            let fermat = cfg
+                .try_fermat_wgsl_for(Target::Native)
+                .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+            assert!(
+                fermat.contains("limb32sq.rs"),
+                "{cfg:?} used the fused generator"
+            );
+            validate(&fermat, native).unwrap_or_else(|e| panic!("{cfg:?} fermat: {e}"));
+            // Multiply mode (the Gerbicz check) always runs the fused code.
+            let mul = cfg
+                .try_mul_wgsl_for(Target::Native)
+                .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+            assert!(!mul.contains("limb32sq.rs"), "{cfg:?}");
+            // 32-bit kernels, symmetric or not, are never generated for the browser.
+            assert!(cfg.try_wgsl_for(Target::Browser).is_err(), "{cfg:?}");
+            assert!(cfg.try_fermat_wgsl_for(Target::Browser).is_err(), "{cfg:?}");
+        }
+    }
+}
+
+#[test]
+fn symmetric_13_bit_sources_validate_on_both_targets_without_int64_and_leave_multiply_mode_fused() {
+    let native = Caps {
+        subgroups: true,
+        int64: true,
+    };
+    for (tpi, bits, packing) in [4u32, 8, 16, 32].into_iter().flat_map(|t| {
+        [64u32, 254, 1019, 2029, 3000]
+            .into_iter()
+            .flat_map(move |b| [Packing::Limbs, Packing::Pairs].map(|p| (t, b, p)))
+    }) {
+        {
+            let cfg =
+                KernelConfig::for_bits_scheme(LimbScheme::Limb13, bits, tpi, 64, Variant::Unrolled)
+                    .with_squaring(Squaring::Symmetric)
+                    .with_packing(packing);
+            assert!(cfg.validate().is_ok(), "{cfg:?}");
+            for (target, caps) in [(Target::Native, native), (Target::Browser, Caps::BROWSER)] {
+                for (what, src) in [
+                    ("squaring", cfg.try_wgsl_for(target)),
+                    ("fermat", cfg.try_fermat_wgsl_for(target)),
+                ] {
+                    let src = src.unwrap_or_else(|e| panic!("{cfg:?} {target:?} {what}: {e}"));
+                    assert!(
+                        src.contains("unrolledsq.rs"),
+                        "{cfg:?} {target:?} {what} used the fused generator"
+                    );
+                    assert!(!src.contains("u64"), "{cfg:?} {target:?} {what}");
+                    validate(&src, caps)
+                        .unwrap_or_else(|e| panic!("{cfg:?} {target:?} {what}: {e}"));
+                }
+                let mul = cfg
+                    .try_mul_wgsl_for(target)
+                    .unwrap_or_else(|e| panic!("{cfg:?}: {e}"));
+                assert!(!mul.contains("unrolledsq.rs"), "{cfg:?} {target:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn packed_operands_are_rejected_outside_the_13_bit_symmetric_squaring() {
+    let base = KernelConfig::for_bits_scheme(LimbScheme::Limb13, 2029, 8, 64, Variant::Unrolled)
+        .with_packing(Packing::Pairs);
+    assert!(base.validate().is_err(), "fused 13-bit: {base:?}");
+    let b32 = KernelConfig::for_bits_scheme(LimbScheme::Limb32, 2029, 8, 64, Variant::Unrolled)
+        .with_squaring(Squaring::Symmetric)
+        .with_packing(Packing::Pairs);
+    assert!(b32.validate().is_err(), "32-bit: {b32:?}");
+    // retarget keeps the packing.
+    let ok = base.with_squaring(Squaring::Symmetric);
+    assert!(ok.validate().is_ok());
+    assert_eq!(ok.retarget(1019).packing, Packing::Pairs);
+}
+
+#[test]
+fn symmetric_squaring_is_rejected_for_the_rolled_variant() {
+    let cfg = KernelConfig::new(8, 64, Variant::Rolled).with_squaring(Squaring::Symmetric);
+    assert!(cfg.validate().is_err(), "{cfg:?}");
+    assert!(cfg.try_wgsl_for(Target::Native).is_err(), "{cfg:?}");
 }

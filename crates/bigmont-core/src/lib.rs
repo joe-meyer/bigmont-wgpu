@@ -13,8 +13,10 @@
 pub mod gpu;
 pub mod kernel;
 mod limb32;
+mod limb32sq;
 pub mod runner;
 /// Limb schemes (radix-dependent host helpers) and device capabilities.
 pub mod scheme;
 mod signal;
 mod unrolled;
+mod unrolledsq;

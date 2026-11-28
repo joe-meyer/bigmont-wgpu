@@ -1,19 +1,50 @@
 //! Measures the raw GPU runner on a candidate file and prints `RunStats` (host-side Montgomery
 //! preparation against GPU dispatch time), without the engine's CPU re-checks.
 //!
-//!   BIGMONT_ADAPTER=... cargo run --release -p bigmont-cli --example fermat_stats -- CAND [CAPACITY]
+//!   BIGMONT_ADAPTER=... cargo run --release -p bigmont-cli --example fermat_stats -- [--limbs auto|13|32] [--squaring tuned|fused|symmetric|symmetric-pairs] CAND [CAPACITY]
+//!
+//! `--limbs` restricts the autotuner to a scheme; `--squaring fused|symmetric` then overrides the tuned
+//! squaring structure, to compare the two on the same candidates.
+//! `--tpi N` and `--wg N` override the tuned lane count and workgroup size the same way.
 
 use bigmont_cli::tune::SchemeChoice;
 use bigmont_cli::{formats, tune};
 use bigmont_core::gpu::Gpu;
+use bigmont_core::kernel::{KernelConfig, parse_squaring};
 use bigmont_core::runner::Runner;
+use bigmont_core::scheme::LimbScheme;
 use std::path::Path;
 use std::time::Instant;
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let mut take = |name: &str| {
+        args.iter().position(|a| a == name).map(|i| {
+            let v = args.get(i + 1).cloned().unwrap_or_else(|| {
+                eprintln!("{name} needs a value");
+                std::process::exit(2);
+            });
+            args.drain(i..=i + 1);
+            v
+        })
+    };
+    let limbs = take("--limbs").unwrap_or_else(|| "auto".to_string());
+    let squaring = take("--squaring").unwrap_or_else(|| "tuned".to_string());
+    let tpi_override: Option<u32> = take("--tpi").map(|v| v.parse().expect("--tpi needs a number"));
+    let wg_override: Option<u32> = take("--wg").map(|v| v.parse().expect("--wg needs a number"));
+    let choice = match limbs.as_str() {
+        "auto" => SchemeChoice::Auto,
+        "13" => SchemeChoice::Only(LimbScheme::Limb13),
+        "32" => SchemeChoice::Only(LimbScheme::Limb32),
+        other => {
+            eprintln!("--limbs must be auto, 13 or 32, got {other}");
+            std::process::exit(2);
+        }
+    };
     let Some(cand) = args.first() else {
-        eprintln!("usage: fermat_stats CAND [CAPACITY]");
+        eprintln!(
+            "usage: fermat_stats [--limbs auto|13|32] [--squaring tuned|fused|symmetric|symmetric-pairs] CAND [CAPACITY]"
+        );
         std::process::exit(2);
     };
     let capacity: u32 = args
@@ -28,13 +59,38 @@ fn main() {
         .expect("no candidates") as u32;
     let gpu = Gpu::open(&bigmont_core::gpu::AdapterSelector::from_env()).expect("no GPU");
     println!("adapter: {}", gpu.describe());
-    let tuned = tune::autotune(&gpu, bits, None, true, SchemeChoice::Auto).expect("autotune");
+    let tuned = tune::autotune(&gpu, bits, None, true, choice).expect("autotune");
     println!(
         "config: {:?} ({:.0} squarings/s measured by autotune)",
         tuned.cfg, tuned.squarings_per_sec
     );
     // The tuned shape at this exact length (a 32-bit limb count can differ within a tuning class).
-    let cfg = tuned.cfg.retarget(bits);
+    let mut cfg = tuned.cfg.retarget(bits);
+    if tpi_override.is_some() || wg_override.is_some() {
+        cfg = KernelConfig::for_bits_scheme(
+            cfg.scheme,
+            bits,
+            tpi_override.unwrap_or(cfg.tpi),
+            wg_override.unwrap_or(cfg.wg),
+            cfg.variant,
+        )
+        .with_squaring(cfg.squaring)
+        .with_packing(cfg.packing);
+    }
+    if squaring != "tuned" {
+        let Some((sq, packing)) = parse_squaring(&squaring) else {
+            eprintln!(
+                "--squaring must be tuned, fused, symmetric or symmetric-pairs, got {squaring}"
+            );
+            std::process::exit(2);
+        };
+        cfg = cfg.with_squaring(sq).with_packing(packing);
+    }
+    if let Err(e) = cfg.validate() {
+        eprintln!("this configuration is not valid ({e})");
+        std::process::exit(2);
+    }
+    println!("running: {cfg:?}");
     let mut runner =
         pollster::block_on(Runner::new_async(&gpu, cfg, bits, capacity)).expect("runner");
     let cap = runner.capacity() as usize;

@@ -1,15 +1,50 @@
-//! Base-2 Fermat verdicts through the `Runner`, for every limb scheme. Each test opens one device
-//! and runs its checks for each `LimbScheme::ALL` entry the device supports (strict: an
-//! unsupported scheme fails unless BIGMONT_ALLOW_SKIP=1).
+//! Base-2 Fermat verdicts through the `Runner`, for every kernel shape: each limb scheme with its fused
+//! and with its symmetric squaring, and the 13-bit symmetric squaring with packed operands. Each test opens one device and runs
+//! its checks for each shape the device supports (strict: an unsupported shape fails unless
+//! BIGMONT_ALLOW_SKIP=1).
 mod common;
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
 use std::collections::BTreeMap;
+
+/// A kernel shape under test: a limb scheme and how it squares.
+#[derive(Clone, Copy, Debug)]
+struct Shape {
+    scheme: LimbScheme,
+    squaring: Squaring,
+    packing: Packing,
+}
+
+/// Every scheme with its fused squaring, then every scheme with the symmetric squaring, then the
+/// 13-bit symmetric squaring with packed operands.
+fn shapes() -> Vec<Shape> {
+    [Squaring::Fused, Squaring::Symmetric]
+        .into_iter()
+        .flat_map(|squaring| {
+            LimbScheme::ALL.iter().map(move |&scheme| Shape {
+                scheme,
+                squaring,
+                packing: Packing::Limbs,
+            })
+        })
+        .chain([Shape {
+            scheme: LimbScheme::Limb13,
+            squaring: Squaring::Symmetric,
+            packing: Packing::Pairs,
+        }])
+        .collect()
+}
+
+fn shape_cfg(shape: Shape, bits: u32, tpi: u32, wg: u32, variant: Variant) -> KernelConfig {
+    KernelConfig::for_bits_scheme(shape.scheme, bits, tpi, wg, variant)
+        .with_squaring(shape.squaring)
+        .with_packing(shape.packing)
+}
 
 fn mersenne(p: u32) -> BigUint {
     (BigUint::one() << p) - 1u32
@@ -30,10 +65,10 @@ fn open() -> Option<Gpu> {
     }
 }
 
-/// Whether the device can run `scheme` at `tpi` lanes (capabilities and subgroup width); a loud
+/// Whether the device can run `shape` at `tpi` lanes (capabilities and subgroup width); a loud
 /// skip (a failure unless BIGMONT_ALLOW_SKIP=1) when it cannot.
-fn supports(gpu: &Gpu, scheme: LimbScheme, tpi: u32) -> bool {
-    let cfg = KernelConfig::for_bits_scheme(scheme, 2, tpi, 64, Variant::Unrolled);
+fn supports(gpu: &Gpu, shape: Shape, tpi: u32) -> bool {
+    let cfg = shape_cfg(shape, 2, tpi, 64, Variant::Unrolled);
     if !gpu.caps().satisfies(cfg.requires()) {
         common::skip(format!(
             "{cfg:?}: the adapter lacks {}",
@@ -48,12 +83,12 @@ fn supports(gpu: &Gpu, scheme: LimbScheme, tpi: u32) -> bool {
     true
 }
 
-/// Runs the Fermat ladder on `ns` (all of `bits` bits) with `scheme` and compares each verdict with
+/// Runs the Fermat ladder on `ns` (all of `bits` bits) with `shape` and compares each verdict with
 /// the oracle; returns the number of probable primes among `ns`.
 #[allow(clippy::too_many_arguments)]
 fn verify_on(
     gpu: &Gpu,
-    scheme: LimbScheme,
+    shape: Shape,
     bits: u32,
     tpi: u32,
     wg: u32,
@@ -61,7 +96,7 @@ fn verify_on(
     segment: Option<u32>,
     capacity: u32,
 ) -> usize {
-    let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled);
+    let cfg = shape_cfg(shape, bits, tpi, wg, Variant::Unrolled);
     let mut runner =
         pollster::block_on(Runner::new_async(gpu, cfg, bits, capacity)).expect("runner");
     runner.segment_override = segment;
@@ -93,8 +128,8 @@ fn mersenne_primes_and_composites_across_sizes() {
     // with p prime (2029 is prime), a base-2 Fermat pseudoprime: p | 2^p - 2 = n - 1, so
     // 2^(n-1) = 1 mod n. 2^1024-1 and 2^2030-1 (composite exponents) fail the test.
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
-        if !supports(&gpu, scheme, 8) {
+    for shape in shapes() {
+        if !supports(&gpu, shape, 8) {
             continue;
         }
         for (p, expect) in [
@@ -108,7 +143,7 @@ fn mersenne_primes_and_composites_across_sizes() {
         ] {
             let n = mersenne(p);
             assert_eq!(fermat_base2(&n), expect);
-            verify_on(&gpu, scheme, p, 8, 64, &[n], None, 64);
+            verify_on(&gpu, shape, p, 8, 64, &[n], None, 64);
         }
     }
 }
@@ -117,11 +152,11 @@ fn mersenne_primes_and_composites_across_sizes() {
 fn mixed_batch_at_the_2029_bit_size_class_spans_chunks() {
     // 70 random + 3 probable primes, capacity 64 forces two chunks; segment 97 forces several dispatches.
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
-        if supports(&gpu, scheme, 8) {
+    for shape in shapes() {
+        if supports(&gpu, shape, 8) {
             verify_on(
                 &gpu,
-                scheme,
+                shape,
                 2029,
                 8,
                 64,
@@ -137,10 +172,10 @@ fn mixed_batch_at_the_2029_bit_size_class_spans_chunks() {
 fn every_cooperative_width_agrees_with_the_oracle() {
     let ns = mixed(1019, 20, 2, 5);
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
+    for shape in shapes() {
         for tpi in [4u32, 8, 16, 32] {
-            if supports(&gpu, scheme, tpi) {
-                verify_on(&gpu, scheme, 1019, tpi, 64, &ns, Some(200), 64);
+            if supports(&gpu, shape, tpi) {
+                verify_on(&gpu, shape, 1019, tpi, 64, &ns, Some(200), 64);
             }
         }
     }
@@ -149,8 +184,8 @@ fn every_cooperative_width_agrees_with_the_oracle() {
 #[test]
 fn other_bit_lengths_and_workgroup_sizes() {
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
-        if !supports(&gpu, scheme, 8) {
+    for shape in shapes() {
+        if !supports(&gpu, shape, 8) {
             continue;
         }
         for (bits, wg) in [
@@ -162,7 +197,7 @@ fn other_bit_lengths_and_workgroup_sizes() {
         ] {
             verify_on(
                 &gpu,
-                scheme,
+                shape,
                 bits,
                 8,
                 wg,
@@ -177,11 +212,11 @@ fn other_bit_lengths_and_workgroup_sizes() {
 #[test]
 fn rejects_candidates_of_the_wrong_length_or_even() {
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
-        if !supports(&gpu, scheme, 8) {
+    for shape in shapes() {
+        if !supports(&gpu, shape, 8) {
             continue;
         }
-        let cfg = KernelConfig::for_bits_scheme(scheme, 2029, 8, 64, Variant::Unrolled);
+        let cfg = shape_cfg(shape, 2029, 8, 64, Variant::Unrolled);
         let mut runner = pollster::block_on(Runner::new_async(&gpu, cfg, 2029, 16)).unwrap();
         assert!(pollster::block_on(runner.fermat_async(&gpu, &[mersenne(521)])).is_err());
         let even = BigUint::one() << 2028u32;
@@ -192,11 +227,11 @@ fn rejects_candidates_of_the_wrong_length_or_even() {
 #[test]
 fn runner_is_reusable_across_calls() {
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
-        if !supports(&gpu, scheme, 8) {
+    for shape in shapes() {
+        if !supports(&gpu, shape, 8) {
             continue;
         }
-        let cfg = KernelConfig::for_bits_scheme(scheme, 1019, 8, 64, Variant::Unrolled);
+        let cfg = shape_cfg(shape, 1019, 8, 64, Variant::Unrolled);
         let mut runner = pollster::block_on(Runner::new_async(&gpu, cfg, 1019, 64)).unwrap();
         for seed in [1u64, 2, 3] {
             let ns = mixed(1019, 10, 1, seed);
@@ -210,17 +245,12 @@ fn runner_is_reusable_across_calls() {
 
 // ---- small bit lengths: the GPU is used down to 2-bit numbers (n = 3) ----
 
-/// Runs `groups` (exact bit length -> candidates) through a `Runner` per length with `scheme` and
+/// Runs `groups` (exact bit length -> candidates) through a `Runner` per length with `shape` and
 /// `tpi` (workgroup 64) and returns how many probable primes the GPU found.
-fn verify_groups(
-    gpu: &Gpu,
-    scheme: LimbScheme,
-    tpi: u32,
-    groups: &BTreeMap<u32, Vec<BigUint>>,
-) -> usize {
+fn verify_groups(gpu: &Gpu, shape: Shape, tpi: u32, groups: &BTreeMap<u32, Vec<BigUint>>) -> usize {
     groups
         .iter()
-        .map(|(&bits, ns)| verify_on(gpu, scheme, bits, tpi, 64, ns, None, 256))
+        .map(|(&bits, ns)| verify_on(gpu, shape, bits, tpi, 64, ns, None, 256))
         .sum()
 }
 
@@ -252,13 +282,13 @@ fn every_odd_number_from_3_to_4095_matches_the_oracle() {
         "the 563 odd primes below 4096 all pass base 2: {oracle_prps}"
     );
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
+    for shape in shapes() {
         for tpi in [8u32, 4] {
-            if supports(&gpu, scheme, tpi) {
+            if supports(&gpu, shape, tpi) {
                 assert_eq!(
-                    verify_groups(&gpu, scheme, tpi, &groups),
+                    verify_groups(&gpu, shape, tpi, &groups),
                     oracle_prps,
-                    "{scheme:?} tpi {tpi}: GPU probable-prime count"
+                    "{shape:?} tpi {tpi}: GPU probable-prime count"
                 );
             }
         }
@@ -268,25 +298,25 @@ fn every_odd_number_from_3_to_4095_matches_the_oracle() {
 #[test]
 fn the_smallest_candidate_n_equals_3_is_a_probable_prime_on_the_gpu() {
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
+    for shape in shapes() {
         for tpi in [8u32, 4, 16, 32] {
-            if !supports(&gpu, scheme, tpi) {
+            if !supports(&gpu, shape, tpi) {
                 continue;
             }
-            let cfg = KernelConfig::for_bits_scheme(scheme, 2, tpi, 64, Variant::Unrolled);
+            let cfg = shape_cfg(shape, 2, tpi, 64, Variant::Unrolled);
             let mut runner =
                 pollster::block_on(Runner::new_async(&gpu, cfg, 2, 16)).expect("a 2-bit runner");
             assert_eq!(
                 pollster::block_on(runner.fermat_async(&gpu, &[BigUint::from(3u32)])).unwrap(),
                 [true],
-                "{scheme:?} tpi {tpi}"
+                "{shape:?} tpi {tpi}"
             );
             // Several copies, and a sub-wave count, still give one verdict each.
             assert_eq!(
                 pollster::block_on(runner.fermat_async(&gpu, &vec![BigUint::from(3u32); 5]))
                     .unwrap(),
                 [true; 5],
-                "{scheme:?} tpi {tpi}"
+                "{shape:?} tpi {tpi}"
             );
         }
     }
@@ -335,13 +365,13 @@ fn edge_lengths_around_the_word_and_limb_boundaries() {
         "every length has probable primes: {oracle_prps}"
     );
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
+    for shape in shapes() {
         for tpi in [8u32, 4] {
-            if supports(&gpu, scheme, tpi) {
+            if supports(&gpu, shape, tpi) {
                 assert_eq!(
-                    verify_groups(&gpu, scheme, tpi, &groups),
+                    verify_groups(&gpu, shape, tpi, &groups),
                     oracle_prps,
-                    "{scheme:?} tpi {tpi}: GPU probable-prime count"
+                    "{shape:?} tpi {tpi}: GPU probable-prime count"
                 );
             }
         }
@@ -368,13 +398,13 @@ fn lengths_at_the_32_bit_limb_class_boundaries() {
         "every length has probable primes: {oracle_prps}"
     );
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
+    for shape in shapes() {
         for tpi in [8u32, 4] {
-            if supports(&gpu, scheme, tpi) {
+            if supports(&gpu, shape, tpi) {
                 assert_eq!(
-                    verify_groups(&gpu, scheme, tpi, &groups),
+                    verify_groups(&gpu, shape, tpi, &groups),
                     oracle_prps,
-                    "{scheme:?} tpi {tpi}: GPU probable-prime count"
+                    "{shape:?} tpi {tpi}: GPU probable-prime count"
                 );
             }
         }
@@ -384,11 +414,11 @@ fn lengths_at_the_32_bit_limb_class_boundaries() {
 #[test]
 fn runner_rejects_fewer_than_two_bits() {
     let Some(gpu) = open() else { return };
-    for &scheme in LimbScheme::ALL {
-        if !supports(&gpu, scheme, 8) {
+    for shape in shapes() {
+        if !supports(&gpu, shape, 8) {
             continue;
         }
-        let cfg = KernelConfig::for_bits_scheme(scheme, 2, 8, 64, Variant::Unrolled);
+        let cfg = shape_cfg(shape, 2, 8, 64, Variant::Unrolled);
         for bits in [0u32, 1] {
             let err = pollster::block_on(Runner::new_async(&gpu, cfg, bits, 16))
                 .err()

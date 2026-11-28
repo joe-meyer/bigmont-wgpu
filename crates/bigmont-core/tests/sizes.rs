@@ -1,6 +1,6 @@
 mod common;
 use bigmont_core::gpu::{Batch, Gpu, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::scheme::LimbScheme;
 use bigmont_oracle::*;
 use num_bigint::BigUint;
@@ -191,6 +191,56 @@ fn batch_limb_mismatch_is_an_error_not_a_panic() {
     let values = Batch::random_values(4, 1019, 1);
     let batch = Batch::from_values_n(&values, 80);
     assert!(pollster::block_on(run_async(&gpu, cfg, &batch, 1, 1)).is_err());
+}
+
+/// The 13-bit symmetric squaring (both operand packings; odd limb counts per lane leave a half-filled
+/// last pair) at every size class, plus 66 limbs per lane at TPI 4 (more than the
+/// reduction's light-pass period, so the passes are emitted inside the unrolled body with a remainder;
+/// 200 limbs at TPI 4 already needs light passes inside each block product).
+#[test]
+fn symmetric_size_classes_match_oracle() {
+    for &(tpi, limbs) in SIZES.iter().chain(&[(4, 264)]) {
+        for packing in [Packing::Limbs, Packing::Pairs] {
+            check_size(
+                KernelConfig::new(tpi, 64, Variant::Unrolled)
+                    .with_limbs(limbs)
+                    .with_squaring(Squaring::Symmetric)
+                    .with_packing(packing),
+                3,
+            );
+        }
+    }
+}
+
+#[test]
+fn symmetric_size_classes_long_chain_match_oracle() {
+    for &(tpi, limbs) in &[(4, 120), (8, 200), (16, 112), (4, 200)] {
+        for packing in [Packing::Limbs, Packing::Pairs] {
+            check_size(
+                KernelConfig::new(tpi, 64, Variant::Unrolled)
+                    .with_limbs(limbs)
+                    .with_squaring(Squaring::Symmetric)
+                    .with_packing(packing),
+                128,
+            );
+        }
+    }
+}
+
+/// One and two limbs per lane, symmetric squaring.
+#[test]
+fn symmetric_tiny_limbs_per_lane_match_oracle() {
+    for &(tpi, limbs) in &[(32, 32), (16, 32), (4, 4), (4, 8), (8, 8), (8, 16)] {
+        for packing in [Packing::Limbs, Packing::Pairs] {
+            check_size(
+                KernelConfig::new(tpi, 64, Variant::Unrolled)
+                    .with_limbs(limbs)
+                    .with_squaring(Squaring::Symmetric)
+                    .with_packing(packing),
+                3,
+            );
+        }
+    }
 }
 
 /// One and two limbs per lane (the top limb of a lane is also its limb 0).

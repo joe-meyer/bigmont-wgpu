@@ -852,6 +852,12 @@ pub(crate) async fn guarded<T>(
 ///
 /// `batch` must have been packed for `cfg`'s limb scheme (see the warning on [`Batch`]): only the
 /// limb count is checked.
+///
+/// This compiles the kernel on every call. To run one configuration many times (timing, tuning),
+/// compile it once with [`SquaringKernel::new_async`] and call [`SquaringKernel::run_async`].
+///
+/// Errors come in this order: the configuration, the adapter's capabilities, the batch, then the
+/// device (compiling, then buffers and the dispatch).
 pub async fn run_async(
     gpu: &Gpu,
     cfg: KernelConfig,
@@ -861,6 +867,105 @@ pub async fn run_async(
 ) -> Result<Run, String> {
     cfg.validate()?;
     cfg.check_caps(gpu.caps())?;
+    check_batch(&cfg, batch)?;
+    SquaringKernel::new_async(gpu, cfg)
+        .await?
+        .run_async(gpu, batch, squarings, repeats)
+        .await
+}
+
+/// A squaring-mode kernel for one configuration, compiled once on one device, to run any number of
+/// times (each run as [`run_async`], without compiling again). Compiling dominates a short run on
+/// some devices (a software rasteriser compiles the generated WGSL with LLVM), so the tuner times
+/// every candidate through one of these.
+///
+/// It belongs to the [`Gpu`] it was built on: a run on another `Gpu` (for example one reopened after
+/// a device loss) is an `Err`, not undefined behaviour.
+pub struct SquaringKernel {
+    cfg: KernelConfig,
+    device: wgpu::Device,
+    pipeline: wgpu::ComputePipeline,
+}
+
+impl SquaringKernel {
+    /// Compiles the squaring kernel of `cfg` for `gpu` (the source of [`KernelConfig::try_wgsl_for`]
+    /// for the host target). Fails like [`run_async`] when `cfg` is invalid or the device cannot run it.
+    pub async fn new_async(gpu: &Gpu, cfg: KernelConfig) -> Result<SquaringKernel, String> {
+        cfg.validate()?;
+        cfg.check_caps(gpu.caps())?;
+        if cfg.needs_subgroups() {
+            gpu.check_subgroups(cfg.tpi)?;
+        }
+        gpu.check_health()?;
+        let device = &gpu.device;
+        let compiled = async {
+            let source = cfg.try_wgsl_for(crate::kernel::Target::host())?;
+            let module = guarded(device, &format!("shader module for {cfg:?}"), || {
+                device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("mont"),
+                    source: wgpu::ShaderSource::Wgsl(source.into()),
+                })
+            })
+            .await?;
+            guarded(device, &format!("compute pipeline for {cfg:?}"), || {
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("mont"),
+                    layout: None,
+                    module: &module,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    cache: None,
+                })
+            })
+            .await
+        };
+        let pipeline = compiled.await.map_err(|e| gpu.explain(e))?;
+        Ok(SquaringKernel {
+            cfg,
+            device: device.clone(),
+            pipeline,
+        })
+    }
+
+    /// The configuration this kernel was compiled for.
+    pub fn config(&self) -> KernelConfig {
+        self.cfg
+    }
+
+    /// [`run_async`] with this kernel: uploads `batch`, runs `repeats` dispatches of `squarings`
+    /// squarings and reads the result back. `gpu` must be the one the kernel was compiled on.
+    pub async fn run_async(
+        &self,
+        gpu: &Gpu,
+        batch: &Batch,
+        squarings: u32,
+        repeats: u32,
+    ) -> Result<Run, String> {
+        if gpu.device != self.device {
+            return Err(
+                "this squaring kernel was compiled on another device (reopened?); compile it again"
+                    .into(),
+            );
+        }
+        let groups = check_batch(&self.cfg, batch)?;
+        gpu.check_health()?;
+        run_on_device(
+            gpu,
+            &self.pipeline,
+            self.cfg,
+            batch,
+            squarings,
+            repeats,
+            groups,
+        )
+        .await
+        .map_err(|e| gpu.explain(e))
+    }
+}
+
+/// Checks `batch` against `cfg` (count, limb count, lengths, dispatch size) and returns the number of
+/// workgroups a dispatch needs.
+fn check_batch(cfg: &KernelConfig, batch: &Batch) -> Result<u32, String> {
     let count = batch.count as usize;
     let limbs = cfg.limbs as usize;
     if count == 0 {
@@ -889,19 +994,14 @@ pub async fn run_async(
             "{groups} workgroups exceeds the 65535 per dispatch limit"
         ));
     }
-    if cfg.needs_subgroups() {
-        gpu.check_subgroups(cfg.tpi)?;
-    }
-    gpu.check_health()?;
-    run_on_device(gpu, cfg, batch, squarings, repeats, groups)
-        .await
-        .map_err(|e| gpu.explain(e))
+    Ok(groups)
 }
 
-/// The device part of [`run_async`] (inputs already validated); any `Err` is passed through
-/// [`Gpu::explain`] by the caller.
+/// The device part of [`SquaringKernel::run_async`] (inputs already validated); any `Err` is passed
+/// through [`Gpu::explain`] by the caller.
 async fn run_on_device(
     gpu: &Gpu,
+    pipeline: &wgpu::ComputePipeline,
     cfg: KernelConfig,
     batch: &Batch,
     squarings: u32,
@@ -951,25 +1051,6 @@ async fn run_on_device(
     })
     .await?;
 
-    let source = cfg.try_wgsl_for(crate::kernel::Target::host())?;
-    let module = guarded(device, &format!("shader module for {cfg:?}"), || {
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("mont"),
-            source: wgpu::ShaderSource::Wgsl(source.into()),
-        })
-    })
-    .await?;
-    let pipeline = guarded(device, &format!("compute pipeline for {cfg:?}"), || {
-        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some("mont"),
-            layout: None,
-            module: &module,
-            entry_point: Some("main"),
-            compilation_options: Default::default(),
-            cache: None,
-        })
-    })
-    .await?;
     let bind_group = guarded(device, "bind group creation", || {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
@@ -1000,7 +1081,7 @@ async fn run_on_device(
         let mut enc = device.create_command_encoder(&Default::default());
         {
             let mut pass = enc.begin_compute_pass(&Default::default());
-            pass.set_pipeline(&pipeline);
+            pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
             pass.dispatch_workgroups(groups, 1, 1);
         }

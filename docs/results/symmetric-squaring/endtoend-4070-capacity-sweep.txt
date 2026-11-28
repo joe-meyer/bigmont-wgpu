@@ -1,0 +1,12 @@
+cap 4096 rep 1 fused: 63019.6 tests/s
+cap 4096 rep 1 symmetric: 64899.5 tests/s
+cap 4096 rep 2 fused: 63079.0 tests/s
+cap 4096 rep 2 symmetric: 64866.6 tests/s
+cap 16384 rep 1 fused: 67873.5 tests/s
+cap 16384 rep 1 symmetric: 68708.2 tests/s
+cap 16384 rep 2 fused: 67632.6 tests/s
+cap 16384 rep 2 symmetric: 68473.0 tests/s
+cap 65536 rep 1 fused: 72438.2 tests/s
+cap 65536 rep 1 symmetric: 73099.0 tests/s
+cap 65536 rep 2 fused: 72810.7 tests/s
+cap 65536 rep 2 symmetric: 73025.4 tests/s

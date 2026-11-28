@@ -3,7 +3,7 @@ use bigmont_cli::tune::{
     SchemeChoice::{self, Auto, Only},
 };
 use bigmont_core::gpu::Gpu;
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_core::scheme::LimbScheme::{Limb13, Limb32};
 use std::path::{Path, PathBuf};
 
@@ -398,6 +398,8 @@ fn autotune_shares_one_cache_entry_across_a_limb_class_including_two_bit_numbers
     // Whichever scheme Auto picked, the shape at 2 bits is the same kernel (4 limbs at tpi 4, ...).
     let at = |scheme, bits| {
         KernelConfig::for_bits_scheme(scheme, bits, first.cfg.tpi, first.cfg.wg, Variant::Unrolled)
+            .with_squaring(first.cfg.squaring)
+            .with_packing(first.cfg.packing)
     };
     assert_eq!(first.cfg, at(first.cfg.scheme, 2));
     for bits in [20u32, 40, 48] {
@@ -496,12 +498,27 @@ fn a_forced_scheme_has_its_own_cache_key_and_never_touches_the_auto_entry() {
     let f13 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb13));
     let f32 = cache_key_text("Some GPU", "Vulkan", "drv", "info", 1019, Only(Limb32));
     // Auto has its own `any` choice field; a cache from before the limb schemes used no field at all
-    // (`name|backend|driver driver_info|class`) and must never match.
+    // (`name|backend|driver driver_info|class`), one from before the measurement generation had no
+    // generation field, and neither may match.
+    let m = tune::MEASURE_GENERATION;
     let legacy = format!("Some GPU|Vulkan|drv info|{class}");
-    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|any|{class}"));
-    assert_eq!(f13, format!("Some GPU|Vulkan|drv info|only-13|{class}"));
-    assert_eq!(f32, format!("Some GPU|Vulkan|drv info|only-32|{class}"));
-    let keys = [&legacy, &auto, &f13, &f32];
+    let ungenerated = [
+        format!("Some GPU|Vulkan|drv info|any|{class}"),
+        format!("Some GPU|Vulkan|drv info|only-13|{class}"),
+        format!("Some GPU|Vulkan|drv info|only-32|{class}"),
+    ];
+    assert_eq!(auto, format!("Some GPU|Vulkan|drv info|any|{m}|{class}"));
+    assert_eq!(f13, format!("Some GPU|Vulkan|drv info|only-13|{m}|{class}"));
+    assert_eq!(f32, format!("Some GPU|Vulkan|drv info|only-32|{m}|{class}"));
+    let keys = [
+        &legacy,
+        &ungenerated[0],
+        &ungenerated[1],
+        &ungenerated[2],
+        &auto,
+        &f13,
+        &f32,
+    ];
     for (i, a) in keys.iter().enumerate() {
         for (j, b) in keys.iter().enumerate() {
             if i != j {
@@ -593,6 +610,8 @@ fn candidates_offer_a_scheme_only_when_the_adapter_caps_allow_it() {
         assert_eq!(
             *cfg,
             KernelConfig::for_bits_scheme(cfg.scheme, bits, cfg.tpi, cfg.wg, Variant::Unrolled)
+                .with_squaring(cfg.squaring)
+                .with_packing(cfg.packing)
         );
     }
 }
@@ -613,7 +632,8 @@ fn a_forced_32_bit_autotune_returns_a_verified_32_bit_kernel() {
     tune::self_test(&gpu, t.cfg, bits).expect("the winner passes its self-test again");
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.contains("|only-32|") && text.contains("|unrolled32 "),
+        text.contains("|only-32|")
+            && (text.contains("|unrolled32 ") || text.contains("|unrolled32sym ")),
         "{text}"
     );
     let again = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect("from cache");
@@ -634,7 +654,10 @@ fn a_forced_13_bit_autotune_returns_a_13_bit_kernel() {
     assert_eq!(t.cfg.scheme, Limb13);
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.contains("|only-13|") && text.contains("|unrolled "),
+        text.contains("|only-13|")
+            && (text.contains("|unrolled ")
+                || text.contains("|unrolledsym ")
+                || text.contains("|unrolledsympairs ")),
         "{text}"
     );
     let _ = std::fs::remove_dir_all(dir);
@@ -662,8 +685,14 @@ fn auto_caches_its_winner_with_the_scheme_and_a_forced_run_leaves_that_entry_alo
         .strip_prefix(&format!("{}|", tune::cache_key(&gpu, 1019, Auto)))
         .expect("the Auto key is unchanged");
     assert_eq!(
-        tune::parse_value(value).map(|(s, t, w, _)| (s, t, w)),
-        Some((first.cfg.scheme, first.cfg.tpi, first.cfg.wg))
+        tune::parse_value_shape(value).map(|(s, q, p, t, w, _)| (s, q, p, t, w)),
+        Some((
+            first.cfg.scheme,
+            first.cfg.squaring,
+            first.cfg.packing,
+            first.cfg.tpi,
+            first.cfg.wg
+        ))
     );
     assert!(!line.contains("only-"));
 
@@ -730,9 +759,10 @@ fn a_legacy_auto_cache_line_without_the_choice_field_is_a_miss_and_is_retuned() 
         return;
     }
     let (dir, cache) = temp_cache("legacy");
-    // A phase 1 line: key without the `any` field, a 13-bit shape that is a valid candidate here.
+    // A phase 1 line: key without the `any` field (nor the later generation field), a 13-bit shape
+    // that is a valid candidate here.
     let key = tune::cache_key(&gpu, 1019, Auto);
-    let legacy = key.replacen("|any|", "|", 1);
+    let legacy = key.replacen(&format!("|any|{}|", tune::MEASURE_GENERATION), "|", 1);
     assert_ne!(legacy, key);
     tune::write_cache(&cache, &legacy, "unrolled 4 64|1e9");
     let t =
@@ -852,4 +882,162 @@ fn a_32_bit_cache_line_is_ignored_on_an_adapter_that_cannot_run_it() {
     let err = tune::autotune(&gpu, 1019, Some(&cache), false, Only(Limb32)).expect_err("no int64");
     assert!(err.contains("int64"), "{err}");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn symmetric_cache_values_round_trip_and_older_readers_see_a_miss() {
+    let fused = KernelConfig::for_bits_scheme(Limb32, 2029, 4, 128, Variant::Unrolled);
+    let sym = fused.with_squaring(Squaring::Symmetric);
+    assert_eq!(tune::cache_value(&fused, 9.5), "unrolled32 4 128|9.5");
+    assert_eq!(tune::cache_value(&sym, 9.5), "unrolled32sym 4 128|9.5");
+    assert_eq!(
+        tune::parse_value_shape("unrolled32sym 4 128|9.5"),
+        Some((Limb32, Squaring::Symmetric, Packing::Limbs, 4, 128, 9.5))
+    );
+    assert_eq!(
+        tune::parse_value_shape("unrolled32 4 128|9.5"),
+        Some((Limb32, Squaring::Fused, Packing::Limbs, 4, 128, 9.5))
+    );
+    // Readers that predate the symmetric kernel treat the new word as a miss, never as a fused kernel.
+    assert_eq!(tune::parse_value("unrolled32sym 4 128|9.5"), None);
+    assert_eq!(tune::parse_value_shape("unrolled32sym 4 128|nan"), None);
+    assert_eq!(tune::parse_value_shape("unrolled13sym 4 128|9.5"), None);
+    // The 13-bit symmetric word, likewise a miss for older readers.
+    let fused13 = KernelConfig::for_bits_scheme(Limb13, 2029, 8, 64, Variant::Unrolled);
+    let sym13 = fused13.with_squaring(Squaring::Symmetric);
+    assert_eq!(tune::cache_value(&fused13, 2.5), "unrolled 8 64|2.5");
+    assert_eq!(tune::cache_value(&sym13, 2.5), "unrolledsym 8 64|2.5");
+    assert_eq!(
+        tune::parse_value_shape("unrolledsym 8 64|2.5"),
+        Some((Limb13, Squaring::Symmetric, Packing::Limbs, 8, 64, 2.5))
+    );
+    assert_eq!(tune::parse_value("unrolledsym 8 64|2.5"), None);
+    let pairs13 = sym13.with_packing(Packing::Pairs);
+    assert_eq!(
+        tune::cache_value(&pairs13, 2.5),
+        "unrolledsympairs 8 64|2.5"
+    );
+    assert_eq!(
+        tune::parse_value_shape("unrolledsympairs 8 64|2.5"),
+        Some((Limb13, Squaring::Symmetric, Packing::Pairs, 8, 64, 2.5))
+    );
+    assert_eq!(tune::parse_value("unrolledsympairs 8 64|2.5"), None);
+    // The two packings are different candidates: a cached one never resolves to the other.
+    let key = "k";
+    let line = vec![format!("{key}|unrolledsympairs 8 64|3")];
+    assert_eq!(
+        tune::cache_lookup(&line, key, &[sym13]),
+        None,
+        "a pairs line must not resolve to the unpacked candidate"
+    );
+    assert_eq!(
+        tune::cache_lookup(&line, key, &[sym13, pairs13]).map(|(c, _)| c),
+        Some(pairs13)
+    );
+}
+
+#[test]
+fn a_cached_fused_or_symmetric_winner_resolves_to_its_own_candidate() {
+    let fused = KernelConfig::for_bits_scheme(Limb32, 2029, 4, 128, Variant::Unrolled);
+    let sym = fused.with_squaring(Squaring::Symmetric);
+    let cands = [fused, sym];
+    let key = "adapter|class";
+    let line = |v: &str| vec![format!("{key}|{v}")];
+    assert_eq!(
+        tune::cache_lookup(&line("unrolled32 4 128|5"), key, &cands),
+        Some((fused, 5.0))
+    );
+    assert_eq!(
+        tune::cache_lookup(&line("unrolled32sym 4 128|6"), key, &cands),
+        Some((sym, 6.0))
+    );
+    // A symmetric line for a shape that is not offered (here: only the fused candidate) is a miss.
+    assert_eq!(
+        tune::cache_lookup(&line("unrolled32sym 4 128|6"), key, &[fused]),
+        None
+    );
+}
+
+#[test]
+fn symmetric_candidates_are_extra_shapes_never_replacements() {
+    let Some(gpu) = gpu() else { return };
+    let cands = tune::candidates(&gpu, 2029, Auto);
+    if skip_unless(!cands.is_empty(), "no subgroup candidates on this adapter") {
+        return;
+    }
+    for packing in [Packing::Limbs, Packing::Pairs] {
+        assert!(
+            cands.iter().any(|c| c.squaring == Squaring::Symmetric
+                && c.scheme == Limb13
+                && c.packing == packing),
+            "a subgroup adapter is offered the 13-bit symmetric squaring with {packing:?}"
+        );
+    }
+    for c in cands.iter().filter(|c| c.packing == Packing::Pairs) {
+        assert!(
+            c.scheme == Limb13 && c.squaring == Squaring::Symmetric,
+            "{c:?}"
+        );
+    }
+    for c in cands.iter().filter(|c| c.squaring == Squaring::Symmetric) {
+        match c.scheme {
+            Limb13 => assert!(matches!(c.tpi, 4 | 8 | 16), "{c:?}"),
+            Limb32 => assert!(matches!(c.tpi, 4 | 8), "{c:?}"),
+        }
+        let twin = c
+            .with_squaring(Squaring::Fused)
+            .with_packing(Packing::Limbs);
+        assert!(
+            cands.contains(&twin),
+            "a symmetric candidate without its fused twin: {c:?}"
+        );
+    }
+}
+
+#[test]
+fn the_fastest_candidate_that_passes_the_self_test_wins_and_only_it_and_faster_ones_are_tested() {
+    // Pure: the selection autotune applies after timing every candidate.
+    let shape = |tpi, wg| KernelConfig::for_bits_scheme(Limb13, 2029, tpi, wg, Variant::Unrolled);
+    let (a, b, c, d) = (shape(4, 64), shape(8, 64), shape(4, 128), shape(8, 128));
+    let timed = vec![(a, 3.0), (b, 9.0), (c, 5.0), (d, 9.0)];
+
+    // b and d tie at the top: b comes first in candidate order. b fails, so d is next, and passes.
+    let mut tried = Vec::new();
+    let mut reasons = Vec::new();
+    let got = tune::first_verified(timed.clone(), &mut reasons, |cfg| {
+        tried.push(cfg);
+        if cfg == b {
+            Err((false, "b: wrong value".to_string()))
+        } else {
+            Ok(())
+        }
+    })
+    .expect("no device failure")
+    .expect("a candidate passes");
+    assert_eq!(
+        (got.cfg, got.squarings_per_sec, got.from_cache),
+        (d, 9.0, false)
+    );
+    assert_eq!(tried, [b, d], "slower candidates are never self-tested");
+    assert_eq!(reasons, ["b: wrong value"]);
+
+    // None passes: Ok(None), every reason kept, in speed order.
+    let mut reasons = Vec::new();
+    let none = tune::first_verified(timed.clone(), &mut reasons, |cfg| {
+        Err((false, format!("{}x{}", cfg.tpi, cfg.wg)))
+    })
+    .expect("no device failure");
+    assert!(none.is_none());
+    assert_eq!(reasons, ["8x64", "8x128", "4x128", "4x64"]);
+
+    // A device failure stops at once and is the error.
+    let mut tried = 0;
+    let mut reasons = Vec::new();
+    let err = tune::first_verified(timed, &mut reasons, |_| {
+        tried += 1;
+        Err((true, "device lost".to_string()))
+    })
+    .expect_err("a device failure is an Err");
+    assert_eq!((err.as_str(), tried), ("device lost", 1));
+    assert!(reasons.is_empty());
 }

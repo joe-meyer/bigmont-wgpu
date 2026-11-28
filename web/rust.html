@@ -16,7 +16,9 @@ WebGPU and checks every verdict against a BigInt <code>2^(n-1) mod n == 1</code>
 <code>web/pkg/</code>, built as described in <a href="README.md">README.md</a>. Query: <code>?bits=255,1019,2029</code>,
 <code>&amp;tpi=8</code>, <code>&amp;wg=64</code>, <code>&amp;count=24</code> (candidates per size),
 <code>&amp;gec=1</code> (run with the Gerbicz error check: every verdict must still equal the oracle and no candidate may
-raise an alarm). Results are also in <code>window.__rust</code>.</p>
+raise an alarm), <code>&amp;squaring=symmetric</code> or <code>symmetric-pairs</code> (the symmetric squaring kernel, with
+one limb or two packed limbs per register, instead of the fused one).
+Results are also in <code>window.__rust</code>.</p>
 <pre id="out">starting...</pre>
 <script type="module">
 import init, { Engine } from "./pkg/bigmont_wasm.js";
@@ -28,6 +30,7 @@ const q = new URLSearchParams(location.search);
 const bitList = (q.get("bits") || "255,1019,2029").split(",").map(Number);
 const tpi = Number(q.get("tpi") || 8), wg = Number(q.get("wg") || 64), count = Number(q.get("count") || 24);
 const gec = q.get("gec") === "1";
+const squaring = q.get("squaring") || "fused";
 window.__rust = { done: false, ok: false, adapter: null, runs: [], error: null };
 
 // ---- BigInt helpers (the oracle side; nothing here is shared with the Rust code) ----
@@ -59,7 +62,7 @@ try {
   const engine = await Engine.open();
   window.__rust.adapter = engine.describe();
   log("adapter: " + window.__rust.adapter);
-  log(`kernel: 13-bit limbs, tpi ${tpi}, workgroup ${wg}${gec ? ", Gerbicz check on" : ""}`);
+  log(`kernel: 13-bit limbs, ${squaring} squaring, tpi ${tpi}, workgroup ${wg}${gec ? ", Gerbicz check on" : ""}`);
   let allOk = true;
   for (const bits of bitList) {
     const nPrp = Math.max(2, Math.floor(count / 6));
@@ -70,11 +73,11 @@ try {
     const want = ns.map((n) => (fermat(n) ? 1 : 0));
     const t0 = performance.now();
     const run_fn = gec ? engine.fermat_checked_hex.bind(engine) : engine.fermat_hex.bind(engine);
-    const got = Array.from(await run_fn(bits, ns.map((n) => n.toString(16)), tpi, wg));
+    const got = Array.from(await run_fn(bits, ns.map((n) => n.toString(16)), tpi, wg, squaring));
     const ms = performance.now() - t0;
     const bad = got.map((g, i) => (g === want[i] ? -1 : i)).filter((i) => i >= 0);
     const alarms = got.filter((g) => g === 2).length;
-    const run = { bits, candidates: ns.length, primes: want.reduce((a, b) => a + b, 0), mismatches: bad.length, alarms, gec, ms: Math.round(ms) };
+    const run = { bits, candidates: ns.length, primes: want.reduce((a, b) => a + b, 0), mismatches: bad.length, alarms, gec, squaring, ms: Math.round(ms) };
     window.__rust.runs.push(run);
     log(`${bits} bits: ${ns.length} candidates (${run.primes} PRP), ${bad.length} mismatches${gec ? `, ${alarms} alarms` : ""}, ${run.ms} ms (includes shader compile)`);
     if (bad.length || run.primes < 2) allOk = false;

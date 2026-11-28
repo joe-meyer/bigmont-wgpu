@@ -1,0 +1,28 @@
+Browser: Chrome 156 (the Claude desktop app's built-in Chromium), Windows 11, WebGPU on a Radeon RX 6700 XT
+(adapter reported as "[BrowserWebGpu, Other] subgroup 32..64 | subgroups: true | int64: false").
+
+rust.html (Rust runner in wasm vs a BigInt oracle), bits=255,1019,2029, 24 candidates per size:
+
+  squaring          query          255 bits     1019 bits    2029 bits    result
+  symmetric         tpi=4          0 mism.      0 mism.      0 mism.      PASS
+  symmetric         tpi=8          0 mism.      0 mism.      0 mism.      PASS
+  symmetric         tpi=16         0 mism.      0 mism.      0 mism.      PASS
+  symmetric         tpi=8&gec=1    0 mism./0 alarms at every size         PASS
+  symmetric-pairs   tpi=4          0 mism.      0 mism.      0 mism.      PASS
+  symmetric-pairs   tpi=8          0 mism.      0 mism.      0 mism.      PASS
+  symmetric-pairs   tpi=16         0 mism.      0 mism.      0 mism.      PASS
+  symmetric-pairs   tpi=8&gec=1    0 mism./0 alarms at every size         PASS
+
+fermat.html?count=32768 with 35 kernels: sym_ and sympairs_ at 64, 254, 1019 and 2029 bits and TPI 4, 8,
+16, 32 (32 kernels), fused fermat_b2029_tpi4 and _tpi8, and the 32-bit negative control.
+All 35 PASS, 0 wrong verdicts in the mixed batches and the sampled throughput batches; the 32-bit
+kernel was rejected as expected.
+
+Throughput batch at 2,029 bits (32,768 candidates, workgroup 64, tests/s, one run each):
+
+  kernel                         TPI 4    TPI 8    TPI 16   TPI 32
+  fused (fermat_)                27557    33743    -        -
+  symmetric (sym_)               17403    38433    27617    20004
+  symmetric, pairs (sympairs_)   12936    25630    21130    17315
+
+Best symmetric (TPI 8) / best fused (TPI 8): 38433 / 33743 = 1.139.

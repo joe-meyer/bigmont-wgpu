@@ -9,7 +9,7 @@
 #![cfg(target_arch = "wasm32")]
 
 use bigmont_core::gpu::{AdapterSelector, Gpu};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Variant, parse_squaring};
 use bigmont_core::runner::Runner;
 use bigmont_core::scheme::LimbScheme;
 use num_bigint::BigUint;
@@ -61,19 +61,20 @@ impl Engine {
     }
 
     /// Base-2 Fermat verdicts (1 = probable prime) for `candidates`, hex strings of odd numbers that
-    /// each have exactly `bits` bits, using the 13-bit unrolled kernel with `tpi` lanes per number
-    /// and workgroup size `wg`. Verdicts come back in input order. Errors (a lost device, a rejected
-    /// kernel, a malformed candidate) are thrown as JS errors.
+    /// each have exactly `bits` bits, using the 13-bit unrolled kernel with `tpi` lanes per number,
+    /// workgroup size `wg` and the squaring named by `squaring` (`fused`, `symmetric` or
+    /// `symmetric-pairs`). Verdicts come back in input order. Errors (a lost device, a rejected
+    /// kernel, an unknown squaring name, a malformed candidate) are thrown as JS errors.
     pub async fn fermat_hex(
         &self,
         bits: u32,
         candidates: Vec<String>,
         tpi: u32,
         wg: u32,
+        squaring: String,
     ) -> Result<Vec<u8>, JsError> {
         let ns = parse_hex(&candidates)?;
-        let cfg =
-            KernelConfig::for_bits_scheme(LimbScheme::Limb13, bits, tpi, wg, Variant::Unrolled);
+        let cfg = config(bits, tpi, wg, &squaring)?;
         let mut runner = Runner::new_async(&self.gpu, cfg, bits, CAPACITY)
             .await
             .map_err(js)?;
@@ -89,10 +90,10 @@ impl Engine {
         candidates: Vec<String>,
         tpi: u32,
         wg: u32,
+        squaring: String,
     ) -> Result<Vec<u8>, JsError> {
         let ns = parse_hex(&candidates)?;
-        let cfg =
-            KernelConfig::for_bits_scheme(LimbScheme::Limb13, bits, tpi, wg, Variant::Unrolled);
+        let cfg = config(bits, tpi, wg, &squaring)?;
         let mut runner = Runner::new_async(&self.gpu, cfg, bits, CAPACITY)
             .await
             .map_err(js)?;
@@ -103,4 +104,15 @@ impl Engine {
             .map_err(js)?;
         Ok(verdicts.into_iter().map(|v| v.byte()).collect())
     }
+}
+
+/// The 13-bit unrolled configuration the entry points run, with the squaring named `squaring`.
+fn config(bits: u32, tpi: u32, wg: u32, squaring: &str) -> Result<KernelConfig, JsError> {
+    let (squaring, packing) = parse_squaring(squaring)
+        .ok_or_else(|| JsError::new("squaring must be fused, symmetric or symmetric-pairs"))?;
+    Ok(
+        KernelConfig::for_bits_scheme(LimbScheme::Limb13, bits, tpi, wg, Variant::Unrolled)
+            .with_squaring(squaring)
+            .with_packing(packing),
+    )
 }

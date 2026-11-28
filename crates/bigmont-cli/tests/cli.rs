@@ -173,7 +173,7 @@ fn the_tune_subcommand_writes_the_cache() {
     let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
     // Auto may pick either scheme: the line must parse as a winner of one of them (the value is the
     // last two `|` fields, `<unrolled|unrolled32> <tpi> <wg>|<rate>`), under the Auto key
-    // (`name|backend|driver|any|class`).
+    // (`name|backend|driver|any|generation|class`).
     let line = text
         .lines()
         .find(|l| !l.is_empty())
@@ -185,7 +185,7 @@ fn the_tune_subcommand_writes_the_cache() {
         fields.next().unwrap(),
     );
     assert!(
-        bigmont_cli::tune::parse_value(&format!("{shape}|{rate}")).is_some(),
+        bigmont_cli::tune::parse_value_shape(&format!("{shape}|{rate}")).is_some(),
         "{text}"
     );
     assert!(
@@ -278,8 +278,8 @@ fn limbs_32_runs_a_candidate_file_and_writes_the_expected_verdicts() {
     );
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.lines()
-            .all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")),
+        text.lines().all(|l| l.contains("|only-32|")
+            && (l.contains("|unrolled32 ") || l.contains("|unrolled32sym "))),
         "{text}"
     );
     let _ = std::fs::remove_dir_all(dir);
@@ -317,14 +317,14 @@ fn the_tune_subcommand_forces_a_scheme_and_prints_a_scheme_column() {
         stdout
             .lines()
             .filter(|l| l.trim_end().ends_with("ok"))
-            .all(|l| l.split_whitespace().next() == Some("32")),
+            .all(|l| matches!(l.split_whitespace().next(), Some("32" | "32s"))),
         "only 32-bit rows: {stdout}"
     );
     assert!(stdout.contains("best: scheme 32"), "{stdout}");
     let text = std::fs::read_to_string(&cache).expect("tune writes the cache");
     assert!(
-        text.lines()
-            .all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")),
+        text.lines().all(|l| l.contains("|only-32|")
+            && (l.contains("|unrolled32 ") || l.contains("|unrolled32sym "))),
         "{text}"
     );
     let _ = std::fs::remove_dir_all(dir);

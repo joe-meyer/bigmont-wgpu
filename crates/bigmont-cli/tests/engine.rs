@@ -202,7 +202,7 @@ fn verify_rate_rechecks_composites_without_changing_verdicts() {
 // ---- small bit lengths run on the GPU; a bucket skips the GPU only for size (min_gpu_batch), besides a failed autotune or Runner Err ----
 
 /// The limb-class field of every line of a tuning cache file, sorted (the line format is
-/// `name|backend|driver|any|class|unrolled tpi wg|rate`; a forced scheme has `only-13`/`only-32` in
+/// `name|backend|driver|any|generation|class|unrolled tpi wg|rate`; a forced scheme has `only-13`/`only-32` in
 /// place of `any`, and a 32-bit winner `unrolled32`). Read from the file, independent of the engine's
 /// own counters.
 fn cache_classes(path: &std::path::Path) -> Vec<String> {
@@ -437,10 +437,12 @@ fn run_with_scheme(
             .unwrap_or_else(|| panic!("no cache line for class {class}: {text}"));
         let mut f = line.rsplitn(3, '|');
         let (rate, shape) = (f.next().unwrap(), f.next().unwrap());
-        let (s, tpi, wg, _) =
-            tune::parse_value(&format!("{shape}|{rate}")).expect("a parsable cache value");
+        let (s, squaring, packing, tpi, wg, _) =
+            tune::parse_value_shape(&format!("{shape}|{rate}")).expect("a parsable cache value");
         let tuned =
-            KernelConfig::for_bits_scheme(s, tune::class_bits(class), tpi, wg, Variant::Unrolled);
+            KernelConfig::for_bits_scheme(s, tune::class_bits(class), tpi, wg, Variant::Unrolled)
+                .with_squaring(squaring)
+                .with_packing(packing);
         let exact = tuned.retarget(bits);
         if exact.limbs != tuned.limbs {
             expected.insert((class, exact.limbs));
@@ -477,8 +479,10 @@ fn the_engine_matches_the_oracle_with_the_13_bit_scheme_forced() {
     };
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.lines()
-            .all(|l| l.contains("|only-13|") && l.contains("|unrolled ")),
+        text.lines().all(|l| l.contains("|only-13|")
+            && (l.contains("|unrolled ")
+                || l.contains("|unrolledsym ")
+                || l.contains("|unrolledsympairs "))),
         "{text}"
     );
 }
@@ -493,8 +497,8 @@ fn the_engine_matches_the_oracle_with_the_32_bit_scheme_forced() {
     };
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
-        text.lines()
-            .all(|l| l.contains("|only-32|") && l.contains("|unrolled32 ")),
+        text.lines().all(|l| l.contains("|only-32|")
+            && (l.contains("|unrolled32 ") || l.contains("|unrolled32sym "))),
         "{text}"
     );
 }

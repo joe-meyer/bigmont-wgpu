@@ -29,7 +29,7 @@ use bigmont_cli::early_exit::{run_waves, schedule};
 use bigmont_cli::engine::{Backend, Engine, EngineReport, Options};
 use bigmont_cli::{formats, tune};
 use bigmont_core::gpu::{AdapterSelector, Gpu};
-use bigmont_core::kernel::KernelConfig;
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring};
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -554,7 +554,12 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     );
     let mut best: Option<(f64, KernelConfig)> = None;
     for cfg in cands {
-        let scheme = cfg.scheme.name();
+        // `s` marks the symmetric squaring, `sp` the symmetric squaring with packed operands.
+        let scheme = match (cfg.squaring, cfg.packing) {
+            (Squaring::Fused, _) => cfg.scheme.name().to_string(),
+            (Squaring::Symmetric, Packing::Limbs) => format!("{}s", cfg.scheme.name()),
+            (Squaring::Symmetric, Packing::Pairs) => format!("{}sp", cfg.scheme.name()),
+        };
         match tune::self_test(&gpu, cfg, bits).and_then(|()| tune::measure(&gpu, cfg)) {
             Ok(rate) => {
                 println!(
@@ -581,8 +586,14 @@ fn cmd_tune(a: Args) -> Result<ExitCode, String> {
     match best {
         Some((rate, cfg)) => {
             println!(
-                "best: scheme {} tpi {} wg {} at {rate:.0} squarings/s",
+                "best: scheme {}{} tpi {} wg {} at {rate:.0} squarings/s",
                 cfg.scheme.name(),
+                match (cfg.squaring, cfg.packing) {
+                    (Squaring::Fused, _) => "",
+                    (Squaring::Symmetric, Packing::Limbs) => " (symmetric squaring)",
+                    (Squaring::Symmetric, Packing::Pairs) =>
+                        " (symmetric squaring, packed operands)",
+                },
                 cfg.tpi,
                 cfg.wg
             );

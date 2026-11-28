@@ -74,6 +74,41 @@ diagnostic(off, subgroup_uniformity);
     }
 }
 
+/// How a cooperative (unrolled) kernel squares. `Fused` interleaves the product and the reduction word
+/// by word (`unrolled.rs`, `limb32.rs`). `Symmetric` computes `x^2` once, with about three quarters of
+/// the limb products (cross terms once, rediagonalised across the lanes), then reduces it
+/// (`unrolledsq.rs` for 13-bit limbs, also in the browser; `limb32sq.rs` for 32-bit limbs); the tuner
+/// times both and picks per adapter. Multiply mode always uses the fused code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Squaring {
+    #[default]
+    Fused,
+    Symmetric,
+}
+
+/// How the 13-bit symmetric squaring holds the operand while it forms `x^2` (`unrolledsq.rs`).
+/// `Limbs` keeps one limb per register; `Pairs` packs two 13-bit limbs per 32-bit word, which halves
+/// the operand's registers and shuffles but adds an unpack per use. Which is faster depends on the
+/// device (measured: `Pairs` on an RTX 4070 Laptop, `Limbs` on an RX 6700 XT), so the tuner times
+/// both. Every other configuration uses `Limbs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Packing {
+    #[default]
+    Limbs,
+    Pairs,
+}
+
+/// The squaring structure and operand packing named `fused`, `symmetric` or `symmetric-pairs` (the
+/// names the examples and the browser pages take), or `None` for any other name.
+pub fn parse_squaring(name: &str) -> Option<(Squaring, Packing)> {
+    match name {
+        "fused" => Some((Squaring::Fused, Packing::Limbs)),
+        "symmetric" | "sym" => Some((Squaring::Symmetric, Packing::Limbs)),
+        "symmetric-pairs" | "sym-pairs" => Some((Squaring::Symmetric, Packing::Pairs)),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KernelConfig {
     /// Lanes per number: 1 (one thread per number) or a cooperative width.
@@ -86,6 +121,10 @@ pub struct KernelConfig {
     pub limbs: u32,
     /// The limb representation (radix) of the kernel.
     pub scheme: LimbScheme,
+    /// How an unrolled kernel squares (see [`Squaring`]); `Fused` for the rolled variant.
+    pub squaring: Squaring,
+    /// Operand packing of the 13-bit symmetric squaring (see [`Packing`]); `Limbs` otherwise.
+    pub packing: Packing,
 }
 
 impl KernelConfig {
@@ -97,7 +136,23 @@ impl KernelConfig {
             variant,
             limbs: LIMBS as u32,
             scheme: LimbScheme::Limb13,
+            squaring: Squaring::Fused,
+            packing: Packing::Limbs,
         }
+    }
+
+    /// The same configuration with the given squaring structure (valid for the unrolled variant only;
+    /// see [`KernelConfig::validate`]).
+    pub const fn with_squaring(mut self, squaring: Squaring) -> Self {
+        self.squaring = squaring;
+        self
+    }
+
+    /// The same configuration with the given operand packing (valid for the 13-bit symmetric squaring
+    /// only; see [`KernelConfig::validate`]).
+    pub const fn with_packing(mut self, packing: Packing) -> Self {
+        self.packing = packing;
+        self
     }
 
     pub const fn with_limbs(mut self, limbs: u32) -> Self {
@@ -130,6 +185,8 @@ impl KernelConfig {
     /// The same scheme, lane count, workgroup size and variant, with the limb count for `bits`.
     pub fn retarget(&self, bits: u32) -> KernelConfig {
         Self::for_bits_scheme(self.scheme, bits, self.tpi, self.wg, self.variant)
+            .with_squaring(self.squaring)
+            .with_packing(self.packing)
     }
 
     /// `log2 R` of this configuration.
@@ -202,6 +259,16 @@ impl KernelConfig {
                     .to_string(),
             );
         }
+        if self.squaring == Squaring::Symmetric && self.variant != Variant::Unrolled {
+            return Err(
+                "symmetric squaring is generated for the unrolled variant only".to_string(),
+            );
+        }
+        if self.packing == Packing::Pairs
+            && (self.squaring != Squaring::Symmetric || self.scheme != LimbScheme::Limb13)
+        {
+            return Err("packed operands exist for the 13-bit symmetric squaring only".to_string());
+        }
         Ok(())
     }
 
@@ -234,14 +301,25 @@ impl KernelConfig {
             if self.variant != Variant::Unrolled {
                 return Err("32-bit limbs are generated for the unrolled variant only".to_string());
             }
+            if self.squaring == Squaring::Symmetric {
+                return crate::limb32sq::wgsl(self, crate::unrolled::Mode::Squarings);
+            }
             return crate::limb32::wgsl(self, crate::unrolled::Mode::Squarings);
         }
         if self.variant == Variant::Unrolled {
+            if self.squaring == Squaring::Symmetric {
+                return crate::unrolledsq::wgsl(self, target, crate::unrolled::Mode::Squarings);
+            }
             return Ok(crate::unrolled::wgsl(
                 self,
                 target,
                 crate::unrolled::Mode::Squarings,
             ));
+        }
+        if self.squaring == Squaring::Symmetric {
+            return Err(
+                "symmetric squaring is generated for the unrolled variant only".to_string(),
+            );
         }
         let (enable, sgparam, sglet, helpers) = if self.needs_subgroups() {
             (
@@ -278,7 +356,13 @@ impl KernelConfig {
             return Err("the Fermat ladder is generated for the unrolled variant only".to_string());
         }
         if self.scheme == LimbScheme::Limb32 {
+            if self.squaring == Squaring::Symmetric {
+                return crate::limb32sq::wgsl(self, crate::unrolled::Mode::Fermat);
+            }
             return crate::limb32::wgsl(self, crate::unrolled::Mode::Fermat);
+        }
+        if self.squaring == Squaring::Symmetric {
+            return crate::unrolledsq::wgsl(self, target, crate::unrolled::Mode::Fermat);
         }
         Ok(crate::unrolled::wgsl(
             self,

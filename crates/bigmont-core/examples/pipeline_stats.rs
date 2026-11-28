@@ -2,7 +2,7 @@
 //! reports about it (VK_KHR_pipeline_executable_properties): registers, LDS, scratch (spills),
 //! instruction counts, and save any text internal representation (for example AMD ISA).
 //!
-//!   cargo run --release -p bigmont-core --example pipeline_stats -- TPI WG [DEVICE_NAME_SUBSTRING [rolled|unrolled [wgpu|flags|plain]]]
+//!   cargo run --release -p bigmont-core --example pipeline_stats -- TPI WG [DEVICE_NAME_SUBSTRING [rolled|unrolled [wgpu|flags|plain [fused|symmetric|symmetric-pairs]]]]
 //!
 //! Mode `wgpu` (default) mirrors what wgpu-hal 30.0.2 does for a compute pipeline on a device that
 //! has Features::SUBGROUP: VK_EXT_subgroup_size_control (Vulkan 1.3 feature) is enabled and the stage
@@ -23,7 +23,7 @@
 use std::ffi::{CStr, CString};
 
 use ash::vk;
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Variant, parse_squaring};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -48,7 +48,13 @@ fn main() {
         Some("plain") => (false, false, "plain"),
         Some(other) => panic!("fifth argument must be wgpu, flags or plain, got {other}"),
     };
-    let cfg = KernelConfig::new(tpi, wg, variant);
+    let name = args.get(5).map_or("fused", String::as_str);
+    let (squaring, packing) = parse_squaring(name).unwrap_or_else(|| {
+        panic!("sixth argument must be fused, symmetric or symmetric-pairs, got {name}")
+    });
+    let cfg = KernelConfig::new(tpi, wg, variant)
+        .with_squaring(squaring)
+        .with_packing(packing);
     if let Err(e) = cfg.validate() {
         // The unrolled variant has no tpi 1 kernel: say so and stop (not an error).
         println!("skipped: {e}");

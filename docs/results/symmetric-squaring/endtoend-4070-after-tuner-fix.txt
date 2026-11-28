@@ -1,0 +1,6 @@
+running: KernelConfig { tpi: 4, wg: 64, variant: Unrolled, limbs: 64, scheme: Limb32, squaring: Symmetric }
+131075 tests, 2029 bits, capacity 16384: wall 1.784 s (73492.5 tests/s) | gpu 1.674 s (78313.2 tests/s) | host prep 0.040 s (2.3% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32, squaring: Symmetric }
+131075 tests, 2029 bits, capacity 16384: wall 1.781 s (73595.2 tests/s) | gpu 1.673 s (78357.6 tests/s) | host prep 0.041 s (2.3% of wall) | PRP 184
+running: KernelConfig { tpi: 4, wg: 128, variant: Unrolled, limbs: 64, scheme: Limb32, squaring: Symmetric }
+131075 tests, 2029 bits, capacity 16384: wall 1.788 s (73299.5 tests/s) | gpu 1.678 s (78094.5 tests/s) | host prep 0.043 s (2.4% of wall) | PRP 184

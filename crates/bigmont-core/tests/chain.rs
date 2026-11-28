@@ -1,6 +1,6 @@
 mod common;
-use bigmont_core::gpu::{Batch, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::gpu::{Batch, Gpu, SquaringKernel, run_async};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant};
 use bigmont_oracle::*;
 use num_bigint::BigUint;
 use num_traits::One;
@@ -129,6 +129,33 @@ fn unrolled_validation_rejects_tpi1_and_accepts_cooperative_widths() {
     }
 }
 
+/// `cfg` with the 13-bit symmetric squaring and each operand packing.
+fn symmetric(cfg: KernelConfig) -> [KernelConfig; 2] {
+    [Packing::Limbs, Packing::Pairs].map(|p| cfg.with_squaring(Squaring::Symmetric).with_packing(p))
+}
+
+/// The 13-bit symmetric squaring (`unrolledsq.rs`), both operand packings, at every width and
+/// workgroup size.
+#[test]
+fn symmetric_unrolled_matches_oracle() {
+    for tpi in [4, 8, 16, 32] {
+        for wg in [64, 128, 256] {
+            for cfg in symmetric(KernelConfig::new(tpi, wg, Variant::Unrolled)) {
+                check(cfg);
+            }
+        }
+    }
+}
+
+#[test]
+fn symmetric_unrolled_long_chain_matches_oracle() {
+    for tpi in [4, 8, 16, 32] {
+        for cfg in symmetric(KernelConfig::new(tpi, 64, Variant::Unrolled)) {
+            check_chain(cfg, 70, 128);
+        }
+    }
+}
+
 /// The speed sweep uses long dispatches (up to 256 squarings); check a long chain against the oracle too
 /// (many more carry-ripple opportunities than the 3-squaring tests).
 #[test]
@@ -136,4 +163,67 @@ fn unrolled_long_chain_matches_oracle() {
     for tpi in [4, 8, 16, 32] {
         check_chain(KernelConfig::new(tpi, 64, Variant::Unrolled), 70, 128);
     }
+}
+
+/// A kernel compiled once runs any number of times with any squaring count, each run matching the
+/// oracle and `run_async` exactly (this is how the tuner times candidates).
+#[test]
+fn a_compiled_kernel_runs_many_times_like_run_async() {
+    for cfg in [
+        KernelConfig::new(8, 64, Variant::Unrolled),
+        KernelConfig::new(4, 128, Variant::Unrolled)
+            .with_squaring(Squaring::Symmetric)
+            .with_packing(Packing::Pairs),
+    ] {
+        let Some(gpu) = common::open_gpu(cfg) else {
+            continue;
+        };
+        let kernel = pollster::block_on(SquaringKernel::new_async(&gpu, cfg)).expect("compile");
+        assert_eq!(kernel.config(), cfg);
+        let values = Batch::random_values(70, 2029, 11);
+        let batch = Batch::from_values(&values);
+        for squarings in [1u32, 3, 8, 3] {
+            let run = pollster::block_on(kernel.run_async(&gpu, &batch, squarings, 2))
+                .expect("compiled run");
+            let once =
+                pollster::block_on(run_async(&gpu, cfg, &batch, squarings, 2)).expect("run_async");
+            assert_eq!(run.x, once.x, "{cfg:?}: {squarings} squarings");
+            for (i, (n, x0)) in values.iter().enumerate() {
+                let got = unpack_limbs(&run.x[i * LIMBS..(i + 1) * LIMBS]);
+                // Two dispatches of `squarings` each, the second continuing from the first.
+                assert_eq!(
+                    &got % n,
+                    mont_square_chain(n, x0, 2 * squarings),
+                    "{cfg:?} instance {i}, {squarings} squarings"
+                );
+            }
+        }
+        // A batch for another limb count is an error, not a panic.
+        let other = Batch::from_values_n(&Batch::random_values(4, 1000, 13), 80);
+        assert!(pollster::block_on(kernel.run_async(&gpu, &other, 1, 1)).is_err());
+    }
+}
+
+/// A compiled kernel belongs to the `Gpu` it was built on: a run on another one is an `Err`.
+#[test]
+fn a_compiled_kernel_refuses_another_device() {
+    let cfg = KernelConfig::new(8, 64, Variant::Unrolled);
+    let Some(gpu) = common::open_gpu(cfg) else {
+        return;
+    };
+    let kernel = pollster::block_on(SquaringKernel::new_async(&gpu, cfg)).expect("compile");
+    let other = match Gpu::new() {
+        Ok(g) => g,
+        Err(e) => {
+            common::skip(format!("a second device on the adapter: {e}"));
+            return;
+        }
+    };
+    let batch = Batch::from_values(&Batch::random_values(8, 2029, 12));
+    let err = pollster::block_on(kernel.run_async(&other, &batch, 1, 1))
+        .err()
+        .expect("a run on another device must fail");
+    assert!(err.contains("another device"), "{err}");
+    // Still usable on its own device.
+    assert!(pollster::block_on(kernel.run_async(&gpu, &batch, 1, 1)).is_ok());
 }

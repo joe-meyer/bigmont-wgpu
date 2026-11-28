@@ -1,0 +1,9 @@
+AMD Radeon RX 6700 XT, AMD proprietary driver 26.10.1, Vulkan: VK_KHR_pipeline_executable_properties for the
+13-bit squaring kernel at 2,029 bits (160 limbs), workgroup 64 (pipeline_stats TPI 64 6700 unrolled wgpu SQUARING).
+
+| TPI | fused VGPRs | fused scratch B | symmetric VGPRs | symmetric scratch B | symmetric-pairs VGPRs | symmetric-pairs scratch B |
+|---|---|---|---|---|---|---|
+| 4 | 192 | 0 | 256 | 144 | 256 | 128 |
+| 8 | 96 | 0 | 160 | 0 | 144 | 0 |
+| 16 | 76 | 0 | 96 | 0 | 101 | 0 |
+| 32 | 45 | 0 | 58 | 0 | 55 | 0 |

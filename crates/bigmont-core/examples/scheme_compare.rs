@@ -4,6 +4,7 @@
 //!
 //!   BIGMONT_ADAPTER=4070 cargo run --release -p bigmont-core --example scheme_compare
 //!   ... -- --bits 2029 --count 65536 --runs 3 --tpis 4,8,16 --wgs 64,128,256 --schemes 13,32
+//!   ... -- --schemes 13,32 --squarings fused,symmetric,symmetric-pairs   (pairs: 13-bit only)
 //!
 //! Slope method: a dispatch of 2 squarings is timed (best of 5), the squarings per dispatch are
 //! doubled while the predicted time stays within 0.4 s and the last one is under 0.2 s, and the rate
@@ -13,7 +14,7 @@
 //! with a note.
 
 use bigmont_core::gpu::{Batch, Gpu, run_async};
-use bigmont_core::kernel::{KernelConfig, Variant};
+use bigmont_core::kernel::{KernelConfig, Packing, Squaring, Variant, parse_squaring};
 use bigmont_core::scheme::LimbScheme;
 use num_bigint::BigUint;
 
@@ -138,6 +139,9 @@ fn verify(
     }
 }
 
+/// A limb scheme with a squaring structure and operand packing.
+type Shape = (LimbScheme, (Squaring, Packing));
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let bits: u32 = arg(&args, "--bits").unwrap_or(2029);
@@ -151,6 +155,25 @@ fn main() {
             LimbScheme::parse(s).unwrap_or_else(|| panic!("unknown scheme '{s}' (use 13 or 32)"))
         })
         .collect();
+    let squarings: Vec<(Squaring, Packing)> = list::<String>(&args, "--squarings", "fused")
+        .iter()
+        .map(|s| {
+            parse_squaring(s).unwrap_or_else(|| {
+                panic!("unknown squaring '{s}' (use fused, symmetric or symmetric-pairs)")
+            })
+        })
+        .collect();
+    // Packed operands exist for the 13-bit symmetric squaring only.
+    let shapes: Vec<Shape> = schemes
+        .iter()
+        .flat_map(|&scheme| squarings.iter().map(move |&sq| (scheme, sq)))
+        .filter(|&(scheme, (_, packing))| packing == Packing::Limbs || scheme == LimbScheme::Limb13)
+        .collect();
+    let label = |(scheme, squaring): Shape| match squaring {
+        (Squaring::Fused, _) => format!("{}-bit", scheme.name()),
+        (Squaring::Symmetric, Packing::Limbs) => format!("{}-bit sym", scheme.name()),
+        (Squaring::Symmetric, Packing::Pairs) => format!("{}-bit sym pairs", scheme.name()),
+    };
     let gpu = Gpu::new().expect("no usable adapter");
     println!("adapter: {}", gpu.describe());
     println!("driver: {} {}", gpu.info.driver, gpu.info.driver_info);
@@ -162,17 +185,20 @@ fn main() {
     println!();
     let values = Batch::random_values(count, bits, 0xc00b_0000 + u64::from(bits));
     let mut failures = 0u32;
-    // (scheme, tpi, best wg, median slope)
-    let mut best: Vec<(LimbScheme, u32, u32, f64)> = Vec::new();
+    // (shape, tpi, best wg, median slope)
+    let mut best: Vec<(Shape, u32, u32, f64)> = Vec::new();
 
     println!("| scheme | limbs | tpi | wg | run | slope sq/s | long sq | long ms | verified |");
     println!("|---|---|---|---|---|---|---|---|---|");
-    for &scheme in &schemes {
-        let name = format!("{}-bit", scheme.name());
+    for &shape in &shapes {
+        let (scheme, squaring) = shape;
+        let name = label(shape);
         for &tpi in &tpis {
             let mut top: Option<(u32, Vec<f64>)> = None;
             for &wg in &wgs {
-                let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled);
+                let cfg = KernelConfig::for_bits_scheme(scheme, bits, tpi, wg, Variant::Unrolled)
+                    .with_squaring(squaring.0)
+                    .with_packing(squaring.1);
                 if let Err(e) = gpu
                     .check_subgroups(tpi)
                     .and_then(|_| cfg.validate())
@@ -223,45 +249,42 @@ fn main() {
                 }
             }
             if let Some((wg, s)) = top {
-                best.push((scheme, tpi, wg, stats(&s).1));
+                best.push((shape, tpi, wg, stats(&s).1));
             }
         }
     }
     println!();
-    println!("Summary: median squarings/s at the best workgroup per (scheme, tpi).");
+    println!("Summary: median squarings/s at the best workgroup per (shape, tpi).");
     println!();
     println!(
-        "| scheme | tpi | best wg | sq/s median | vs {}-bit at this tpi |",
-        schemes[0].name()
+        "| shape | tpi | best wg | sq/s median | vs {} at this tpi |",
+        label(shapes[0])
     );
     println!("|---|---|---|---|---|");
-    for (scheme, tpi, wg, med) in &best {
-        let ratio = if *scheme == schemes[0] {
+    for (shape, tpi, wg, med) in &best {
+        let ratio = if *shape == shapes[0] {
             String::new()
         } else {
             best.iter()
-                .find(|r| r.0 == schemes[0] && r.1 == *tpi)
-                .map_or("n/a".to_string(), |r| format!("{:.2}", med / r.3))
+                .find(|r| r.0 == shapes[0] && r.1 == *tpi)
+                .map_or("n/a".to_string(), |r| format!("{:.3}", med / r.3))
         };
-        println!(
-            "| {}-bit | {tpi} | {wg} | {med:.4e} | {ratio} |",
-            scheme.name()
-        );
+        println!("| {} | {tpi} | {wg} | {med:.4e} | {ratio} |", label(*shape));
     }
-    let top = |s: LimbScheme| {
+    let top = |shape: Shape| {
         best.iter()
-            .filter(|r| r.0 == s)
+            .filter(|r| r.0 == shape)
             .map(|r| r.3)
             .fold(0.0, f64::max)
     };
-    for &scheme in schemes.iter().skip(1) {
-        if top(schemes[0]) > 0.0 && top(scheme) > 0.0 {
+    for &shape in shapes.iter().skip(1) {
+        if top(shapes[0]) > 0.0 && top(shape) > 0.0 {
             println!();
             println!(
-                "best {}-bit / best {}-bit: {:.2}",
-                scheme.name(),
-                schemes[0].name(),
-                top(scheme) / top(schemes[0])
+                "best {} / best {}: {:.3}",
+                label(shape),
+                label(shapes[0]),
+                top(shape) / top(shapes[0])
             );
         }
     }

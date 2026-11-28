@@ -1,0 +1,35 @@
+adapter: NVIDIA GeForce RTX 4070 Laptop GPU [Vulkan, DiscreteGpu] subgroup 32..32
+2029 bits: limb class 157, tuned at 2037 bits, --limbs auto, 30 candidate configurations
+scheme  tpi    wg      squarings/s  status
+    13    4    64         81520122  ok
+    13    4   128         82311783  ok
+    13    4   256         85310170  ok
+    13    8    64         79508611  ok
+    13    8   128         80680021  ok
+    13    8   256         80588421  ok
+    13   16    64         60871334  ok
+    13   16   128         63685703  ok
+    13   16   256         66241385  ok
+    13   32    64         42683005  ok
+    13   32   128         46032855  ok
+    13   32   256         48710003  ok
+    32    4    64        138512422  ok
+   32s    4    64        149710699  ok
+    32    4   128        145489697  ok
+   32s    4   128        154634964  ok
+    32    4   256        151640764  ok
+   32s    4   256        157702016  ok
+    32    8    64        123754716  ok
+   32s    8    64        124093393  ok
+    32    8   128        130841641  ok
+   32s    8   128        133464985  ok
+    32    8   256        136154704  ok
+   32s    8   256        141077320  ok
+    32   16    64        101641864  ok
+    32   16   128        107860974  ok
+    32   16   256        112639376  ok
+    32   32    64         73889146  ok
+    32   32   128         79633045  ok
+    32   32   256         82542038  ok
+best: scheme 32 (symmetric squaring) tpi 4 wg 256 at 157702016 squarings/s
+not cached (--no-cache, or no cache location)
