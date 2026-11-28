@@ -581,8 +581,47 @@ pub fn resolve_cache(
     }
 }
 
+/// The fastest of `timed` (configurations with their measured rates) that passes `check`, trying
+/// them fastest first; an exact tie keeps the order of `timed` (the sort is stable). `check` returns
+/// `Err((device_failed, message))`: a device failure stops at once and is returned as `Err`; any other
+/// failure is pushed onto `reasons` and the next candidate is tried. `Ok(None)` when none passes.
+#[doc(hidden)]
+pub fn first_verified(
+    mut timed: Vec<(KernelConfig, f64)>,
+    reasons: &mut Vec<String>,
+    mut check: impl FnMut(KernelConfig) -> Result<(), (bool, String)>,
+) -> Result<Option<Tuned>, String> {
+    timed.sort_by(|a, b| b.1.total_cmp(&a.1));
+    for (cfg, rate) in timed {
+        match check(cfg) {
+            Ok(()) => {
+                return Ok(Some(Tuned {
+                    cfg,
+                    squarings_per_sec: rate,
+                    from_cache: false,
+                }));
+            }
+            Err((true, e)) => return Err(e),
+            Err((false, e)) => {
+                eprintln!("skip {e}");
+                reasons.push(e);
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// Picks the fastest configuration that passes the self-test, reusing `cache` unless `retune`.
 /// `Err` when none passes (the engine then falls back to the CPU).
+///
+/// Every candidate is timed first ([`measure`], which also checks a sample of its timed instances
+/// against the oracle, so a kernel giving wrong answers is rejected there), then the full
+/// [`self_test`] runs on the candidates from the fastest down until one passes, and that one wins.
+/// So the kernel the engine uses always passed the full self-test, while the slower candidates,
+/// which are never used, skip it: on a software rasteriser the self-test's Fermat ladder dominated
+/// tuning. A cache hit is self-tested again before it is trusted (a new build can generate different
+/// code for the same cached shape), but not timed again. (`bigmont tune` self-tests every row, to
+/// print each one's status.)
 ///
 /// Tuning is per limb class (`limb_class(bits)`), not per exact bit length: the self-test and the
 /// timing run at the class's representative length `class_bits`, and the cache entry is keyed by the
@@ -631,21 +670,13 @@ pub fn autotune(
             Err(e) => eprintln!("cached {cfg:?} failed its self-test ({e}); retuning"),
         }
     }
-    let mut best: Option<Tuned> = None;
     let mut reasons = Vec::new();
+    let mut timed: Vec<(KernelConfig, f64)> = Vec::new();
     for cfg in cands {
-        match self_test(gpu, cfg, bits)
-            .and_then(|()| measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}")))
-        {
+        match measure(gpu, cfg).map_err(|e| format!("{cfg:?}: {e}")) {
             Ok(rate) => {
                 eprintln!("tune {cfg:?}: {rate:.0} squarings/s");
-                if best.is_none_or(|b| rate > b.squarings_per_sec) {
-                    best = Some(Tuned {
-                        cfg,
-                        squarings_per_sec: rate,
-                        from_cache: false,
-                    });
-                }
+                timed.push((cfg, rate));
             }
             Err(e) if gpu.check_health().is_err() => return Err(e),
             Err(e) => {
@@ -654,6 +685,9 @@ pub fn autotune(
             }
         }
     }
+    let best = first_verified(timed, &mut reasons, |cfg| {
+        self_test(gpu, cfg, bits).map_err(|e| (gpu.check_health().is_err(), e))
+    })?;
     let best = best.ok_or_else(|| {
         format!(
             "no kernel configuration passed the self-test on {}: {}",

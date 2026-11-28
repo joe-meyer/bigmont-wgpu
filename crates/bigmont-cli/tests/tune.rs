@@ -993,3 +993,51 @@ fn symmetric_candidates_are_extra_shapes_never_replacements() {
         );
     }
 }
+
+#[test]
+fn the_fastest_candidate_that_passes_the_self_test_wins_and_only_it_and_faster_ones_are_tested() {
+    // Pure: the selection autotune applies after timing every candidate.
+    let shape = |tpi, wg| KernelConfig::for_bits_scheme(Limb13, 2029, tpi, wg, Variant::Unrolled);
+    let (a, b, c, d) = (shape(4, 64), shape(8, 64), shape(4, 128), shape(8, 128));
+    let timed = vec![(a, 3.0), (b, 9.0), (c, 5.0), (d, 9.0)];
+
+    // b and d tie at the top: b comes first in candidate order. b fails, so d is next, and passes.
+    let mut tried = Vec::new();
+    let mut reasons = Vec::new();
+    let got = tune::first_verified(timed.clone(), &mut reasons, |cfg| {
+        tried.push(cfg);
+        if cfg == b {
+            Err((false, "b: wrong value".to_string()))
+        } else {
+            Ok(())
+        }
+    })
+    .expect("no device failure")
+    .expect("a candidate passes");
+    assert_eq!(
+        (got.cfg, got.squarings_per_sec, got.from_cache),
+        (d, 9.0, false)
+    );
+    assert_eq!(tried, [b, d], "slower candidates are never self-tested");
+    assert_eq!(reasons, ["b: wrong value"]);
+
+    // None passes: Ok(None), every reason kept, in speed order.
+    let mut reasons = Vec::new();
+    let none = tune::first_verified(timed.clone(), &mut reasons, |cfg| {
+        Err((false, format!("{}x{}", cfg.tpi, cfg.wg)))
+    })
+    .expect("no device failure");
+    assert!(none.is_none());
+    assert_eq!(reasons, ["8x64", "8x128", "4x128", "4x64"]);
+
+    // A device failure stops at once and is the error.
+    let mut tried = 0;
+    let mut reasons = Vec::new();
+    let err = tune::first_verified(timed, &mut reasons, |_| {
+        tried += 1;
+        Err((true, "device lost".to_string()))
+    })
+    .expect_err("a device failure is an Err");
+    assert_eq!((err.as_str(), tried), ("device lost", 1));
+    assert!(reasons.is_empty());
+}
