@@ -1,0 +1,190 @@
+adapter: AMD Radeon RX 6700 XT [Vulkan, DiscreteGpu] subgroup 32..64
+driver: AMD proprietary driver 26.10.1 (AMD proprietary shader compiler)
+SHADER_INT64: true
+instances: 262144, runs per configuration: 3, workgroups: [64, 128, 256]
+
+| scheme | bits | limbs | wg | run | slope sq/s | short ms (2 sq) | long sq/dispatch | long ms | verified |
+|---|---|---|---|---|---|---|---|---|---|
+| A (13-bit) | 254 | 20 | 64 | 0 | 6.1942e9 | 0.586 | 8192 | 347.2 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 64 | 1 | 6.1951e9 | 0.614 | 8192 | 347.2 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 64 | 2 | 6.1791e9 | 0.620 | 8192 | 348.1 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 128 | 0 | 6.1933e9 | 0.613 | 8192 | 347.3 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 128 | 1 | 6.1962e9 | 0.607 | 8192 | 347.1 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 128 | 2 | 6.1955e9 | 0.604 | 8192 | 347.1 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 256 | 0 | 6.1970e9 | 0.632 | 8192 | 347.1 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 256 | 1 | 6.1937e9 | 0.604 | 8192 | 347.2 | 27 inst x 49150 sq |
+| A (13-bit) | 254 | 20 | 256 | 2 | 6.1972e9 | 0.600 | 8192 | 347.0 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 64 | 0 | 6.6943e9 | 0.584 | 8192 | 321.3 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 64 | 1 | 6.6822e9 | 0.589 | 8192 | 321.9 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 64 | 2 | 6.6818e9 | 0.593 | 8192 | 321.9 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 128 | 0 | 6.6928e9 | 0.581 | 8192 | 321.4 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 128 | 1 | 6.6796e9 | 0.583 | 8192 | 322.0 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 128 | 2 | 6.6825e9 | 0.579 | 8192 | 321.9 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 256 | 0 | 6.6851e9 | 0.597 | 8192 | 321.8 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 256 | 1 | 6.6838e9 | 0.594 | 8192 | 321.8 | 27 inst x 49150 sq |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 256 | 2 | 6.6661e9 | 0.604 | 8192 | 322.7 | 27 inst x 49150 sq |
+| B (32-bit, u64) | 254 | 8 | 64 | 0 | 4.7209e9 | 0.707 | 4096 | 228.0 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 64 | 1 | 4.7209e9 | 0.721 | 4096 | 228.1 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 64 | 2 | 4.7125e9 | 0.711 | 4096 | 228.5 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 128 | 0 | 4.6777e9 | 0.723 | 4096 | 230.2 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 128 | 1 | 4.6788e9 | 0.718 | 4096 | 230.1 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 128 | 2 | 4.6755e9 | 0.722 | 4096 | 230.3 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 256 | 0 | 4.6792e9 | 0.722 | 4096 | 230.1 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 256 | 1 | 4.6792e9 | 0.725 | 4096 | 230.1 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 254 | 8 | 256 | 2 | 4.6793e9 | 0.729 | 4096 | 230.1 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 64 | 0 | 4.8518e9 | 0.695 | 4096 | 221.9 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 64 | 1 | 4.8681e9 | 0.704 | 4096 | 221.2 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 64 | 2 | 4.8684e9 | 0.695 | 4096 | 221.1 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 128 | 0 | 4.8244e9 | 0.696 | 4096 | 223.2 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 128 | 1 | 4.8250e9 | 0.698 | 4096 | 223.1 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 128 | 2 | 4.8128e9 | 0.703 | 4096 | 223.7 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 256 | 0 | 4.8131e9 | 0.695 | 4096 | 223.7 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 256 | 1 | 4.8237e9 | 0.700 | 4096 | 223.2 | 27 inst x 24574 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 256 | 2 | 4.8263e9 | 0.723 | 4096 | 223.1 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 64 | 0 | 2.8853e9 | 1.111 | 4096 | 373.1 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 64 | 1 | 2.8854e9 | 1.108 | 4096 | 373.1 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 64 | 2 | 2.8860e9 | 1.111 | 4096 | 373.0 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 128 | 0 | 2.8785e9 | 1.124 | 4096 | 374.0 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 128 | 1 | 2.8868e9 | 1.119 | 4096 | 372.9 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 128 | 2 | 2.8789e9 | 1.119 | 4096 | 373.9 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 256 | 0 | 2.8863e9 | 1.129 | 4096 | 373.0 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 256 | 1 | 2.8871e9 | 1.131 | 4096 | 372.9 | 27 inst x 24574 sq |
+| A (13-bit) | 382 | 30 | 256 | 2 | 2.8875e9 | 1.130 | 4096 | 372.8 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 64 | 0 | 3.1779e9 | 1.032 | 4096 | 338.7 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 64 | 1 | 3.1783e9 | 1.032 | 4096 | 338.7 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 64 | 2 | 3.1786e9 | 1.031 | 4096 | 338.7 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 128 | 0 | 3.1780e9 | 1.042 | 4096 | 338.7 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 128 | 1 | 3.1786e9 | 1.042 | 4096 | 338.7 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 128 | 2 | 3.1787e9 | 1.039 | 4096 | 338.7 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 256 | 0 | 3.1790e9 | 1.053 | 4096 | 338.6 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 256 | 1 | 3.1757e9 | 1.060 | 4096 | 339.0 | 27 inst x 24574 sq |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 256 | 2 | 3.1792e9 | 1.050 | 4096 | 338.6 | 27 inst x 24574 sq |
+| B (32-bit, u64) | 382 | 12 | 64 | 0 | 2.1468e9 | 1.407 | 2048 | 251.2 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 64 | 1 | 2.1441e9 | 1.160 | 2048 | 251.3 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 64 | 2 | 2.1371e9 | 0.986 | 2048 | 252.0 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 128 | 0 | 2.1462e9 | 1.440 | 2048 | 251.3 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 128 | 1 | 2.1421e9 | 0.973 | 2048 | 251.4 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 128 | 2 | 2.1400e9 | 1.168 | 2048 | 251.8 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 256 | 0 | 2.1413e9 | 0.819 | 2048 | 251.3 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 256 | 1 | 2.1445e9 | 1.214 | 2048 | 251.3 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 382 | 12 | 256 | 2 | 2.1464e9 | 1.408 | 2048 | 251.3 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 64 | 0 | 2.2535e9 | 1.350 | 2048 | 239.4 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 64 | 1 | 2.2494e9 | 0.955 | 2048 | 239.4 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 64 | 2 | 2.2440e9 | 0.786 | 2048 | 239.8 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 128 | 0 | 2.2534e9 | 1.353 | 2048 | 239.4 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 128 | 1 | 2.2480e9 | 1.185 | 2048 | 239.8 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 128 | 2 | 2.2530e9 | 1.285 | 2048 | 239.3 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 256 | 0 | 2.2536e9 | 1.350 | 2048 | 239.3 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 256 | 1 | 2.2443e9 | 0.981 | 2048 | 240.0 | 27 inst x 12286 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 256 | 2 | 2.2496e9 | 1.058 | 2048 | 239.5 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 64 | 0 | 1.6857e9 | 0.550 | 2048 | 318.7 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 64 | 1 | 1.6853e9 | 1.052 | 2048 | 319.3 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 64 | 2 | 1.6868e9 | 1.249 | 2048 | 319.2 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 128 | 0 | 1.6828e9 | 0.529 | 2048 | 319.3 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 128 | 1 | 1.6860e9 | 1.119 | 2048 | 319.2 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 128 | 2 | 1.6820e9 | 0.547 | 2048 | 319.4 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 256 | 0 | 1.6818e9 | 0.550 | 2048 | 319.5 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 256 | 1 | 1.6818e9 | 0.555 | 2048 | 319.5 | 27 inst x 12286 sq |
+| A (13-bit) | 510 | 40 | 256 | 2 | 1.6819e9 | 0.556 | 2048 | 319.5 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 64 | 0 | 1.9317e9 | 0.479 | 2048 | 278.1 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 64 | 1 | 1.9374e9 | 1.264 | 2048 | 278.1 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 64 | 2 | 1.9396e9 | 1.581 | 2048 | 278.1 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 128 | 0 | 1.9321e9 | 0.474 | 2048 | 278.1 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 128 | 1 | 1.9323e9 | 0.490 | 2048 | 278.1 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 128 | 2 | 1.9284e9 | 0.664 | 2048 | 278.8 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 256 | 0 | 1.9305e9 | 0.497 | 2048 | 278.3 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 256 | 1 | 1.9316e9 | 0.661 | 2048 | 278.3 | 27 inst x 12286 sq |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 256 | 2 | 1.9336e9 | 0.930 | 2048 | 278.3 | 27 inst x 12286 sq |
+| B (32-bit, u64) | 510 | 16 | 64 | 0 | 1.2134e9 | 0.708 | 1024 | 221.5 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 64 | 1 | 1.2126e9 | 0.979 | 1024 | 221.9 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 64 | 2 | 1.2144e9 | 0.905 | 1024 | 221.5 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 128 | 0 | 1.2132e9 | 0.706 | 1024 | 221.5 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 128 | 1 | 1.2148e9 | 0.950 | 1024 | 221.5 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 128 | 2 | 1.2150e9 | 1.066 | 1024 | 221.6 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 256 | 0 | 1.2128e9 | 0.690 | 1024 | 221.6 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 256 | 1 | 1.2141e9 | 0.898 | 1024 | 221.6 | 27 inst x 6142 sq |
+| B (32-bit, u64) | 510 | 16 | 256 | 2 | 1.2145e9 | 1.008 | 1024 | 221.6 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 64 | 0 | 1.2895e9 | 0.650 | 1024 | 208.4 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 64 | 1 | 1.2917e9 | 1.015 | 1024 | 208.4 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 64 | 2 | 1.2861e9 | 0.996 | 1024 | 209.3 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 128 | 0 | 1.2896e9 | 0.646 | 1024 | 208.4 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 128 | 1 | 1.2922e9 | 1.053 | 1024 | 208.4 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 128 | 2 | 1.2909e9 | 0.942 | 1024 | 208.5 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 256 | 0 | 1.2896e9 | 0.640 | 1024 | 208.4 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 256 | 1 | 1.2904e9 | 0.901 | 1024 | 208.5 | 27 inst x 6142 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 256 | 2 | 1.2914e9 | 0.884 | 1024 | 208.3 | 27 inst x 6142 sq |
+| A (13-bit) | 1022 | 79 | 64 | 0 | 2.8467e8 | 3.470 | 256 | 237.4 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 64 | 1 | 2.8494e8 | 3.689 | 256 | 237.4 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 64 | 2 | 2.8497e8 | 3.693 | 256 | 237.3 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 128 | 0 | 2.8482e8 | 3.516 | 256 | 237.3 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 128 | 1 | 2.8513e8 | 3.789 | 256 | 237.3 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 128 | 2 | 2.8509e8 | 3.744 | 256 | 237.3 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 256 | 0 | 2.8479e8 | 3.499 | 256 | 237.3 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 256 | 1 | 2.8508e8 | 3.712 | 256 | 237.3 | 27 inst x 1534 sq |
+| A (13-bit) | 1022 | 79 | 256 | 2 | 2.8516e8 | 3.746 | 256 | 237.2 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 64 | 0 | 3.2762e8 | 2.967 | 256 | 206.2 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 64 | 1 | 2.8902e8 | 3.290 | 256 | 233.7 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 64 | 2 | 2.8893e8 | 3.350 | 256 | 233.8 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 128 | 0 | 2.8488e8 | 3.217 | 256 | 236.9 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 128 | 1 | 2.8450e8 | 3.389 | 256 | 237.4 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 128 | 2 | 2.8434e8 | 3.414 | 256 | 237.6 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 256 | 0 | 2.8808e8 | 3.241 | 256 | 234.4 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 256 | 1 | 2.8852e8 | 3.460 | 256 | 234.2 | 27 inst x 1534 sq |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 256 | 2 | 2.8834e8 | 3.467 | 256 | 234.4 | 27 inst x 1534 sq |
+| B (32-bit, u64) | 1022 | 32 | 64 | 0 | 1.3507e8 | 4.295 | 128 | 248.8 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 64 | 1 | 1.3480e8 | 4.410 | 128 | 249.4 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 64 | 2 | 1.3485e8 | 4.445 | 128 | 249.4 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 128 | 0 | 1.3498e8 | 4.349 | 128 | 249.0 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 128 | 1 | 1.3475e8 | 4.495 | 128 | 249.6 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 128 | 2 | 1.3495e8 | 4.513 | 128 | 249.3 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 256 | 0 | 1.3478e8 | 4.387 | 128 | 249.5 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 256 | 1 | 1.3456e8 | 4.475 | 128 | 249.9 | 27 inst x 766 sq |
+| B (32-bit, u64) | 1022 | 32 | 256 | 2 | 1.3482e8 | 4.600 | 128 | 249.6 | 27 inst x 766 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 64 | 0 | 3.2503e8 | 2.084 | 256 | 206.9 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 64 | 1 | 3.2299e8 | 2.138 | 256 | 208.3 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 64 | 2 | 3.2258e8 | 2.130 | 256 | 208.5 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 128 | 0 | 3.2163e8 | 2.097 | 256 | 209.1 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 128 | 1 | 3.2635e8 | 2.143 | 256 | 206.2 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 128 | 2 | 3.2185e8 | 2.125 | 256 | 209.0 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 256 | 0 | 3.2441e8 | 2.168 | 256 | 207.4 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 256 | 1 | 3.2531e8 | 2.274 | 256 | 207.0 | 27 inst x 1534 sq |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 256 | 2 | 3.2462e8 | 2.293 | 256 | 207.4 | 27 inst x 1534 sq |
+
+Summary: best workgroup by median slope; squarings/s min / median / max over 3 runs; ratios are of medians (vs scheme A at the same bits).
+
+| scheme | bits | limbs | best wg | sq/s min | sq/s median | sq/s max | ratio vs A | note |
+|---|---|---|---|---|---|---|---|---|
+| A (13-bit) | 254 | 20 | 256 | 6.1937e9 | 6.1970e9 | 6.1972e9 | 1.00 |  |
+| A-sqr (13-bit, symmetric squaring) | 254 | 20 | 256 | 6.6661e9 | 6.6838e9 | 6.6851e9 | 1.08 |  |
+| B (32-bit, u64) | 254 | 8 | 64 | 4.7125e9 | 4.7209e9 | 4.7209e9 | 0.76 |  |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | 8 | 64 | 4.8518e9 | 4.8681e9 | 4.8684e9 | 0.79 |  |
+| A (13-bit) | 382 | 30 | 256 | 2.8863e9 | 2.8871e9 | 2.8875e9 | 1.00 |  |
+| A-sqr (13-bit, symmetric squaring) | 382 | 30 | 256 | 3.1757e9 | 3.1790e9 | 3.1792e9 | 1.10 |  |
+| B (32-bit, u64) | 382 | 12 | 256 | 2.1413e9 | 2.1445e9 | 2.1464e9 | 0.74 |  |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | 12 | 128 | 2.2480e9 | 2.2530e9 | 2.2534e9 | 0.78 |  |
+| A (13-bit) | 510 | 40 | 64 | 1.6853e9 | 1.6857e9 | 1.6868e9 | 1.00 |  |
+| A-sqr (13-bit, symmetric squaring) | 510 | 40 | 64 | 1.9317e9 | 1.9374e9 | 1.9396e9 | 1.15 |  |
+| B (32-bit, u64) | 510 | 16 | 128 | 1.2132e9 | 1.2148e9 | 1.2150e9 | 0.72 |  |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | 16 | 128 | 1.2896e9 | 1.2909e9 | 1.2922e9 | 0.77 |  |
+| A (13-bit) | 1022 | 79 | 128 | 2.8482e8 | 2.8509e8 | 2.8513e8 | 1.00 | 13-bit limbs may spill at this size |
+| A-sqr (13-bit, symmetric squaring) | 1022 | 79 | 64 | 2.8893e8 | 2.8902e8 | 3.2762e8 | 1.01 |  |
+| B (32-bit, u64) | 1022 | 32 | 128 | 1.3475e8 | 1.3495e8 | 1.3498e8 | 0.47 |  |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | 32 | 256 | 3.2441e8 | 3.2462e8 | 3.2531e8 | 1.14 |  |
+
+| bits | B/A median | B/A worst case (min B / max A) | B/A best case (max B / min A) | B2/A median |
+|---|---|---|---|---|
+| 254 | 0.76 | 0.76 | 0.76 | n/a |
+| 382 | 0.74 | 0.74 | 0.74 | n/a |
+| 510 | 0.72 | 0.72 | 0.72 | n/a |
+| 1022 | 0.47 | 0.47 | 0.47 | n/a |
+
+| scheme | bits | baseline | sqr sq/s median | baseline sq/s median | speedup | worst (sqr min / base max) | best (sqr max / base min) |
+|---|---|---|---|---|---|---|---|
+| A-sqr (13-bit, symmetric squaring) | 254 | A (13-bit) | 6.6838e9 | 6.1970e9 | 1.079 | 1.076 | 1.079 |
+| B-sqr (32-bit, u64, symmetric squaring) | 254 | B (32-bit, u64) | 4.8681e9 | 4.7209e9 | 1.031 | 1.028 | 1.033 |
+| A-sqr (13-bit, symmetric squaring) | 382 | A (13-bit) | 3.1790e9 | 2.8871e9 | 1.101 | 1.100 | 1.101 |
+| B-sqr (32-bit, u64, symmetric squaring) | 382 | B (32-bit, u64) | 2.2530e9 | 2.1445e9 | 1.051 | 1.047 | 1.052 |
+| A-sqr (13-bit, symmetric squaring) | 510 | A (13-bit) | 1.9374e9 | 1.6857e9 | 1.149 | 1.145 | 1.151 |
+| B-sqr (32-bit, u64, symmetric squaring) | 510 | B (32-bit, u64) | 1.2909e9 | 1.2148e9 | 1.063 | 1.061 | 1.065 |
+| A-sqr (13-bit, symmetric squaring) | 1022 | A (13-bit) | 2.8902e8 | 2.8509e8 | 1.014 | 1.013 | 1.150 |
+| B-sqr (32-bit, u64, symmetric squaring) | 1022 | B (32-bit, u64) | 3.2462e8 | 1.3495e8 | 2.405 | 2.403 | 2.414 |
